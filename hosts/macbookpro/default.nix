@@ -1,0 +1,31 @@
+{ self, nixpkgs, nix-darwin, home-manager, ... }:
+
+let
+	configuration = { pkgs, ... }: import ./settings.nix { inherit pkgs; } // {
+
+		# Necessary for using flakes on this system.
+		nix.settings.experimental-features = "nix-command flakes";
+
+		# Set Git commit hash for darwin-version.
+		system.configurationRevision = self.rev or self.dirtyRev or null;
+
+		# Used for backwards compatibility, please read the changelog before changing.
+		# $ darwin-rebuild changelog
+		system.stateVersion = 5;
+
+		environment.systemPackages = import ./packages.nix { inherit pkgs; };
+		homebrew = import ./homebrew.nix { inherit pkgs; };
+
+	};
+
+in nix-darwin.lib.darwinSystem {
+	modules = [
+		configuration
+		home-manager.darwinModules.home-manager {
+			home-manager.useGlobalPkgs = true;
+			home-manager.useUserPackages = true;
+			users.users.alex.home = "/Users/alex";
+			home-manager.users.alex = import ../../users/alex;
+		}
+	];
+}
