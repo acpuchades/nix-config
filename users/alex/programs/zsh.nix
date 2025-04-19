@@ -3,6 +3,7 @@
 	enableCompletion = true;
 	autosuggestion.enable = true;
 	syntaxHighlighting.enable = true;
+	history.size = 10000;
 
 	oh-my-zsh = {
 		enable = true;
@@ -13,12 +14,4 @@
 			"history"
 		];
 	};
-
-	shellAliases = {
-		la = "ls -A";
-		ll = "ls -lh";
-		lla = "la -lhA";
-	};
-
-	history.size = 10000;
 }

@@ -1,7 +1,10 @@
 { pkgs, ... }:
 
 {
-	programs.git = import ./git.nix;
-	programs.vscode = import ./vscode.nix;
-	programs.zsh = import ./zsh.nix;
+	# Let home Manager install and manage itself.
+	home-manager.enable = true;
+
+	git = import ./git.nix;
+	vscode = import ./vscode.nix;
+	zsh = import ./zsh.nix;
 }

@@ -1,6 +1,6 @@
 { config, pkgs, ...}:
 
-import ./programs { inherit pkgs; } // {
+{
 
 	# This value determines the home Manager release that your
 	# configuration is compatible with. This helps avoid breakage
@@ -12,12 +12,7 @@ import ./programs { inherit pkgs; } // {
 	# changes in each release.
 	home.stateVersion = "24.11";
 
-	# Let home Manager install and manage itself.
-	programs.home-manager.enable = true;
-
-	home.sessionVariables = {
-		EDITOR = "vim";
-	};
+	programs = import ./programs { inherit pkgs; };
 
 	# link the configuration file in current directory to the specified location in home directory
 	# home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
@@ -46,4 +41,14 @@ import ./programs { inherit pkgs; } // {
 		pkgs.zsh-autosuggestions
 		pkgs.zsh-syntax-highlighting
 	];
+
+	home.sessionVariables = {
+		EDITOR = "vim";
+	};
+
+	home.shellAliases = {
+		la = "ls -A";
+		ll = "ls -lh";
+		lla = "la -lhA";
+	};
 }
