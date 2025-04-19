@@ -47,6 +47,7 @@
 	};
 
 	home.shellAliases = {
+		l = "ls";
 		la = "ls -A";
 		ll = "ls -lh";
 		lla = "la -lhA";

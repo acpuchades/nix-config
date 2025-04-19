@@ -42,6 +42,7 @@ with pkgs; let
 
 in [
 	# System
+	pkgs.bat
 	pkgs.direnv
 	pkgs.vim
 
@@ -51,8 +52,9 @@ in [
 	pkgs.poetry
 
 	# Fonts
-	pkgs.fira-code
 	pkgs.font-awesome
+	pkgs.nerd-fonts.fira-code
+	pkgs.nerd-fonts.fira-mono
 
 	# Genetics
 	pkgs.bcftools
