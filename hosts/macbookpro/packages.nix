@@ -20,6 +20,7 @@ let
 		RSQLite
 		Rtsne
 		shiny
+		stringi
 		SKAT
 		tidyverse
 		uwot
