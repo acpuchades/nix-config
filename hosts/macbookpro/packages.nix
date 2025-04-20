@@ -28,6 +28,7 @@ let
 	];
 
 	r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
+	radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
 	rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
 	python3-with-packages = pkgs.python3.withPackages (ps: with ps; [
 		keras
@@ -73,6 +74,7 @@ in with pkgs; [
 	pandoc
 	texliveFull
 	r-with-packages
+	radian-with-packages
 	rstudio-with-packages
 	python3-with-packages
 
