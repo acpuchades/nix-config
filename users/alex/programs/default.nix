@@ -7,5 +7,6 @@
 	ghostty = import ./ghostty.nix;
 	git = import ./git.nix;
 	vscode = import ./vscode.nix;
+	zed-editor = import ./zed-editor.nix;
 	zsh = import ./zsh.nix;
 }

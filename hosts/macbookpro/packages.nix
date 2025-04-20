@@ -1,35 +1,34 @@
 { pkgs, ... }:
 
-with pkgs; let
+let
+	r-packages = with pkgs.rPackages; [
+		DBI
+		dbscan
+		devtools
+		ggsurvfit
+		gtsummary
+		httpgd
+		janitor
+		knitr
+		languageserver
+		mice
+		missForest
+		readxl
+		renv
+		rmarkdown
+		rvest
+		RSQLite
+		Rtsne
+		shiny
+		SKAT
+		tidyverse
+		uwot
+		writexl
+	];
 
-	r-with-packages = rWrapper.override {
-		packages = with pkgs.rPackages; [
-			DBI
-			dbscan
-			devtools
-			ggsurvfit
-			gtsummary
-			httpgd
-			janitor
-			knitr
-			languageserver
-			mice
-			missForest
-			readxl
-			renv
-			rmarkdown
-			rvest
-			RSQLite
-			Rtsne
-			shiny
-			SKAT
-			tidyverse
-			uwot
-			writexl
-		];
-	};
-
-	python3-with-packages = python3.withPackages (ps: with ps; [
+	r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
+	rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
+	python3-with-packages = pkgs.python3.withPackages (ps: with ps; [
 		keras
 		jupyter
 		lifelines
@@ -48,32 +47,34 @@ with pkgs; let
 		virtualenv
 	]);
 
-in [
+in with pkgs; [
 	# System
-	pkgs.bat
-	pkgs.direnv
-	pkgs.vim
+	bat
+	direnv
+	vim
 
 	# Development
-	pkgs.docker
-	pkgs.dotnet-sdk
-	pkgs.git
-	pkgs.poetry
+	docker
+	dotnet-sdk
+	git
+	poetry
+	zed-editor
 
 	# Fonts
-	pkgs.font-awesome
-	pkgs.nerd-fonts.fira-code
+	font-awesome
+	nerd-fonts.fira-code
 
 	# Genetics
-	pkgs.bcftools
-	pkgs.snakemake
+	bcftools
+	snakemake
 
 	# Data science
-	pkgs.pandoc
-	pkgs.texliveFull
+	pandoc
+	texliveFull
 	r-with-packages
+	rstudio-with-packages
 	python3-with-packages
 
 	# Security
-	pkgs.gnupg
+	gnupg
 ]
