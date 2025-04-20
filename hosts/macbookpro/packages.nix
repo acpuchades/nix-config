@@ -5,13 +5,20 @@ with pkgs; let
 	r-with-packages = rWrapper.override {
 		packages = with pkgs.rPackages; [
 			DBI
+			dbscan
 			devtools
 			ggsurvfit
+			gtsummary
 			httpgd
-			languageserver
+			janitor
 			knitr
+			languageserver
+			mice
+			missForest
 			readxl
+			renv
 			rmarkdown
+			rvest
 			RSQLite
 			Rtsne
 			shiny
@@ -25,6 +32,7 @@ with pkgs; let
 	python3-with-packages = python3.withPackages (ps: with ps; [
 		keras
 		jupyter
+		lifelines
 		matplotlib
 		numpy
 		pandas
@@ -48,13 +56,13 @@ in [
 
 	# Development
 	pkgs.docker
+	pkgs.dotnet-sdk
 	pkgs.git
 	pkgs.poetry
 
 	# Fonts
 	pkgs.font-awesome
 	pkgs.nerd-fonts.fira-code
-	pkgs.nerd-fonts.fira-mono
 
 	# Genetics
 	pkgs.bcftools
@@ -62,7 +70,6 @@ in [
 
 	# Data science
 	pkgs.pandoc
-	pkgs.quarto
 	pkgs.texliveFull
 	r-with-packages
 	python3-with-packages

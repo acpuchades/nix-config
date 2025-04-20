@@ -46,6 +46,7 @@
 		"visual-studio-code"
 		"whatsapp"
 		"wireshark"
+		"zed"
 		"zoom"
 		"zotero"
 	];
