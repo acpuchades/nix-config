@@ -51,7 +51,6 @@ let
 
 in with pkgs; [
 	# System
-	bat
 	direnv
 	vim
 
