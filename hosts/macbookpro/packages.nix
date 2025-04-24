@@ -63,6 +63,7 @@ in with pkgs; [
 	docker
 	dotnet-sdk
 	git
+	nixd
 	poetry
 	zed-editor
 
