@@ -2,17 +2,23 @@
 
 let
 	r-packages = with pkgs.rPackages; [
+		broom
+		cli
 		DBI
-		dbscan
 		devtools
+		effects
+		ggsignif
 		ggsurvfit
-		gtsummary
 		httpgd
 		janitor
 		knitr
 		languageserver
+		MatchIt
 		mice
 		missForest
+		nlme
+		nls_multstart
+		patchwork
 		readxl
 		renv
 		rmarkdown
@@ -20,10 +26,7 @@ let
 		RSQLite
 		Rtsne
 		shiny
-		stringi
-		SKAT
 		tidyverse
-		uwot
 		writexl
 	];
 
@@ -36,6 +39,7 @@ let
 		lifelines
 		matplotlib
 		numpy
+		optuna
 		pandas
 		playwright
 		polars
@@ -52,6 +56,7 @@ let
 in with pkgs; [
 	# System
 	direnv
+	fastfetch
 	vim
 
 	# Development

@@ -56,7 +56,7 @@
 		HandMirror = 1502839586;
 		Meeter = 1510445899;
 		Noir = 1592917505;
-		Reeder = 1529448980;
+		Reeder = 6475002485;
 		Things3 = 904280696;
 		WireGuard = 1451685025;
 	};

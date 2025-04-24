@@ -2,6 +2,7 @@
 	enable = true;
 	userSettings = {
 		autosave = "on_focus_change";
+		base_keymap = "Emacs";
 		buffer_font_family = "Fira Code";
 		buffer_font_size = 14;
 		icon_theme.mode = "system";
