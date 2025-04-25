@@ -55,40 +55,15 @@ let
 	]);
 
 in with pkgs; [
-	# System
-	bat
-	delta
-	direnv
-	eza
-	fastfetch
-	fd
-	ripgrep
-	vim
-
-	# Data science
-	pandoc
-	texliveFull
-	r-with-packages
-	radian-with-packages
-	rstudio-with-packages
-	python3-with-packages
-
-	# Development
-	docker
-	dotnet-sdk
-	git
-	nil
-	nixd
-	poetry
-	zed-editor
-
-	# Fonts
-	font-awesome
-	nerd-fonts.fira-code
-
-	# Genetics
-	bcftools
-	snakemake
+ 	# System
+		bat
+		delta
+		direnv
+		eza
+		fastfetch
+		fd
+		ripgrep
+		vim
 
 	# Internet
 	firefox
@@ -100,4 +75,29 @@ in with pkgs; [
 
 	# Security
 	gnupg
+
+	# Fonts
+	font-awesome
+	nerd-fonts.fira-code
+
+	# Development
+	docker
+	dotnet-sdk
+	git
+	nil
+	nixd
+	poetry
+	zed-editor
+
+	# Data science
+	pandoc
+	texliveFull
+	r-with-packages
+	radian-with-packages
+	rstudio-with-packages
+	python3-with-packages
+
+	# Genetics
+	bcftools
+	snakemake
 ]
