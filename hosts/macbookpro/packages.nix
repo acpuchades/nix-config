@@ -56,14 +56,14 @@ let
 
 in with pkgs; [
  	# System
-		bat
-		delta
-		direnv
-		eza
-		fastfetch
-		fd
-		ripgrep
-		vim
+	bat
+	delta
+	direnv
+	eza
+	fastfetch
+	fd
+	ripgrep
+	vim
 
 	# Internet
 	firefox
@@ -72,6 +72,9 @@ in with pkgs; [
 
 	# IA
 	chatgpt
+
+	# Research
+	zotero
 
 	# Security
 	gnupg
@@ -87,6 +90,7 @@ in with pkgs; [
 	nil
 	nixd
 	poetry
+	utm
 	zed-editor
 
 	# Data science
