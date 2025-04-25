@@ -65,14 +65,19 @@ in with pkgs; [
 	ripgrep
 	vim
 
-	# Internet
-	firefox
-	google-chrome
+	# Data science
+	pandoc
+	texliveFull
+	r-with-packages
+	radian-with-packages
+	rstudio-with-packages
+	python3-with-packages
 
 	# Development
 	docker
 	dotnet-sdk
 	git
+	nil
 	nixd
 	poetry
 	zed-editor
@@ -85,13 +90,13 @@ in with pkgs; [
 	bcftools
 	snakemake
 
-	# Data science
-	pandoc
-	texliveFull
-	r-with-packages
-	radian-with-packages
-	rstudio-with-packages
-	python3-with-packages
+	# Internet
+	firefox
+	google-chrome
+	telegram-desktop
+
+	# IA
+	chatgpt
 
 	# Security
 	gnupg

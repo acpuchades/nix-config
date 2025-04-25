@@ -30,11 +30,11 @@
 		wvous-br-corner = 13;
 
 		persistent-apps = [
-			{ app = "/Applications/Safari.app"; }
-			{ app = "/Applications/ChatGPT.app"; }
+		  { app = "${pkgs.firefox}/Applications/Firefox.app"; }
 			{ app = "/System/Applications/Messages.app"; }
 			{ app = "/System/Applications/Mail.app"; }
 			{ app = "/Applications/WhatsApp.app"; }
+			{ app = "${pkgs.chatgpt}/Applications/ChatGPT.app"; }
 			{ app = "/System/Applications/Photos.app"; }
 			{ app = "/System/Applications/Calendar.app"; }
 			{ app = "/Applications/Things3.app"; }
@@ -43,7 +43,7 @@
 			{ app = "/Applications/Keynote.app"; }
 			{ app = "/Applications/Numbers.app"; }
 			{ app = "/Applications/Pages.app"; }
-			{ app = "/Applications/Visual Studio Code.app"; }
+			{ app = "${pkgs.zed-editor}/Applications/Zed.app"; }
 			{ app = "/System/Applications/App Store.app"; }
 			{ app = "/System/Applications/System Settings.app"; }
 		];
