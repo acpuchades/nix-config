@@ -96,8 +96,4 @@ in with pkgs; [
 	radian-with-packages
 	rstudio-with-packages
 	python3-with-packages
-
-	# Genetics
-	bcftools
-	snakemake
 ]
