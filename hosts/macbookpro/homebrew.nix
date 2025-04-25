@@ -25,7 +25,6 @@
 		"chatgpt"
 		"cleanshot"
 		"clop"
-		"firefox"
 		"ghostty"
 		"google-chrome"
 		"latest"

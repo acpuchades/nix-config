@@ -33,6 +33,7 @@ let
 	r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
 	radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
 	rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
+
 	python3-with-packages = pkgs.python3.withPackages (ps: with ps; [
 		keras
 		jupyter
@@ -55,9 +56,18 @@ let
 
 in with pkgs; [
 	# System
+	bat
+	delta
 	direnv
+	eza
 	fastfetch
+	fd
+	ripgrep
 	vim
+
+	# Internet
+	firefox
+	google-chrome
 
 	# Development
 	docker
