@@ -30,7 +30,7 @@
 		wvous-br-corner = 13;
 
 		persistent-apps = [
-		  { app = "${pkgs.firefox}/Applications/Firefox.app"; }
+			{ app = "/System/Applications/Safari.app"; }
 			{ app = "/System/Applications/Messages.app"; }
 			{ app = "/System/Applications/Mail.app"; }
 			{ app = "/Applications/WhatsApp.app"; }
