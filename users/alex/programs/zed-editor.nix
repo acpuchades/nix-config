@@ -13,6 +13,7 @@
 		icon_theme.dark = "Catppuccin Mocha";
 		restore_on_startup = "last_workspace";
 		show_whitespaces = "boundary";
+		soft_wrap = "editor_width";
 		tab_size = 4;
 		theme.mode = "system";
 		theme.light = "Catppuccin Latte";
