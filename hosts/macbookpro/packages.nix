@@ -10,6 +10,7 @@ let
 		ggsignif
 		ggsurvfit
 		httpgd
+		irr
 		janitor
 		knitr
 		languageserver
@@ -59,6 +60,7 @@ in with pkgs; [
 	bat
 	delta
 	direnv
+	emacs
 	eza
 	fastfetch
 	fd
@@ -84,6 +86,7 @@ in with pkgs; [
 	nerd-fonts.fira-code
 
 	# Development
+	alejandra
 	docker
 	dotnet-sdk
 	git
