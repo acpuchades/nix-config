@@ -2,32 +2,17 @@
 
 let
 	r-packages = with pkgs.rPackages; [
-		broom
 		cli
 		DBI
-		devtools
-		effects
-		ggsignif
-		ggsurvfit
-		ggthemes
 		httpgd
-		irr
 		janitor
 		knitr
 		languageserver
-		MatchIt
-		mice
-		missForest
-		nlme
 		nls_multstart
-		patchwork
 		readxl
 		renv
 		rmarkdown
-		rvest
 		RSQLite
-		Rtsne
-		shiny
 		tidyverse
 		writexl
 	];
@@ -37,22 +22,15 @@ let
 	rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
 
 	python3-with-packages = pkgs.python3.withPackages (ps: with ps; [
-		keras
 		jupyter
-		lifelines
 		matplotlib
 		numpy
-		optuna
 		pandas
-		playwright
 		polars
 		scikit-learn
 		scipy
-		scrapy
 		seaborn
 		statsmodels
-		tensorflow
-		torch
 		virtualenv
 	]);
 
