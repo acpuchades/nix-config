@@ -13,6 +13,9 @@ let
 		# $ darwin-rebuild changelog
 		system.stateVersion = 5;
 
+		# Set the primary user for the system.
+		system.primaryUser = "alex";
+
 		environment.systemPackages = import ./packages.nix { inherit pkgs; };
 		homebrew = import ./homebrew.nix { inherit pkgs; };
 
