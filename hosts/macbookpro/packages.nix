@@ -54,9 +54,6 @@ in with pkgs; [
 	# IA
 	chatgpt
 
-	# Research
-	zotero
-
 	# Security
 	gnupg
 

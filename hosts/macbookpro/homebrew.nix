@@ -43,6 +43,7 @@
 		"whatsapp"
 		"wireshark"
 		"zoom"
+		"zotero"
 	];
 
 	masApps = {
