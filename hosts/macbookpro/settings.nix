@@ -120,10 +120,6 @@
 			"com.apple.Safari.ContentPageGroupIdentifier.WebKit2JavaEnabledForLocalFiles" = false;
 			"com.apple.Safari.ContentPageGroupIdentifier.WebKit2JavaScriptCanOpenWindowsAutomatically" = false;
 		};
-		"com.apple.mail" = {
-			# Disable inline attachments (just show the icons)
-			DisableInlineAttachmentViewing = true;
-		};
 		"com.apple.AdLib" = {
 			allowApplePersonalizedAdvertising = false;
 		};

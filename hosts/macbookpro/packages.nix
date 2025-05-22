@@ -9,6 +9,7 @@ let
 		effects
 		ggsignif
 		ggsurvfit
+		ggthemes
 		httpgd
 		irr
 		janitor

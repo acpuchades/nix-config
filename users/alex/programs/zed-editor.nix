@@ -6,6 +6,7 @@
 		buffer_font_family = "Fira Code";
 		buffer_font_size = 14;
 		ensure_final_newline_on_save = true;
+		file_types.Markdown = [ "*.md" "*.Rmd" "*.qmd" ];
 		format_on_save = "on";
 		hard_tabs = true;
 		icon_theme.mode = "system";
