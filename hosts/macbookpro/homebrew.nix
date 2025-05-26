@@ -1,5 +1,3 @@
-{ pkgs, ... } :
-
 {
 	enable = true;
 	onActivation.autoUpdate = true;
@@ -11,6 +9,7 @@
 	brews = [
 		"gh"
 		"mas"
+		"ta-lib"
 	];
 
 	casks = [

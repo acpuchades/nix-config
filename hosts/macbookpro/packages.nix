@@ -31,7 +31,6 @@ let
 		scipy
 		seaborn
 		statsmodels
-		virtualenv
 	]);
 
 in with pkgs; [
@@ -45,6 +44,7 @@ in with pkgs; [
 	fd
 	ripgrep
 	vim
+	wget
 
 	# Internet
 	firefox
@@ -70,6 +70,8 @@ in with pkgs; [
 	nixd
 	poetry
 	utm
+	uv
+	virtualenv
 	zed-editor
 
 	# Data science

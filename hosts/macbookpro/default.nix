@@ -1,4 +1,4 @@
-{ self, nixpkgs, nix-darwin, home-manager, ... }:
+{ self, nix-darwin, home-manager, ... }:
 
 let
 	configuration = { pkgs, ... }: import ./settings.nix { inherit pkgs; } // {
@@ -17,7 +17,7 @@ let
 		system.primaryUser = "alex";
 
 		environment.systemPackages = import ./packages.nix { inherit pkgs; };
-		homebrew = import ./homebrew.nix { inherit pkgs; };
+		homebrew = import ./homebrew.nix;
 
 	};
 
