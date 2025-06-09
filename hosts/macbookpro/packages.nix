@@ -2,13 +2,20 @@
 
 let
 	r-packages = with pkgs.rPackages; [
+		car
 		cli
 		DBI
-		httpgd
+		effects
+		emmeans
+		ggeffects
+		ggpubr
 		janitor
 		knitr
 		languageserver
+		mgcv
 		nls_multstart
+		nlme
+		psych
 		readxl
 		renv
 		rmarkdown
@@ -27,6 +34,7 @@ let
 		numpy
 		pandas
 		polars
+		pyarrow
 		scikit-learn
 		scipy
 		seaborn
@@ -53,6 +61,7 @@ in with pkgs; [
 
 	# IA
 	chatgpt
+	ollama
 
 	# Security
 	gnupg
@@ -67,8 +76,6 @@ in with pkgs; [
 	dotnet-sdk
 	git
 	nil
-	nixd
-	poetry
 	utm
 	uv
 	virtualenv
