@@ -57,6 +57,7 @@ in with pkgs; [
 	# Internet
 	firefox
 	google-chrome
+	teams
 	telegram-desktop
 
 	# IA
