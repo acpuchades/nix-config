@@ -2,6 +2,7 @@
 
 let
 	r-packages = with pkgs.rPackages; [
+		brms
 		car
 		cli
 		DBI
@@ -9,9 +10,12 @@ let
 		emmeans
 		ggeffects
 		ggpubr
+		gamm4
+		glmmTMB
 		janitor
 		knitr
 		languageserver
+		lme4
 		mgcv
 		nls_multstart
 		nlme
@@ -55,7 +59,6 @@ in with pkgs; [
 	wget
 
 	# Internet
-	firefox
 	google-chrome
 	teams
 	telegram-desktop
@@ -76,7 +79,7 @@ in with pkgs; [
 	docker
 	dotnet-sdk
 	git
-	nil
+	nixd
 	utm
 	uv
 	virtualenv
