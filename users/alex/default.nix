@@ -43,7 +43,10 @@
 	];
 
 	home.sessionVariables = {
-		EDITOR = "vim";
+		EDITOR = "emacs";
+		LANG = "es_ES.UTF-8";
+		LC_ALL = "es_ES.UTF-8";
+		PAGER = "less";
 	};
 
 	home.shellAliases = {
