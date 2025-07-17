@@ -25,6 +25,7 @@
 		"ledger-live"
 		"logi-options+"
 		"microsoft-office"
+		"microsoft-teams"
 		"obsidian"
 		"omnissa-horizon-client"
 		"pdf-expert"

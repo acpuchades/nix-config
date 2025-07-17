@@ -78,7 +78,6 @@ with pkgs;
 	# Internet
 	google-chrome
 	notion-app
-	teams
 	telegram-desktop
 
 	# IA
@@ -104,7 +103,7 @@ with pkgs;
 
 	# Data science
 	pandoc
-	texliveFull
+	texliveSmall
 	r-with-packages
 	radian-with-packages
 	rstudio-with-packages
