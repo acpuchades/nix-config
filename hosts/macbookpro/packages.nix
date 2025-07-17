@@ -4,16 +4,21 @@ let
 	r-packages = with pkgs.rPackages; [
 		brms
 		car
+		cardx
 		cli
 		DBI
 		effects
 		emmeans
 		ggeffects
+		ggsurvfit
 		ggpubr
 		gamm4
 		glmmTMB
+		gtsummary
+		Hmisc
 		janitor
 		knitr
+		labelled
 		languageserver
 		lme4
 		mgcv
@@ -22,8 +27,10 @@ let
 		psych
 		readxl
 		renv
+		robustlmm
 		rmarkdown
 		RSQLite
+		sjPlot
 		tidyverse
 		writexl
 	];
@@ -32,21 +39,26 @@ let
 	radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
 	rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
 
-	python3-with-packages = pkgs.python3.withPackages (ps: with ps; [
-		jupyter
-		matplotlib
-		numpy
-		pandas
-		polars
-		pyarrow
-		scikit-learn
-		scipy
-		seaborn
-		statsmodels
-	]);
+	python3-with-packages = pkgs.python3.withPackages (
+		ps: with ps; [
+			jupyter
+			matplotlib
+			numpy
+			pandas
+			polars
+			pyarrow
+			scikit-learn
+			scipy
+			seaborn
+			statsmodels
+		]
+	);
 
-in with pkgs; [
- 	# System
+in
+with pkgs;
+[
+	# System
+	bartender
 	bat
 	delta
 	direnv
@@ -54,12 +66,18 @@ in with pkgs; [
 	eza
 	fastfetch
 	fd
+	raycast
 	ripgrep
 	vim
 	wget
+	wireshark
+
+	# Creative
+	blender
 
 	# Internet
 	google-chrome
+	notion-app
 	teams
 	telegram-desktop
 
@@ -75,7 +93,6 @@ in with pkgs; [
 	nerd-fonts.fira-code
 
 	# Development
-	alejandra
 	docker
 	dotnet-sdk
 	git

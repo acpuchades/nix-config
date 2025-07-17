@@ -12,7 +12,7 @@
 		icon_theme.mode = "system";
 		icon_theme.light = "Catppuccin Latte";
 		icon_theme.dark = "Catppuccin Mocha";
-		nil.formatting.command = "alejandra";
+		languages.Nix.language_servers = [ "nixd" "!nil" ];
 		restore_on_startup = "last_workspace";
 		show_whitespaces = "boundary";
 		soft_wrap = "editor_width";

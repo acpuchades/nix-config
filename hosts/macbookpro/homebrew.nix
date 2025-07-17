@@ -9,7 +9,6 @@
 	brews = [
 		"gh"
 		"mas"
-		"ta-lib"
 	];
 
 	casks = [
@@ -18,10 +17,7 @@
 		"affinity-photo"
 		"affinity-publisher"
 		"alcove"
-		"bartender"
 		"bitwarden"
-		"blender"
-		"claude"
 		"cleanshot"
 		"clop"
 		"ghostty"
@@ -29,19 +25,15 @@
 		"ledger-live"
 		"logi-options+"
 		"microsoft-office"
-		"notion"
 		"obsidian"
 		"omnissa-horizon-client"
 		"pdf-expert"
 		"raspberry-pi-imager"
-		"raycast"
-		"rectangle"
 		"the-unarchiver"
 		"transmission"
 		"unclack"
 		"visual-studio-code"
 		"whatsapp"
-		"wireshark"
 		"zoom"
 		"zotero"
 	];
