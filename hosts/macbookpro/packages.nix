@@ -57,6 +57,7 @@ let
     ]);
 
 in with pkgs; [
+
   # System
   bartender
   bat
@@ -92,8 +93,6 @@ in with pkgs; [
   docker
   dotnet-sdk
   git
-  nixd
-  nixfmt
   pyenv
   utm
   uv
