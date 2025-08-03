@@ -93,7 +93,12 @@ in with pkgs; [
   docker
   dotnet-sdk
   git
+  nil
+  nixd
+  nixfmt-rfc-style
+  pyright
   pyenv
+  ruff
   utm
   uv
   virtualenv

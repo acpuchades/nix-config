@@ -6,7 +6,11 @@
 
   taps = [ ];
 
-  brews = [ "gh" "mas" ];
+  brews = [
+    "gh"
+    "mas"
+    "ta-lib"
+  ];
 
   casks = [
     "adobe-acrobat-reader"
@@ -27,7 +31,6 @@
     "obsidian"
     "omnissa-horizon-client"
     "pdf-expert"
-    "raspberry-pi-imager"
     "the-unarchiver"
     "transmission"
     "unclack"
@@ -45,6 +48,7 @@
     Noir = 1592917505;
     Reeder = 6475002485;
     Things3 = 904280696;
+    WindowsApp = 1295203466;
     WireGuard = 1451685025;
   };
 }

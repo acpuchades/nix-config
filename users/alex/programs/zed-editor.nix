@@ -1,5 +1,3 @@
-{ pkgs, ... }:
-
 {
   enable = true;
 
@@ -17,8 +15,6 @@
     "Ruff"
     "TOML"
   ];
-
-  extraPackages = with pkgs; [ nil nixd nixfmt-rfc-style pyright ruff ];
 
   userSettings = {
     autosave = "on_focus_change";
