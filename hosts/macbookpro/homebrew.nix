@@ -7,9 +7,9 @@
   taps = [ ];
 
   brews = [
+    "autofirma"
     "gh"
     "mas"
-    "ta-lib"
   ];
 
   casks = [
