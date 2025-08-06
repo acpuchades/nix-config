@@ -7,7 +7,6 @@
   taps = [ ];
 
   brews = [
-    "autofirma"
     "gh"
     "mas"
   ];
@@ -19,11 +18,11 @@
     "affinity-publisher"
     "alcove"
     "bitwarden"
+    "blender"
     "claude"
     "cleanshot"
     "clop"
     "ghostty"
-    "latest"
     "ledger-live"
     "logi-options+"
     "microsoft-office"
@@ -31,6 +30,7 @@
     "obsidian"
     "omnissa-horizon-client"
     "pdf-expert"
+    "telegram"
     "the-unarchiver"
     "transmission"
     "unclack"

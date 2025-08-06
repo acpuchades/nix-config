@@ -38,11 +38,10 @@ let
 
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
   radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
-  rstudio-with-packages =
-    pkgs.rstudioWrapper.override { packages = r-packages; };
+  rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
 
-  python3-with-packages = pkgs.python3.withPackages (ps:
-    with ps; [
+  python3-with-packages = pkgs.python3.withPackages (
+    ps: with ps; [
       ipykernel
       jupyter
       matplotlib
@@ -54,9 +53,12 @@ let
       scipy
       seaborn
       statsmodels
-    ]);
+    ]
+  );
 
-in with pkgs; [
+in
+with pkgs;
+[
 
   # System
   bartender
@@ -73,13 +75,9 @@ in with pkgs; [
   wget
   wireshark
 
-  # Creative
-  blender
-
   # Internet
   google-chrome
   notion-app
-  telegram-desktop
 
   # IA
   chatgpt
