@@ -23,6 +23,10 @@
   #   recursive = true;   # link recursively
   #   executable = true;  # make all files executable
   # };
+  home.file.".emacs.d" = {
+    source = ./files/emacs.d;
+    recursive = true;
+  };
 
   # encode the file content in nix configuration file directly
   # home.file.".xxx".text = ''
