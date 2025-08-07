@@ -2,18 +2,19 @@
   enable = true;
 
   extensions = [
-    "Ansible"
-    "C#"
-    "Catppuccin"
-    "Catpuccin Icons"
-    "Context7 MCP Server"
-    "CSV"
-    "Dockerfile"
-    "HTML"
-    "Nix"
-    "R"
-    "Ruff"
-    "TOML"
+    "ansible"
+    "csharp"
+    "catppuccin"
+    "catppuccin-icons"
+    "csv"
+    "dockerfile"
+    "elisp"
+    "html"
+    "macos-classic"
+    "nix"
+    "r"
+    "ruff"
+    "toml"
   ];
 
   userSettings = {
@@ -22,8 +23,11 @@
     buffer_font_family = "Fira Code";
     buffer_font_size = 14;
     ensure_final_newline_on_save = true;
-    env.EDITOR = "zeditor --wait";
-    file_types.Markdown = [ "*.md" "*.Rmd" "*.qmd" ];
+    file_types.Markdown = [
+      "*.md"
+      "*.Rmd"
+      "*.qmd"
+    ];
     format_on_save = "on";
     hard_tabs = true;
     icon_theme.mode = "system";
