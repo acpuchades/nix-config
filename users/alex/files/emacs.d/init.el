@@ -39,6 +39,10 @@
   :commands (magit-status magit-blame)
   :bind (("C-x g" . magit-status)))
 
+(use-package project
+  :ensure nil
+  :config (project-remember-projects-under "~/GitHub"))
+
 (use-package treesit-auto
   :custom
   (treesit-auto-install 'prompt)
@@ -47,6 +51,8 @@
   (global-treesit-auto-mode))
 
 ;; USER SETTINGS
+
+(set-language-environment "Spanish")
 
 (global-display-line-numbers-mode 1)
 (column-number-mode 1)

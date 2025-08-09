@@ -6,6 +6,7 @@
       ligature
       magit
       markdown-mode
+      tree-sitter-langs
       treesit-auto
       use-package
     ];

@@ -5,7 +5,7 @@
 
 ;; Set frame size and other visual parameters before first frame
 (setq default-frame-alist
-	'((width                . 100)
+	'((width                . 120)
 	  (height               .  40)
 	  (menu-bar-lines       .   0)
 	  (tool-bar-lines       .   0)
@@ -13,9 +13,6 @@
 
 ;; Avoid resizing flicker
 (setq frame-inhibit-implied-resize t)
-
-;; Skip startup screen
-(setq inhibit-startup-message t)
 
 ;; Prevent package.el from loading packages before init.el
 (setq package-enable-at-startup nil)
