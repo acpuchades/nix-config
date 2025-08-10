@@ -3,12 +3,25 @@
 
   extraPackages =
     epkgs: with epkgs; [
+      all-the-icons
+      all-the-icons-dired
+      blacken
+      catppuccin-theme
+      corfu
+      envrc
       ligature
       magit
+      marginalia
       markdown-mode
+      no-littering
+      orderless
       org-bullets
-      tree-sitter-langs
       treesit-auto
+      treesit-grammars.with-all-grammars
       use-package
+      vertico
+      vterm
+      vterm-toggle
+      which-key
     ];
 }

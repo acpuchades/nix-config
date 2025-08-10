@@ -1,8 +1,15 @@
-{ self, nix-darwin, home-manager, ... }:
+{
+  self,
+  nix-darwin,
+  home-manager,
+  ...
+}:
 
 let
-  configuration = { pkgs, ... }:
-    import ./settings.nix { inherit pkgs; } // {
+  configuration =
+    { pkgs, ... }:
+    import ./settings.nix { inherit pkgs; }
+    // {
 
       # Necessary for using flakes on this system.
       nix.settings.experimental-features = "nix-command flakes";
@@ -17,13 +24,18 @@ let
       # Set the primary user for the system.
       system.primaryUser = "alex";
 
-      environment.systemPackages = import ./packages.nix { inherit pkgs; };
-      fonts.packages = with pkgs; [ font-awesome nerd-fonts.fira-code ];
-      homebrew = import ./homebrew.nix;
+      fonts.packages = with pkgs; [
+        emacs-all-the-icons-fonts
+        font-awesome
+        nerd-fonts.fira-code
+      ];
 
+      environment.systemPackages = import ./packages.nix { inherit pkgs; };
+      homebrew = import ./homebrew.nix;
     };
 
-in nix-darwin.lib.darwinSystem {
+in
+nix-darwin.lib.darwinSystem {
   modules = [
     configuration
     home-manager.darwinModules.home-manager
