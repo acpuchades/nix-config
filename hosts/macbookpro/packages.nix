@@ -59,7 +59,6 @@ let
 in
 with pkgs;
 [
-
   # System
   bartender
   bat
@@ -88,6 +87,7 @@ with pkgs;
 
   # Development
   awscli2
+  black
   docker
   dotnet-sdk
   git

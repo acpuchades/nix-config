@@ -1,8 +1,8 @@
 ;; PACKAGE CONFIG
 
 (require 'package)
-(add-to-list 'package-archives '("gnu"   . "https://elpa.gnu.org/packages/"))
 (add-to-list 'package-archives '("melpa" . "https://melpa.org/packages/"))
+(add-to-list 'package-archives '("elpa"  . "https://elpa.gnu.org/packages/"))
 (package-initialize)
 
 (unless (package-installed-p 'use-package)
@@ -11,6 +11,23 @@
 (eval-and-compile
 	(setq use-package-always-ensure t
 	      use-package-expand-minimally t))
+
+(use-package blacken
+  :hook (python-ts-mode . blacken-mode)
+  :custom
+  	(blacken-line-length 100))
+
+(use-package eglot
+	:ensure nil
+	:hook (python-ts-mode . eglot-ensure)
+	:config
+	(add-to-list 'eglot-server-programs
+		'(python-ts-mode . ("pyright-langserver" "--stdio"))))
+
+(use-package exec-path-from-shell
+  :if (memq window-system '(mac ns x))  ;; GUI Emacs
+  :init (setq exec-path-from-shell-variables '("PATH" "MANPATH"))
+  :config (exec-path-from-shell-initialize))
 
 (use-package ligature
 	:config
@@ -94,9 +111,15 @@
 (global-display-line-numbers-mode 1)
 (column-number-mode 1)
 
-(setq-default indent-tabs-mode t
-              tab-width        4)
+(setq ring-bell-function 'ignore)
 
 (set-face-attribute 'default nil
 	:family "FiraCode Nerd Font Mono"
 	:height 130)
+
+(setq-default indent-tabs-mode t
+              tab-width        4)
+
+(setq python-indent-offset          4
+      python-shell-interpreter      "ipython"
+      python-shell-interpreter-args "-i --simple-prompt")
