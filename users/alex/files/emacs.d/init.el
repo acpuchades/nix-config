@@ -44,9 +44,8 @@
 		(auto-dark-light-mode . my/enable-light-mode))
 
 (use-package blacken
-  :hook (python-ts-mode . blacken-mode)
-  :custom
-  	(blacken-line-length 100))
+	:hook (python-ts-mode . blacken-mode)
+	:custom (blacken-line-length 100))
 
 (use-package catppuccin-theme
 	:ensure t
@@ -54,6 +53,7 @@
 	:config (load-theme 'catppuccin t))
 
 (use-package corfu
+	:ensure t
 	:init
 		(global-corfu-mode) ;; Enable globally
 	:custom
@@ -77,12 +77,14 @@
 		'(python-ts-mode . ("pyright-langserver" "--stdio"))))
 
 (use-package envrc
-  :hook (after-init . envrc-global-mode))
+	:ensure t
+	:hook (after-init . envrc-global-mode))
 
 (use-package exec-path-from-shell
-  :if (memq window-system '(mac ns x))  ;; GUI Emacs
-  :init (setq exec-path-from-shell-variables '("PATH" "MANPATH"))
-  :config (exec-path-from-shell-initialize))
+	:if (memq window-system '(mac ns x))  ;; GUI Emacs
+	:ensure t
+	:init (setq exec-path-from-shell-variables '("PATH" "MANPATH"))
+	:config (exec-path-from-shell-initialize))
 
 (use-package kind-icon
 	:after corfu
@@ -116,16 +118,20 @@
 	(global-ligature-mode t))
 
 (use-package magit
+	:ensure t
 	:commands (magit-status magit-blame)
 	:bind (("C-x g" . magit-status)))
 
 (use-package marginalia
+	:ensure t
 	:init (marginalia-mode))
 
 (use-package orderless
+	:ensure t
 	:init (setq completion-styles '(orderless basic)))
 
 (use-package org
+	:ensure t
 	:mode ("\\.org\\'" . org-mode)
 	:hook (org-mode . org-indent-mode)
 	:custom
@@ -153,6 +159,7 @@
 		(set-face-attribute 'org-ellipsis nil :underline nil))
 
 (use-package org-bullets
+	:ensure t
 	:after org
 	:hook (org-mode . org-bullets-mode))
 
@@ -161,6 +168,7 @@
 	:config (project-remember-projects-under "~/GitHub"))
 
 (use-package treesit-auto
+	:ensure t
 	:custom
 		(treesit-auto-install    'prompt)
 		(treesit-font-lock-level 4)
@@ -169,16 +177,20 @@
 		(global-treesit-auto-mode))
 
 (use-package vertico
+	:ensure t
 	:init (vertico-mode))
 
 (use-package vterm
-  :commands vterm)
+	:ensure t
+	:commands vterm)
 
 (use-package vterm-toggle
-  :bind (("C-c t" . vterm-toggle))
-  :custom (vterm-toggle-scope 'project))
+	:ensure t
+	:bind (("C-c t" . vterm-toggle))
+	:custom (vterm-toggle-scope 'project))
 
 (use-package which-key
+	:ensure t
 	:init (which-key-mode))
 
 ;; USER SETTINGS
