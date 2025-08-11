@@ -26,6 +26,35 @@
 	(setq use-package-always-ensure    t
 	      use-package-expand-minimally t))
 
+(use-package no-littering
+	:ensure t
+	:init
+
+	;; Custom file
+	(setq custom-file
+		(no-littering-expand-etc-file-name "custom.el"))
+
+	(when (file-exists-p custom-file) (load custom-file :noerror))
+
+	;; Backups & autosaves
+	(setq backup-directory-alist
+		`(("."  . ,(no-littering-expand-var-file-name "backup/"))))
+	(setq auto-save-file-name-transforms
+		`((".*"   ,(no-littering-expand-var-file-name "auto-save/") t)))
+	(setq auto-save-list-file-prefix
+		(no-littering-expand-var-file-name "auto-save/sessions/"))
+
+	;; Histories & caches
+	(setq recentf-save-file           (no-littering-expand-var-file-name "recentf.el")
+	      savehist-file               (no-littering-expand-var-file-name "savehist.el")
+	      save-place-file             (no-littering-expand-var-file-name "saveplace.el")
+	      bookmark-default-file       (no-littering-expand-var-file-name "bookmarks")
+	      tramp-persistency-file-name (no-littering-expand-var-file-name "tramp")
+	      url-history-file            (no-littering-expand-var-file-name "url/history"))
+
+	;; Eshell
+	(setq eshell-history-file-name (no-littering-expand-var-file-name "eshell/history")))
+
 (use-package all-the-icons
   :if (display-graphic-p)) ;; Only load if in GUI mode
 
@@ -211,7 +240,6 @@
 (savehist-mode 1)
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
-(setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 
 (set-language-environment "Spanish")
 
