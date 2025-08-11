@@ -243,19 +243,25 @@
 
 (set-language-environment "Spanish")
 
-(add-hook 'prog-mode-hook #'column-number-mode)
-(add-hook 'prog-mode-hook #'display-line-numbers-mode)
-
 (set-face-attribute 'default nil
 	:family "FiraCode Nerd Font Mono"
 	:height 130)
+
+(add-hook 'prog-mode-hook #'column-number-mode)
+(add-hook 'prog-mode-hook #'display-line-numbers-mode)
 
 ;; Smoother scrolling (Emacs 29+)
 (when (fboundp 'pixel-scroll-precision-mode)
 	(pixel-scroll-precision-mode 1))
 
-(setq-default indent-tabs-mode t
-              tab-width        4)
+(setq-default indent-tabs-mode       t
+              tab-width              4
+              require-final-newline  t
+              whitespace-line-column 100
+              whitespace-style       '(face empty trailing lines-char tab-mark))
+
+(add-hook 'prog-mode-hook   #'whitespace-mode)
+(add-hook 'before-save-hook #'whitespace-cleanup)
 
 (setq python-indent-offset          4
       python-shell-interpreter      "ipython"
