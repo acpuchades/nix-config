@@ -1,10 +1,10 @@
 {
   enable = true;
-
   extraPackages =
     epkgs: with epkgs; [
       all-the-icons
       all-the-icons-dired
+      auto-dark
       blacken
       catppuccin-theme
       corfu

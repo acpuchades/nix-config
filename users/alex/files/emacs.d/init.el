@@ -1,8 +1,16 @@
 ;; FUNCTION DEFINITIONS
 
+(defun my/enable-light-mode ()
+	"Enable light mode with catppuccin latte flavour."
+	(catppuccin-load-flavor 'latte))
+
+(defun my/enable-dark-mode ()
+	"Enable dark mode with catppuccin mocha flavour."
+	(catppuccin-load-flavor 'mocha))
+
 (defun my/set-cursor-type ()
-  "Change cursor shape depending on overwrite-mode."
-  (setq cursor-type (if overwrite-mode 'box 'bar)))
+	"Change cursor shape depending on overwrite-mode."
+	(setq cursor-type (if overwrite-mode 'box 'bar)))
 
 ;; PACKAGE CONFIG
 
@@ -15,7 +23,7 @@
 	(package-refresh-contents)
 	(package-install 'use-package))
 (eval-and-compile
-	(setq use-package-always-ensure t
+	(setq use-package-always-ensure    t
 	      use-package-expand-minimally t))
 
 (use-package all-the-icons
@@ -24,14 +32,26 @@
 (use-package all-the-icons-dired
   :hook (dired-mode . all-the-icons-dired-mode))
 
+(use-package auto-dark
+	:ensure t
+	:custom
+		(auto-dark-allow-osascript          t)
+		(auto-dark-polling-interval-seconds 2)
+	:init
+		(auto-dark-mode)
+	:hook
+		(auto-dark-dark-mode  . my/enable-dark-mode)
+		(auto-dark-light-mode . my/enable-light-mode))
+
 (use-package blacken
   :hook (python-ts-mode . blacken-mode)
   :custom
   	(blacken-line-length 100))
 
 (use-package catppuccin-theme
-  :custom (catppuccin-flavor 'latte) ;; or 'mocha 'frappe 'macchiato
-  :config (load-theme 'catppuccin t))
+	:ensure t
+	:custom (catppuccin-flavor 'latte)
+	:config (load-theme 'catppuccin t))
 
 (use-package corfu
 	:init
