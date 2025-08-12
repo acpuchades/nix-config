@@ -16,3 +16,25 @@
 
 ;; Prevent package.el from loading packages before init.el
 (setq package-enable-at-startup nil)
+
+;; Enable package quickstart and native compilation
+(setq package-quickstart t)
+(setq native-comp-deferred-compilation t)
+
+;;Lower gc during startup and restore thereafter
+(setq gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 0.6
+      file-name-handler-alist-old file-name-handler-alist
+      file-name-handler-alist nil)
+
+(add-hook 'emacs-startup-hook
+	(lambda ()
+		(setq gc-cons-threshold (* 128 1024 1024)
+		      gc-cons-percentage 0.1
+		      file-name-handler-alist file-name-handler-alist-old)))
+
+;; Add package archives
+(setq package-archives
+	'(("melpa" . "https://melpa.org/packages/")
+	  ("gnu"   . "https://elpa.gnu.org/packages/")
+	  ("nongnu" . "https://elpa.nongnu.org/nongnu/")))

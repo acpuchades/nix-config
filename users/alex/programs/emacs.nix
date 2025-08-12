@@ -6,9 +6,12 @@
       all-the-icons-dired
       auto-dark
       blacken
+      cape
       catppuccin-theme
       corfu
+      editorconfig
       envrc
+      gcmh
       ligature
       magit
       marginalia
