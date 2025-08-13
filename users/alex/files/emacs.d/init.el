@@ -41,8 +41,7 @@
 
 ;; Global defaults for use-package
 (eval-and-compile
-	(setq use-package-always-defer     t
-	      use-package-always-ensure    t
+	(setq use-package-always-ensure    t
 	      use-package-expand-minimally t))
 
 ;; Keep Emacs directories clean
@@ -274,8 +273,8 @@
 ;; Tree-sitter auto mode installation
 (use-package treesit-auto
 	:custom
-		(treesit-auto-install    'prompt)
 		(treesit-font-lock-level 3)
+		(treesit-auto-install    nil)
 	:config
 		(treesit-auto-add-to-auto-mode-alist 'all)
 		(global-treesit-auto-mode))
