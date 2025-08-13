@@ -6,5 +6,5 @@
   emacs = import ./emacs.nix { inherit pkgs; };
   git = import ./git.nix;
   zed-editor = import ./zed-editor.nix;
-  zsh = import ./zsh.nix;
+  zsh = import ./zsh.nix { inherit pkgs; };
 }

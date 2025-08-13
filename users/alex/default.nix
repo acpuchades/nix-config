@@ -1,7 +1,64 @@
 { pkgs, ... }:
 
-{
+let
 
+  python3-with-packages = pkgs.python3.withPackages (
+    ps: with ps; [
+      ipykernel
+      jupyter
+      matplotlib
+      numpy
+      pandas
+      polars
+      pyarrow
+      scikit-learn
+      scipy
+      seaborn
+      statsmodels
+    ]
+  );
+
+  r-packages = with pkgs.rPackages; [
+    brms
+    car
+    cardx
+    cli
+    DBI
+    effects
+    emmeans
+    ggeffects
+    ggsurvfit
+    ggpubr
+    gamm4
+    glmmTMB
+    gtsummary
+    Hmisc
+    IRkernel
+    janitor
+    knitr
+    labelled
+    languageserver
+    lme4
+    mgcv
+    nls_multstart
+    nlme
+    psych
+    readxl
+    renv
+    robustlmm
+    rmarkdown
+    RSQLite
+    sjPlot
+    tidyverse
+    writexl
+  ];
+
+  r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
+  radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
+  rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
+
+in
+{
   # This value determines the home Manager release that your
   # configuration is compatible with. This helps avoid breakage
   # when a new home Manager release introduces backwards
@@ -41,16 +98,53 @@
 
   # Packages that should be installed to the user profile.
   home.packages = with pkgs; [
-    oh-my-zsh
-    zsh-autosuggestions
-    zsh-syntax-highlighting
+    # System
+    bat
+    direnv
+    delta
+    eza
+    fd
+    fastfetch
+    jq
+    ripgrep
+    vim
+    wget
+
+    # Security
+    gnupg
+
+    # Dev
+    awscli2
+    docker
+
+    # Nix
+    nil
+    nixd
+    nixfmt-rfc-style
+
+    # Python
+    black
+    pyright
+    python3-with-packages
+    pyenv
+    poetry
+    ruff
+    uv
+    virtualenv
+
+    # R
+    pandoc
+    texliveSmall
+    r-with-packages
+    radian-with-packages
+    rstudio-with-packages
   ];
 
   home.sessionVariables = {
     EDITOR = "emacs";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
-    PAGER = "less";
+    PAGER = "bat --paging=always";
   };
 
   home.shellAliases = {
