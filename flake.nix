@@ -14,11 +14,31 @@
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nix-darwin, nixpkgs, home-manager }: {
-    # Build darwin flake using:
-    # $ sudo darwin-rebuild switch --flake .#MacBook-Pro-de-Alejandro
-    darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./hosts/macbookpro {
-      inherit self nixpkgs nix-darwin home-manager;
+  outputs =
+    {
+      self,
+      nix-darwin,
+      nixpkgs,
+      home-manager,
+    }:
+    {
+      # Build darwin flake using:
+      # $ sudo darwin-rebuild switch --flake .#MacBook-Pro-de-Alejandro
+      darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./hosts/macbookpro {
+        inherit
+          self
+          nixpkgs
+          nix-darwin
+          home-manager
+          ;
+      };
+
+      nixosConfigurations."homeserver" = import ./hosts/homeserver {
+        inherit
+          self
+          nixpkgs
+          home-manager
+          ;
+      };
     };
-  };
 }

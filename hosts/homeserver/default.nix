@@ -1,0 +1,99 @@
+# Edit this configuration file to define what should be installed on
+# your system. Help is available in the configuration.nix(5) man page, on
+# https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
+
+{
+  nixpkgs,
+  home-manager,
+  ...
+}:
+
+let
+
+  configuration =
+    { pkgs, lib, ... }:
+    import ./settings.nix { inherit lib; }
+    // {
+
+      imports = [
+        # Include the results of the hardware scan.
+        ./hardware-configuration.nix
+      ];
+
+      # Define a user account. Don't forget to set a password with ‘passwd’.
+      users.users.alex = {
+        isNormalUser = true;
+        description = "Alejandro Caravaca Puchades";
+        extraGroups = [
+          "wheel" # Enable ‘sudo’ for the user.
+          "networkmanager"
+        ];
+        password = "1234";
+        shell = pkgs.zsh;
+        packages = [ pkgs.zsh ];
+      };
+
+      #programs.firefox.enable = true;
+
+      # List packages installed in system profile.
+      # You can use https://search.nixos.org/ to find more packages (and options).
+      environment.systemPackages = import ./packages.nix { inherit pkgs; };
+
+      # Some programs need SUID wrappers, can be configured further or are
+      # started in user sessions.
+      # programs.mtr.enable = true;
+      # programs.gnupg.agent = {
+      #   enable = true;
+      #   enableSSHSupport = true;
+      # };
+
+      # List services that you want to enable:
+      services = import ./services.nix;
+
+      # Networking configuration.
+      networking = import ./networking.nix;
+
+      # Copy the NixOS configuration file and link it from the resulting system
+      # (/run/current-system/configuration.nix). This is useful in case you
+      # accidentally delete configuration.nix.
+      # system.copySystemConfiguration = true;
+
+      # This option defines the first version of NixOS you have installed on this particular machine,
+      # and is used to maintain compatibility with application data (e.g. databases) created on older NixOS versions.
+      #
+      # Most users should NEVER change this value after the initial install, for any reason,
+      # even if you've upgraded your system to a new NixOS release.
+      #
+      # This value does NOT affect the Nixpkgs version your packages and OS are pulled from,
+      # so changing it will NOT upgrade your system - see https://nixos.org/manual/nixos/stable/#sec-upgrading for how
+      # to actually do that.
+      #
+      # This value being lower than the current NixOS release does NOT mean your system is
+      # out of date, out of support, or vulnerable.
+      #
+      # Do NOT change this value unless you have manually inspected all the changes it would make to your configuration,
+      # and migrated your data accordingly.
+      #
+      # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
+      system.stateVersion = "25.05"; # Did you read the comment?
+
+    };
+
+in
+
+nixpkgs.lib.nixosSystem {
+  system = "x86_64-linux";
+  modules = [
+    "${nixpkgs}/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix"
+
+    configuration
+    home-manager.nixosModules.home-manager
+    {
+      home-manager.useGlobalPkgs = true;
+      home-manager.useUserPackages = true;
+      home-manager.users.alex = import ../../users/alex;
+
+      users.users.alex.home = "/home/alex";
+    }
+  ];
+}

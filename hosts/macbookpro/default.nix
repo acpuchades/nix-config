@@ -42,8 +42,9 @@ nix-darwin.lib.darwinSystem {
     {
       home-manager.useGlobalPkgs = true;
       home-manager.useUserPackages = true;
-      users.users.alex.home = "/Users/alex";
       home-manager.users.alex = import ../../users/alex;
+
+      users.users.alex.home = "/Users/alex";
     }
   ];
 }
