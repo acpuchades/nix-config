@@ -310,7 +310,8 @@
 
 ;; Terminal emulator
 (use-package vterm
-	:commands vterm)
+	:commands vterm
+	:custom (vterm-timer-delay 0.01))
 
 (use-package vterm-toggle
 	:bind (("C-c t" . vterm-toggle))

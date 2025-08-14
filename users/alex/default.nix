@@ -108,9 +108,16 @@ in
     jq
     ripgrep
     vim
+
+    # Network
+    curl
+    nmap
+    netcat
+    samba
     wget
 
-    # Security
+    # Encryption
+    age
     gnupg
 
     # Dev
