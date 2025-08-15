@@ -55,9 +55,13 @@
     recommendedProxySettings = true;
     recommendedTlsSettings = true;
 
-    virtualHosts."www.acpuchades.com" = {
-      forceSSL = true;
-      enableACME = true;
+    virtualHosts = {
+
+      "www.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+      };
+
     };
   };
 

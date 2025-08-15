@@ -3,6 +3,7 @@
 with pkgs;
 [
   # System
+  gh
   git
   vim
   curl
