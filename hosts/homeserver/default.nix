@@ -21,8 +21,11 @@ let
 		./hardware-configuration.nix
 	  ];
 
+	  # Disable root login
+	  users.users.root.hashedPassword = "!";
+
 	  # Define a user account. Don't forget to set a password with ‘passwd’.
-	  users.users.alex = {
+	 users.users.alex = {
 		isNormalUser = true;
 		description = "Alejandro Caravaca Puchades";
 		extraGroups = [
@@ -32,6 +35,9 @@ let
 		password = "1234";
 		shell = pkgs.zsh;
 		packages = [ pkgs.zsh ];
+		openssh.authorizedKeys.keys = [
+		  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINToP7vyGXG7vrxR8W3T3I2NalZkc1IPd0WaETssf1X5 alex@macbookpro"
+		];
 	  };
 
 	  #programs.firefox.enable = true;
