@@ -81,7 +81,8 @@
 
 ;; Auto switch theme based on system appearance
 (use-package auto-dark
-	:after catppuccin-theme
+  :if (display-graphic-p)
+  :after catppuccin-theme
 	:custom
 		(auto-dark-allow-osascript          t) ;; macOS detection
 		(auto-dark-polling-interval-seconds 2) ;; Check every 2s
