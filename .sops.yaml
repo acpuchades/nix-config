@@ -1,0 +1,19 @@
+keys:
+  - &hosts:
+    - &homeserver age1v93l5pvd9pwlr9z04daa00wh2wan6ycu9ts8hn6p77gasgax256s6c6qg8 
+    - &macbookpro age14lrzcnp08aawpzz2vcvgprkxv7yc7cpah5ep7fh2n8nne06jucfs98r6e0
+  - &users:
+    - &alex age1wjcu9h7rk0m44dzgyfwtyvajm2z6epscva5g0va8d9k8lz4m0fgqyu0rr2
+creation_rules:
+  - path_regex: hosts/homeserver/secrets/[^/]+\.(env|ini|json|ya?ml)$
+    key_groups:
+      - age:
+        - *homeserver
+  - path_regex: hosts/macbookpro/secrets/[^/]+\.(env|ini|json|ya?ml)$
+    key_groups:
+      - age:
+        - *macbookpro
+  - path_regex: users/alex/secrets/[^/]+\.(env|ini|json|ya?ml)$
+    key_groups:
+      - age:
+        - *alex
