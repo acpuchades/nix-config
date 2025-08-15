@@ -3,54 +3,54 @@
 let
 
   python3-with-packages = pkgs.python3.withPackages (
-    ps: with ps; [
-      ipykernel
-      jupyter
-      matplotlib
-      numpy
-      pandas
-      polars
-      pyarrow
-      scikit-learn
-      scipy
-      seaborn
-      statsmodels
-    ]
+	ps: with ps; [
+	  ipykernel
+	  jupyter
+	  matplotlib
+	  numpy
+	  pandas
+	  polars
+	  pyarrow
+	  scikit-learn
+	  scipy
+	  seaborn
+	  statsmodels
+	]
   );
 
   r-packages = with pkgs.rPackages; [
-    brms
-    car
-    cardx
-    cli
-    DBI
-    effects
-    emmeans
-    ggeffects
-    ggsurvfit
-    ggpubr
-    gamm4
-    glmmTMB
-    gtsummary
-    Hmisc
-    IRkernel
-    janitor
-    knitr
-    labelled
-    languageserver
-    lme4
-    mgcv
-    nls_multstart
-    nlme
-    psych
-    readxl
-    renv
-    robustlmm
-    rmarkdown
-    RSQLite
-    sjPlot
-    tidyverse
-    writexl
+	brms
+	car
+	cardx
+	cli
+	DBI
+	effects
+	emmeans
+	ggeffects
+	ggsurvfit
+	ggpubr
+	gamm4
+	glmmTMB
+	gtsummary
+	Hmisc
+	IRkernel
+	janitor
+	knitr
+	labelled
+	languageserver
+	lme4
+	mgcv
+	nls_multstart
+	nlme
+	psych
+	readxl
+	renv
+	robustlmm
+	rmarkdown
+	RSQLite
+	sjPlot
+	tidyverse
+	writexl
   ];
 
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
@@ -81,8 +81,8 @@ in
   #   executable = true;  # make all files executable
   # };
   home.file.".emacs.d" = {
-    source = ./files/emacs.d;
-    recursive = true;
+	source = ./files/emacs.d;
+	recursive = true;
   };
 
   # encode the file content in nix configuration file directly
@@ -98,66 +98,68 @@ in
 
   # Packages that should be installed to the user profile.
   home.packages = with pkgs; [
-    # System
-    bat
-    direnv
-    delta
-    eza
-    fd
-    fastfetch
-    jq
-    ripgrep
-    vim
+	# System
+	bat
+	direnv
+	delta
+	eza
+	fd
+	fastfetch
+	jq
+	ripgrep
+	vim
 
-    # Network
-    curl
-    nmap
-    netcat
-    samba
-    wget
+	# Network
+	curl
+	nmap
+	netcat
+	samba
+	wget
 
-    # Encryption
-    age
-    gnupg
+	# Encryption
+	age
+	gnupg
 
-    # Dev
-    awscli2
-    docker
+	# Dev
+	awscli2
+	docker
 
-    # Nix
-    nil
-    nixd
-    nixfmt-rfc-style
+	# Nix
+	nil
+	nixd
+	nixfmt-rfc-style
+	sops
+	ssh-to-age
 
-    # Python
-    black
-    pyright
-    python3-with-packages
-    pyenv
-    poetry
-    ruff
-    uv
-    virtualenv
+	# Python
+	black
+	pyright
+	python3-with-packages
+	pyenv
+	poetry
+	ruff
+	uv
+	virtualenv
 
-    # R
-    pandoc
-    texliveSmall
-    r-with-packages
-    radian-with-packages
-    rstudio-with-packages
+	# R
+	pandoc
+	texliveSmall
+	r-with-packages
+	radian-with-packages
+	rstudio-with-packages
   ];
 
   home.sessionVariables = {
-    EDITOR = "emacs";
-    LANG = "es_ES.UTF-8";
-    LC_ALL = "es_ES.UTF-8";
-    PAGER = "bat --paging=always";
+	EDITOR = "emacs";
+	LANG = "es_ES.UTF-8";
+	LC_ALL = "es_ES.UTF-8";
+	PAGER = "bat --paging=always";
   };
 
   home.shellAliases = {
-    l = "ls";
-    la = "ls -A";
-    ll = "ls -lh";
-    lla = "la -lhA";
+	l = "ls";
+	la = "ls -A";
+	ll = "ls -lh";
+	lla = "la -lhA";
   };
 }

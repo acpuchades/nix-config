@@ -2,49 +2,55 @@
   self,
   nix-darwin,
   home-manager,
+  sops-nix,
   ...
 }:
 
 let
   configuration =
-    inputs@{ pkgs, ... }:
-    import ./settings.nix inputs
-    // {
+	inputs@{ pkgs, ... }:
+	import ./settings.nix inputs
+	// {
 
-      # Necessary for using flakes on this system.
-      nix.settings.experimental-features = "nix-command flakes";
+	  # Necessary for using flakes on this system.
+	  nix.settings.experimental-features = "nix-command flakes";
 
-      # Set Git commit hash for darwin-version.
-      system.configurationRevision = self.rev or self.dirtyRev or null;
+	  # Set Git commit hash for darwin-version.
+	  system.configurationRevision = self.rev or self.dirtyRev or null;
 
-      # Used for backwards compatibility, please read the changelog before changing.
-      # $ darwin-rebuild changelog
-      system.stateVersion = 5;
+	  # Used for backwards compatibility, please read the changelog before changing.
+	  # $ darwin-rebuild changelog
+	  system.stateVersion = 5;
 
-      # Set the primary user for the system.
-      system.primaryUser = "alex";
+	  # Set the primary user for the system.
+	  system.primaryUser = "alex";
 
-      fonts.packages = with pkgs; [
-        emacs-all-the-icons-fonts
-        font-awesome
-        nerd-fonts.fira-code
-      ];
+	  sops.defaultSopsFile = ./secrets/default.yml;
+	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+	  sops.age.generateKey = true;
 
-      environment.systemPackages = import ./packages.nix inputs;
-      homebrew = import ./homebrew.nix inputs;
-    };
+	  fonts.packages = with pkgs; [
+		emacs-all-the-icons-fonts
+		font-awesome
+		nerd-fonts.fira-code
+	  ];
+
+	  environment.systemPackages = import ./packages.nix inputs;
+	  homebrew = import ./homebrew.nix inputs;
+	};
 
 in
 nix-darwin.lib.darwinSystem {
   modules = [
-    configuration
-    home-manager.darwinModules.home-manager
-    {
-      home-manager.useGlobalPkgs = true;
-      home-manager.useUserPackages = true;
-      home-manager.users.alex = import ../../users/alex;
+	configuration
+	sops-nix.darwinModules.sops
+	home-manager.darwinModules.home-manager
+	{
+	  home-manager.useGlobalPkgs = true;
+	  home-manager.useUserPackages = true;
+	  home-manager.users.alex = import ../../users/alex;
 
-      users.users.alex.home = "/Users/alex";
-    }
+	  users.users.alex.home = "/Users/alex";
+	}
   ];
 }
