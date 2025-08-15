@@ -2,8 +2,8 @@
 
 with pkgs;
 [
-  # System
   gh
+  ghostty.terminfo
   git
   vim
   curl
