@@ -29,12 +29,6 @@ let
 	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 	  sops.age.generateKey = true;
 
-	  fonts.packages = with pkgs; [
-		emacs-all-the-icons-fonts
-		font-awesome
-		nerd-fonts.fira-code
-	  ];
-
 	  environment.systemPackages = import ./packages.nix inputs;
 	  homebrew = import ./homebrew.nix inputs;
 	};

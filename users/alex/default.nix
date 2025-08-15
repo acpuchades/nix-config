@@ -96,8 +96,16 @@ in
   #  "Xft.dpi" = 172;
   # };
 
+  fonts.fontconfig.enable = true;
+
   # Packages that should be installed to the user profile.
   home.packages = with pkgs; [
+
+	# Fonts
+	emacs-all-the-icons-fonts
+	font-awesome
+	nerd-fonts.fira-code
+
 	# System
 	bat
 	direnv
