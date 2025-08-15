@@ -22,6 +22,7 @@
       magit
       marginalia
       markdown-mode
+      nix-ts-mode
       no-littering
       orderless
       org-bullets

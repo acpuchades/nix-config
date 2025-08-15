@@ -11,15 +11,15 @@
 
 ;; Faster redisplay
 (setq fast-but-imprecise-scrolling          t
-      redisplay-skip-fontification-on-input t
-      inhibit-compacting-font-caches        t)
+	  redisplay-skip-fontification-on-input t
+	  inhibit-compacting-font-caches        t)
 
 ;; Speed up large/minified files
 (global-so-long-mode 1)
 
 ;; Disable bidirectional text processing for speed
 (setq bidi-paragraph-direction 'left-to-right
-      bidi-inhibit-bpa         t)
+	  bidi-inhibit-bpa         t)
 
 ;; Line numbers: reserve width once to avoid reflow flicker
 (setq display-line-numbers-width-start t)
@@ -42,7 +42,7 @@
 ;; Global defaults for use-package
 (eval-and-compile
 	(setq use-package-always-ensure    t
-	      use-package-expand-minimally t))
+		  use-package-expand-minimally t))
 
 ;; Keep Emacs directories clean
 (use-package no-littering
@@ -64,11 +64,11 @@
 
 	;; Redirect histories & caches
 	(setq recentf-save-file           (no-littering-expand-var-file-name "recentf.el")
-	      savehist-file               (no-littering-expand-var-file-name "savehist.el")
-	      save-place-file             (no-littering-expand-var-file-name "saveplace.el")
-	      bookmark-default-file       (no-littering-expand-var-file-name "bookmarks")
-	      tramp-persistency-file-name (no-littering-expand-var-file-name "tramp")
-	      url-history-file            (no-littering-expand-var-file-name "url/history"))
+		  savehist-file               (no-littering-expand-var-file-name "savehist.el")
+		  save-place-file             (no-littering-expand-var-file-name "saveplace.el")
+		  bookmark-default-file       (no-littering-expand-var-file-name "bookmarks")
+		  tramp-persistency-file-name (no-littering-expand-var-file-name "tramp")
+		  url-history-file            (no-littering-expand-var-file-name "url/history"))
 
 	;; Redirect Eshell history
 	(setq eshell-history-file-name (no-littering-expand-var-file-name "eshell/history")))
@@ -176,7 +176,7 @@
 		;; Restore a sane GC after minibuffer exits
 		(defun my/gc-minibuffer-exit ()
 			(setq gc-cons-threshold (* 128 1024 1024)
-			      gc-cons-percentage 0.1))
+				  gc-cons-percentage 0.1))
 	:init
 		(gcmh-mode 1)
 	:custom
@@ -206,18 +206,18 @@
 	(ligature-set-ligatures 'eww-mode '("ff" "fi" "ffi"))
 	;; Enable all Cascadia Code ligatures in programming modes
 	(ligature-set-ligatures 'prog-mode '("|||>" "<|||" "<==>" "<!--" "####" "~~>" "***" "||=" "||>"
-	                                     ":::" "::=" "=:=" "===" "==>" "=!=" "=>>" "=<<" "=/=" "!=="
-	                                     "!!." ">=>" ">>=" ">>>" ">>-" ">->" "->>" "-->" "---" "-<<"
-	                                     "<~~" "<~>" "<*>" "<||" "<|>" "<$>" "<==" "<=>" "<=<" "<->"
-	                                     "<--" "<-<" "<<=" "<<-" "<<<" "<+>" "</>" "###" "#_(" "..<"
-	                                     "..." "+++" "/==" "///" "_|_" "www" "&&" "^=" "~~" "~@" "~="
-	                                     "~>" "~-" "**" "*>" "*/" "||" "|}" "|]" "|=" "|>" "|-" "{|"
-	                                     "[|" "]#" "::" ":=" ":>" ":<" "$>" "==" "=>" "!=" "!!" ">:"
-	                                     ">=" ">>" ">-" "-~" "-|" "->" "--" "-<" "<~" "<*" "<|" "<:"
-	                                     "<$" "<=" "<>" "<-" "<<" "<+" "</" "#{" "#[" "#:" "#=" "#!"
-	                                     "##" "#(" "#?" "#_" "%%" ".=" ".-" ".." ".?" "+>" "++" "?:"
-	                                     "?=" "?." "??" ";;" "/*" "/=" "/>" "//" "__" "~~" "(*" "*)"
-	                                     "\\\\" "://"))
+										 ":::" "::=" "=:=" "===" "==>" "=!=" "=>>" "=<<" "=/=" "!=="
+										 "!!." ">=>" ">>=" ">>>" ">>-" ">->" "->>" "-->" "---" "-<<"
+										 "<~~" "<~>" "<*>" "<||" "<|>" "<$>" "<==" "<=>" "<=<" "<->"
+										 "<--" "<-<" "<<=" "<<-" "<<<" "<+>" "</>" "###" "#_(" "..<"
+										 "..." "+++" "/==" "///" "_|_" "www" "&&" "^=" "~~" "~@" "~="
+										 "~>" "~-" "**" "*>" "*/" "||" "|}" "|]" "|=" "|>" "|-" "{|"
+										 "[|" "]#" "::" ":=" ":>" ":<" "$>" "==" "=>" "!=" "!!" ">:"
+										 ">=" ">>" ">-" "-~" "-|" "->" "--" "-<" "<~" "<*" "<|" "<:"
+										 "<$" "<=" "<>" "<-" "<<" "<+" "</" "#{" "#[" "#:" "#=" "#!"
+										 "##" "#(" "#?" "#_" "%%" ".=" ".-" ".." ".?" "+>" "++" "?:"
+										 "?=" "?." "??" ";;" "/*" "/=" "/>" "//" "__" "~~" "(*" "*)"
+										 "\\\\" "://"))
 	(global-ligature-mode t))
 
 ;; Git interface
@@ -228,6 +228,11 @@
 ;; Rich minibuffer annotations
 (use-package marginalia
 	:init (marginalia-mode))
+
+;; Nix
+(use-package nix-ts-mode
+  :mode ("\\.nix\\'" . nix-ts-mode)
+  :config (treesit-auto-add-to-auto-mode-alist 'nix))
 
 ;; Fuzzy matching
 (use-package orderless
@@ -327,7 +332,7 @@
 
 ;; Modifier keys mapping (macOS)
 (setq ns-alternate-modifier       'meta
-      ns-right-alternate-modifier 'none)
+	  ns-right-alternate-modifier 'none)
 
 (set-language-environment "Spanish")
 
@@ -344,7 +349,7 @@
 
 ;; Use tabs for indentation
 (setq-default indent-tabs-mode  t
-              tab-width         4)
+			  tab-width         4)
 
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
