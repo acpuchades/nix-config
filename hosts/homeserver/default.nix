@@ -11,8 +11,8 @@
 let
 
   configuration =
-    { pkgs, lib, ... }:
-    import ./settings.nix { inherit lib; }
+    inputs@{ pkgs, lib, ... }:
+    import ./settings.nix inputs
     // {
 
       imports = [
@@ -37,7 +37,7 @@ let
 
       # List packages installed in system profile.
       # You can use https://search.nixos.org/ to find more packages (and options).
-      environment.systemPackages = import ./packages.nix { inherit pkgs; };
+      environment.systemPackages = import ./packages.nix inputs;
 
       # Some programs need SUID wrappers, can be configured further or are
       # started in user sessions.
@@ -48,10 +48,10 @@ let
       # };
 
       # List services that you want to enable:
-      services = import ./services.nix;
+      services = import ./services.nix inputs;
 
       # Networking configuration.
-      networking = import ./networking.nix;
+      networking = import ./networking.nix inputs;
 
       # Copy the NixOS configuration file and link it from the resulting system
       # (/run/current-system/configuration.nix). This is useful in case you

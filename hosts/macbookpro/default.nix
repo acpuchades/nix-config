@@ -7,8 +7,8 @@
 
 let
   configuration =
-    { pkgs, ... }:
-    import ./settings.nix { inherit pkgs; }
+    inputs@{ pkgs, ... }:
+    import ./settings.nix inputs
     // {
 
       # Necessary for using flakes on this system.
@@ -30,8 +30,8 @@ let
         nerd-fonts.fira-code
       ];
 
-      environment.systemPackages = import ./packages.nix { inherit pkgs; };
-      homebrew = import ./homebrew.nix;
+      environment.systemPackages = import ./packages.nix inputs;
+      homebrew = import ./homebrew.nix inputs;
     };
 
 in

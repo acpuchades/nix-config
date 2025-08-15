@@ -1,11 +1,10 @@
-{ pkgs }:
+inputs@{ pkgs }:
 {
   # Let home Manager install and manage itself.
   home-manager.enable = true;
 
-  emacs = import ./emacs.nix { inherit pkgs; };
-  gh = import ./gh.nix;
-  git = import ./git.nix;
-  zed-editor = import ./zed-editor.nix;
-  zsh = import ./zsh.nix { inherit pkgs; };
+  emacs = import ./emacs.nix inputs;
+  git = import ./git.nix inputs;
+  zed-editor = import ./zed-editor.nix inputs;
+  zsh = import ./zsh.nix inputs;
 }
