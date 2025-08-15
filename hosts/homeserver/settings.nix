@@ -23,6 +23,7 @@ in
   };
 
   # Boot (UEFI)
+  boot.loader.timeout = 3;
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
