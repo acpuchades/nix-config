@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 
 let
 
@@ -80,6 +80,9 @@ in
   #   recursive = true;   # link recursively
   #   executable = true;  # make all files executable
   # };
+  home.file.".config/gh/hosts.yml".source =
+	config.sops.templates."alex/gh-hosts.yml".path;
+
   home.file.".emacs.d" = {
 	source = ./files/emacs.d;
 	recursive = true;

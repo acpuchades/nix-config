@@ -8,7 +8,7 @@
 
 let
   configuration =
-	inputs@{ pkgs, ... }:
+	inputs@{ config, pkgs, ... }:
 	import ./settings.nix inputs
 	// {
 
@@ -28,6 +28,19 @@ let
 	  sops.defaultSopsFile = ./secrets/default.yml;
 	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 	  sops.age.generateKey = true;
+
+	  sops.secrets."alex/github-token" = {
+		sopsFile = ../../users/alex/secrets/macbookpro.yml;
+		format = "yaml";
+		key = "github-token";
+	  };
+
+	  sops.templates."alex/gh-hosts.yml".content = ''
+		github.com:
+		  user: alex
+		  git_protocol: https
+		  oauth_token: ${config.sops.placeholder."alex/github-token"}
+	  '';
 
 	  environment.systemPackages = import ./packages.nix inputs;
 	  homebrew = import ./homebrew.nix inputs;
