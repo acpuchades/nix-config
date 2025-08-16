@@ -25,22 +25,8 @@ let
 	  # Set the primary user for the system.
 	  system.primaryUser = "alex";
 
-	  sops.defaultSopsFile = ./secrets/default.yml;
+	  #sops.defaultSopsFile = ./secrets/default.yml;
 	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-	  sops.age.generateKey = true;
-
-	  sops.secrets."alex/github-token" = {
-		sopsFile = ../../users/alex/secrets/macbookpro.yml;
-		format = "yaml";
-		key = "github-token";
-	  };
-
-	  sops.templates."alex/gh-hosts.yml".content = ''
-		github.com:
-		  user: alex
-		  git_protocol: https
-		  oauth_token: ${config.sops.placeholder."alex/github-token"}
-	  '';
 
 	  environment.systemPackages = import ./packages.nix inputs;
 	  homebrew = import ./homebrew.nix inputs;
@@ -48,6 +34,7 @@ let
 
 in
 nix-darwin.lib.darwinSystem {
+  specialArgs = { host = "macbookpro"; };
   modules = [
 	configuration
 	sops-nix.darwinModules.sops
@@ -56,6 +43,8 @@ nix-darwin.lib.darwinSystem {
 	  home-manager.useGlobalPkgs = true;
 	  home-manager.useUserPackages = true;
 	  home-manager.users.alex = import ../../users/alex;
+	  home-manager.extraSpecialArgs = { host = "macbookpro"; };
+	  home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
 	  users.users.alex.home = "/Users/alex";
 	}

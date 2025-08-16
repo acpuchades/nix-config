@@ -21,24 +21,7 @@ let
 		./hardware-configuration.nix
 	  ];
 
-	  # Disable root login
-	  users.users.root.hashedPassword = "!";
-
-	  # Define a user account. Don't forget to set a password with ‘passwd’.
-	 users.users.alex = {
-		isNormalUser = true;
-		description = "Alejandro Caravaca Puchades";
-		extraGroups = [
-		  "wheel" # Enable ‘sudo’ for the user.
-		  "networkmanager"
-		];
-		password = "1234";
-		shell = pkgs.zsh;
-		packages = [ pkgs.zsh ];
-		openssh.authorizedKeys.keys = [
-		  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINToP7vyGXG7vrxR8W3T3I2NalZkc1IPd0WaETssf1X5 alex@macbookpro"
-		];
-	  };
+	  users = import ./users.nix inputs;
 
 	  #programs.firefox.enable = true;
 
@@ -60,22 +43,15 @@ let
 	  # Networking configuration.
 	  networking = import ./networking.nix inputs;
 
-	  sops.defaultSopsFile = ./secrets/default.yml;
+	  #sops.defaultSopsFile = ./secrets/default.yml;
 	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
-	  sops.age.generateKey = true;
 
-	  sops.secrets."alex/github-token" = {
+	  sops.secrets."user/password" = {
 		sopsFile = ../../users/alex/secrets/homeserver.yml;
 		format = "yaml";
-		key = "github-token";
+		key = "user/password";
+		neededForUsers = true;
 	  };
-
-	  sops.templates."alex/gh-hosts.yml".content = ''
-		github.com:
-		  user: alex
-		  git_protocol: https
-		  oauth_token: ${config.sops.placeholder."alex/github-token"}
-	  '';
 
 	  # Copy the NixOS configuration file and link it from the resulting system
 	  # (/run/current-system/configuration.nix). This is useful in case you
@@ -107,6 +83,7 @@ in
 
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
+  specialArgs = { host = "homeserver"; };
   modules = [
 	configuration
 	sops-nix.nixosModules.sops
@@ -115,6 +92,8 @@ nixpkgs.lib.nixosSystem {
 	  home-manager.useGlobalPkgs = true;
 	  home-manager.useUserPackages = true;
 	  home-manager.users.alex = import ../../users/alex;
+	  home-manager.extraSpecialArgs = { host = "homeserver"; };
+	  home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
 	  users.users.alex.home = "/home/alex";
 	}
