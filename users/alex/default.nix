@@ -131,6 +131,7 @@ in
 	# Encryption
 	age
 	gnupg
+	mkpasswd
 
 	# Dev
 	awscli2
