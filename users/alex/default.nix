@@ -85,6 +85,10 @@ in
 	recursive = true;
   };
 
+  home.file.".config/starship.toml" = {
+	source = ./files/starship.toml;
+  };
+
   # encode the file content in nix configuration file directly
   # home.file.".xxx".text = ''
   #     xxx

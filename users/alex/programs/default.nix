@@ -5,6 +5,7 @@ inputs@{ pkgs }:
 
   emacs = import ./emacs.nix inputs;
   git = import ./git.nix inputs;
+  starship = import ./starship.nix inputs;
   zed-editor = import ./zed-editor.nix inputs;
   zsh = import ./zsh.nix inputs;
 }
