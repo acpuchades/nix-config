@@ -21,9 +21,8 @@ let
         ./hardware-configuration.nix
       ];
 
+      fileSystems = import ./filesystems.nix inputs;
       users = import ./users.nix inputs;
-
-      #programs.firefox.enable = true;
 
       # List packages installed in system profile.
       # You can use https://search.nixos.org/ to find more packages (and options).

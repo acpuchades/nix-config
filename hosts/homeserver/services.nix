@@ -21,6 +21,12 @@
   # Enable CUPS to print documents
   printing.enable = true;
 
+  # Enable fstrim
+  fstrim.enable = true;
+
+  # Timestamps & logs
+  timesyncd.enable = true;
+
   # Avahi/mDNS (.local)
   avahi = {
 	enable = true;
@@ -77,6 +83,4 @@
 	openFirewall = true; # keep closed by default; open explicitly if needed
   };
 
-  # Timestamps & logs
-  timesyncd.enable = true;
 }
