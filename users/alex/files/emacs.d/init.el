@@ -230,6 +230,14 @@
 (use-package marginalia
 	:init (marginalia-mode))
 
+;; Multiple cursors
+(use-package multiple-cursors
+  :bind
+  (("C-S-c C-S-c" . mc/edit-lines)
+   ("C->"         . mc/mark-next-like-this)
+   ("C-<"         . mc/mark-previous-like-this)
+   ("C-c C-<"     . mc/mark-all-like-this))
+
 ;; Nix
 (use-package nix-ts-mode
   :mode ("\\.nix\\'" . nix-ts-mode)
