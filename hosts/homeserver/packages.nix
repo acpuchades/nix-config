@@ -3,7 +3,6 @@
 with pkgs;
 [
   ghostty.terminfo
-  git
   vim
   curl
   wget
