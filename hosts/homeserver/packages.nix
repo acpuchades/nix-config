@@ -2,7 +2,6 @@
 
 with pkgs;
 [
-  gh
   ghostty.terminfo
   git
   vim

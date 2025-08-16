@@ -16,9 +16,7 @@
     ];
 
     hashedPasswordFile = config.sops.secrets."user/password".path;
-
     shell = pkgs.zsh;
-    packages = [ pkgs.zsh ];
 
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINToP7vyGXG7vrxR8W3T3I2NalZkc1IPd0WaETssf1X5 alex@macbookpro"
