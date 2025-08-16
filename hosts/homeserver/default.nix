@@ -12,7 +12,7 @@
 let
 
   configuration =
-	inputs@{ pkgs, lib, ... }:
+	inputs@{ config, lib, pkgs, ... }:
 	import ./settings.nix inputs
 	// {
 
@@ -63,6 +63,19 @@ let
 	  sops.defaultSopsFile = ./secrets/default.yml;
 	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 	  sops.age.generateKey = true;
+
+	  sops.secrets."alex/github-token" = {
+		sopsFile = ../../users/alex/secrets/homeserver.yml;
+		format = "yaml";
+		key = "github-token";
+	  };
+
+	  sops.templates."alex/gh-hosts.yml".content = ''
+		github.com:
+		  user: alex
+		  git_protocol: https
+		  oauth_token: ${config.sops.placeholder."alex/github-token"}
+	  '';
 
 	  # Copy the NixOS configuration file and link it from the resulting system
 	  # (/run/current-system/configuration.nix). This is useful in case you
