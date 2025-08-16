@@ -1,15 +1,24 @@
 keys:
-  - &master age1wjcu9h7rk0m44dzgyfwtyvajm2z6epscva5g0va8d9k8lz4m0fgqyu0rr2
+  # Master key
+  - &master age1a868fs5jjehx032kq7sryz3sjfzhkk79q2clqx8f4zawpfrlp9sswgr9fl
+  # Host keys
   - &homeserver age1v93l5pvd9pwlr9z04daa00wh2wan6ycu9ts8hn6p77gasgax256s6c6qg8 
   - &macbookpro age14lrzcnp08aawpzz2vcvgprkxv7yc7cpah5ep7fh2n8nne06jucfs98r6e0
+  # User keys
+  - &alex age1wjcu9h7rk0m44dzgyfwtyvajm2z6epscva5g0va8d9k8lz4m0fgqyu0rr2
 creation_rules:
-  - path_regex: users/[^/]+/secrets/homeserver\.(env|ini|json|ya?ml)$
+  - path_regex: ^hosts/homeserver/secrets/default.ya?ml$
     key_groups:
-      - age:
-        - *master
-        - *homeserver
-  - path_regex: users/[^/]+/secrets/macbookpro\.(env|ini|json|ya?ml)$
+      - age: [*master, *homeserver]
+  - path_regex: ^hosts/macbookpro/secrets/default.ya?ml$
     key_groups:
-      - age:
-        - *master
-        - *macbookpro
+      - age: [*master, *macbookpro]
+  - path_regex: ^users/alex/secrets/default.ya?ml$
+    key_groups:
+      - age: [*master, *alex]
+  - path_regex: ^users/alex/secrets/homeserver.ya?ml$
+    key_groups:
+      - age: [*master, *alex, *homeserver]
+  - path_regex: ^users/alex/secrets/macbookpro.ya?ml$
+    key_groups:
+      - age: [*master, *alex, *macbookpro]
