@@ -135,6 +135,7 @@ in
     delta
     eza
     fd
+    fzf
     fastfetch
     jq
     ripgrep

@@ -5,14 +5,28 @@
   autosuggestion.enable = true;
   syntaxHighlighting.enable = true;
   history.size = 10000;
+  oh-my-zsh = {
+    enable = true;
+    theme = "";
+    plugins = [
+      "colored-man-pages"
+      "common-aliases"
+      "extract"
+      "fzf"
+      "git"
+      "history-substring-search"
+      "sudo"
+      "z"
+    ];
+  };
   plugins = [
-	{
-	  name = "zsh-autosuggestions";
-	  src = pkgs.zsh-autosuggestions;
-	}
-	{
-	  name = "zsh-syntax-highlighting";
-	  src = pkgs.zsh-syntax-highlighting;
-	}
+  {
+    name = "zsh-autosuggestions";
+    src = pkgs.zsh-autosuggestions;
+  }
+  {
+    name = "zsh-syntax-highlighting";
+    src = pkgs.zsh-syntax-highlighting;
+  }
   ];
 }
