@@ -1,4 +1,4 @@
-{ ... }:
+{ config, ... }:
 {
   # Enable the X11 windowing system.
   # xserver.enable = true;
@@ -33,6 +33,12 @@
 	nssmdns4 = true;
 	publish.enable = true;
 	publish.userServices = true;
+  };
+
+  # DDClient
+  ddclient = {
+	enable = true;
+	configFile = config.sops.templates."ddclient/config".path;
   };
 
   # DNSCrypt

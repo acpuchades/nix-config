@@ -12,111 +12,123 @@
 let
 
   configuration =
-	inputs@{ config, lib, pkgs, ... }:
-	import ./settings.nix inputs
-	// {
+    inputs@{ config, lib, pkgs, ... }:
+    import ./settings.nix inputs
+    // {
 
-	  imports = [
-		# Include the results of the hardware scan.
-		./hardware-configuration.nix
-	  ];
+      imports = [
+        # Include the results of the hardware scan.
+        ./hardware-configuration.nix
+      ];
 
-	  fileSystems = import ./filesystems.nix inputs;
-	  users = import ./users.nix inputs;
+      fileSystems = import ./filesystems.nix inputs;
+      users = import ./users.nix inputs;
 
-	  # List packages installed in system profile.
-	  # You can use https://search.nixos.org/ to find more packages (and options).
-	  environment.systemPackages = import ./packages.nix inputs;
+      # List packages installed in system profile.
+      # You can use https://search.nixos.org/ to find more packages (and options).
+      environment.systemPackages = import ./packages.nix inputs;
 
-	  # List services that you want to enable:
-	  services = import ./services.nix inputs;
+      # List services that you want to enable:
+      services = import ./services.nix inputs;
 
-	  # Networking configuration.
-	  networking = import ./networking.nix inputs;
+      # Networking configuration.
+      networking = import ./networking.nix inputs;
 
-	  sops.defaultSopsFile = ./secrets/default.yml;
-	  sops.defaultSopsFormat = "yaml";
-	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+      sops.defaultSopsFile = ./secrets/default.yml;
+      sops.defaultSopsFormat = "yaml";
+      sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 
-	  sops.secrets = {
-		"passwd/alex" = {
-		  key = "passwd/alex";
-		  neededForUsers = true;
-		};
+      sops.secrets = {
+        "passwd/alex" = {
+          key = "passwd/alex";
+          neededForUsers = true;
+        };
 
-		"wifi/ssid" = { key = "wifi/ssid"; };
-		"wifi/password" = { key = "wifi/password"; };
-	  };
+        "ddclient/user" = { key = "ddclient/user"; };
+        "ddclient/password" = { key = "ddclient/password"; };
 
-	  sops.templates."nm-profiles/home-wlan".content = ''
-		[connection]
-		id=home-wlan
-		type=wifi
-		autoconnect=true
-		interface-name=wlan0
+        "wifi/ssid" = { key = "wifi/ssid"; };
+        "wifi/password" = { key = "wifi/password"; };
+      };
 
-		[wifi]
-		mode=infrastructure
-		ssid=${config.sops.placeholder."wifi/ssid"}
+      sops.templates."ddclient/config".content = ''
+        use=web, web=dynamicdns.park-your-domain.com/getip
+        protocol=namecheap
+        server=dynamicdns.park-your-domain.com
+        login=${config.sops.placeholder."ddclient/user"}
+        password=${config.sops.placeholder."ddclient/password"}
+        www,bitwarden,home,prefect
+      '';
 
-		[wifi-security]
-		auth-alg=open
-		key-mgmt=wpa-psk
-		psk=${config.sops.placeholder."wifi/password"}
+      sops.templates."nm-profiles/home-wlan".content = ''
+        [connection]
+        id=home-wlan
+        type=wifi
+        autoconnect=true
+        interface-name=wlan0
 
-		[ipv4]
-		method=auto
+        [wifi]
+        mode=infrastructure
+        ssid=${config.sops.placeholder."wifi/ssid"}
 
-		[ipv6]
-		addr-gen-mode=default
-		method=auto
-	  '';
+        [wifi-security]
+        auth-alg=open
+        key-mgmt=wpa-psk
+        psk=${config.sops.placeholder."wifi/password"}
 
-	  environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
-		config.sops.templates."nm-profiles/home-wlan".path;
+        [ipv4]
+        method=auto
 
-	  # Copy the NixOS configuration file and link it from the resulting system
-	  # (/run/current-system/configuration.nix). This is useful in case you
-	  # accidentally delete configuration.nix.
-	  # system.copySystemConfiguration = true;
+        [ipv6]
+        addr-gen-mode=default
+        method=auto
+      '';
 
-	  # This option defines the first version of NixOS you have installed on this particular machine,
-	  # and is used to maintain compatibility with application data (e.g. databases) created on older NixOS versions.
-	  #
-	  # Most users should NEVER change this value after the initial install, for any reason,
-	  # even if you've upgraded your system to a new NixOS release.
-	  #
-	  # This value does NOT affect the Nixpkgs version your packages and OS are pulled from,
-	  # so changing it will NOT upgrade your system - see https://nixos.org/manual/nixos/stable/#sec-upgrading for how
-	  # to actually do that.
-	  #
-	  # This value being lower than the current NixOS release does NOT mean your system is
-	  # out of date, out of support, or vulnerable.
-	  #
-	  # Do NOT change this value unless you have manually inspected all the changes it would make to your configuration,
-	  # and migrated your data accordingly.
-	  #
-	  # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
-	  system.stateVersion = "25.05"; # Did you read the comment?
+      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
+        config.sops.templates."nm-profiles/home-wlan".path;
 
-	};
+      # Copy the NixOS configuration file and link it from the resulting system
+      # (/run/current-system/configuration.nix). This is useful in case you
+      # accidentally delete configuration.nix.
+      # system.copySystemConfiguration = true;
+
+      # This option defines the first version of NixOS you have installed on this particular machine,
+      # and is used to maintain compatibility with application data (e.g. databases) created on older NixOS versions.
+      #
+      # Most users should NEVER change this value after the initial install, for any reason,
+      # even if you've upgraded your system to a new NixOS release.
+      #
+      # This value does NOT affect the Nixpkgs version your packages and OS are pulled from,
+      # so changing it will NOT upgrade your system - see https://nixos.org/manual/nixos/stable/#sec-upgrading for how
+      # to actually do that.
+      #
+      # This value being lower than the current NixOS release does NOT mean your system is
+      # out of date, out of support, or vulnerable.
+      #
+      # Do NOT change this value unless you have manually inspected all the changes it would make to your configuration,
+      # and migrated your data accordingly.
+      #
+      # For more information, see `man configuration.nix` or https://nixos.org/manual/nixos/stable/options#opt-system.stateVersion .
+      system.stateVersion = "25.05"; # Did you read the comment?
+
+    };
 
 in
 
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
   modules = [
-	configuration
-	sops-nix.nixosModules.sops
-	home-manager.nixosModules.home-manager
-	{
-	  home-manager.useGlobalPkgs = true;
-	  home-manager.useUserPackages = true;
-	  home-manager.users.alex = import ../../users/alex;
-	  home-manager.extraSpecialArgs = { host = "homeserver"; };
-	  home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+    configuration
+    sops-nix.nixosModules.sops
+    home-manager.nixosModules.home-manager
+    {
+      home-manager.useGlobalPkgs = true;
+      home-manager.useUserPackages = true;
+      home-manager.users.alex = import ../../users/alex;
+      home-manager.extraSpecialArgs = { host = "homeserver"; };
+      home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
-	  users.users.alex.home = "/home/alex";
-	}
+      users.users.alex.home = "/home/alex";
+    }
   ];
 }
