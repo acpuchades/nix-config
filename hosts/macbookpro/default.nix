@@ -34,7 +34,6 @@ let
 
 in
 nix-darwin.lib.darwinSystem {
-  specialArgs = { host = "macbookpro"; };
   modules = [
 	configuration
 	sops-nix.darwinModules.sops
