@@ -241,11 +241,13 @@
 ;; Nix
 (use-package nix-ts-mode
   :mode ("\\.nix\\'" . nix-ts-mode)
-  :config (treesit-auto-add-to-auto-mode-alist 'nix))
+  :config (treesit-auto-add-to-auto-mode-alist 'nix)
+  :hook (nix-ts-mode . (lambda ()
+	  (setq-local indent-tabs-mode nil tab-width 2))))
 
 ;; Fuzzy matching
 (use-package orderless
-	:init (setq completion-styles '(orderless basic)))
+  :init (setq completion-styles '(orderless basic)))
 
 ;; Org mode tweaks
 (use-package org
@@ -305,22 +307,18 @@
 			(whitespace-mode 1)
 			(add-hook 'before-save-hook 'whitespace-cleanup nil t)))
 	:custom
-		(require-final-newline  t)
+		(require-final-newline t)
 		(whitespace-style '(
-			face
 			empty
-			tabs
-			tab-mark
+			face
+			indentation
+			spaces
 			space-before-tab
 			space-after-tab
-			indentation
+			tabs
+			tab-mark
 			trailing
-		))
-	:config
-		(set-face-attribute 'whitespace-space
-			nil :foreground "gray70" :background 'unspecified :underline nil)
-		(set-face-attribute 'whitespace-tab
-			nil :foreground "gray70" :background 'unspecified :underline nil))
+)))
 
 ;; Terminal emulator
 (use-package vterm
@@ -359,6 +357,10 @@
 ;; Use tabs for indentation
 (setq-default indent-tabs-mode  t
 			  tab-width         4)
+
+;; Make backspace unindent
+(setq backward-delete-char-untabify-method 'hungry)
+(global-set-key (kbd "DEL") #'backward-delete-char-untabify)
 
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
