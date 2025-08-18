@@ -44,7 +44,7 @@ let
           neededForUsers = true;
         };
 
-        "ddclient/user" = { key = "ddclient/user"; };
+        "ddclient/domain" = { key = "ddclient/domain"; };
         "ddclient/password" = { key = "ddclient/password"; };
 
         "wifi/ssid" = { key = "wifi/ssid"; };
@@ -67,8 +67,9 @@ let
       sops.templates."ddclient/config".content = ''
         use=web, web=dynamicdns.park-your-domain.com/getip
         protocol=namecheap
+        ssl=yes
         server=dynamicdns.park-your-domain.com
-        login=${config.sops.placeholder."ddclient/user"}
+        login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
         www,bitwarden,home,prefect
       '';
