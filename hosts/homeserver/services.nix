@@ -29,10 +29,8 @@
   # Adguard Home
   adguardhome = {
     enable = true;
-    host = "0.0.0.0";
-    port = 3000;
+    openFirewall = true;
     settings = {
-      http.address = "0.0.0.0:3000";
       dns.upstream_dns = [ "127.0.0.1:5300" ];
       filtering = {
         protection_enabled = true;
