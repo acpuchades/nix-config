@@ -14,8 +14,7 @@
   # pulseaudio.enable = true;
   # OR
   pipewire = {
-	enable = true;
-	pulse.enable = true;
+    enable = true;pulse.enable = true;
   };
 
   # Enable CUPS to print documents
@@ -29,32 +28,32 @@
 
   # Avahi/mDNS (.local)
   avahi = {
-	enable = true;
-	nssmdns4 = true;
-	publish.enable = true;
-	publish.userServices = true;
+    enable = true;
+    nssmdns4 = true;
+    publish.enable = true;
+    publish.userServices = true;
   };
 
   # DDClient
   ddclient = {
-	enable = true;
-	configFile = config.sops.templates."ddclient/config".path;
+    enable = true;
+    configFile = config.sops.templates."ddclient/config".path;
   };
 
   # DNSCrypt
   dnscrypt-proxy2 = {
-	enable = true;
-	settings = {
-	  server_names = [
-		"cloudflare"
-		"quad9-dnscrypt-ip4-filter-pri"
-	  ];
-	  require_dnssec = true;
-	  listen_addresses = [
-		"127.0.0.1:53"
-		"[::1]:53"
-	  ];
-	};
+    enable = true;
+    settings = {
+      server_names = [
+        "cloudflare"
+        "quad9-dnscrypt-ip4-filter-pri"
+      ];
+      require_dnssec = true;
+      listen_addresses = [
+        "127.0.0.1:53"
+        "[::1]:53"
+      ];
+    };
   };
 
   # Use dnscrypt-proxy instead of systemd-resolved
@@ -62,31 +61,70 @@
 
   # Nginx
   nginx = {
-	enable = true;
-	recommendedGzipSettings = true;
-	recommendedProxySettings = true;
-	recommendedTlsSettings = true;
+    enable = true;
+    recommendedGzipSettings = true;
+    recommendedProxySettings = true;
+    recommendedTlsSettings = true;
 
-	virtualHosts = {
+    virtualHosts = {
 
-	  "www.acpuchades.com" = {
-		forceSSL = true;
-		enableACME = true;
-	  };
+      "www.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+      };
 
-	};
+      "prefect.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+        basicAuthFile =
+          config.sops.secrets."prefect/htpasswd".path;
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:4200";
+          proxyWebsockets = true;
+        };
+      };
+
+    };
+  };
+
+  # Postgres
+  postgresql = {
+    enable = true;
+    ensureDatabases = [ "prefect" ];
+    ensureUsers = [
+      {
+        name = "prefect";
+        ensureDBOwnership = true;
+      }
+    ];
+  };
+
+  # Prefect {
+  prefect = {
+    enable = true;
+    host = "0.0.0.0";
+    port = 4200;
+    database = "postgres";
+    databaseHost = "";
+    databasePort = 0;
+    databaseUser = "prefect";
+    databaseName = "prefect";
+    baseUrl = "https://prefect.acpuchades.com";
+    workerPools = {
+      default.installPolicy = "always";
+    };
   };
 
   # SSH
   openssh = {
-	enable = true;
-	settings = {
-	  PermitRootLogin = "no";
-	  PasswordAuthentication = false; # ensure you have SSH keys set
-	  AllowTcpForwarding = "yes";
-	  X11Forwarding = false;
-	};
-	openFirewall = true; # keep closed by default; open explicitly if needed
+    enable = true;
+    settings = {
+      PermitRootLogin = "no";
+      PasswordAuthentication = false; # ensure you have SSH keys set
+      AllowTcpForwarding = "yes";
+      X11Forwarding = false;
+    };
+    openFirewall = true; # keep closed by default; open explicitly if needed
   };
 
 }

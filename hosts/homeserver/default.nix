@@ -49,6 +49,12 @@ let
 
         "wifi/ssid" = { key = "wifi/ssid"; };
         "wifi/password" = { key = "wifi/password"; };
+
+        "prefect/htpasswd" = {
+          owner = "nginx";
+          group = "nginx";
+          mode = "0400";
+        };
       };
 
       sops.templates."ddclient/config".content = ''
