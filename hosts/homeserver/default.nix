@@ -54,6 +54,13 @@ let
           group = "nginx";
           mode = "0400";
         };
+
+        "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
+        "wg/peers/alex-iphone/psk" = { key = "wireguard/peers/alex-iphone/psk"; };
+        "wg/peers/alex-ipad/psk" = { key = "wireguard/peers/alex-ipad/psk"; };
+        "wg/peers/alex-macbookpro/psk" = { key = "wireguard/peers/alex-macbookpro/psk"; };
+        "wg/peers/mubin-phone/psk" = { key = "wireguard/peers/mubin-phone/psk"; };
+        "wg/peers/mubin-laptop/psk" = { key = "wireguard/peers/mubin-laptop/psk"; };
       };
 
       sops.templates."ddclient/config".content = ''
