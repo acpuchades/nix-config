@@ -2,11 +2,13 @@
 
 with pkgs;
 [
-  ghostty.terminfo
-  vim
+  btrfs-progs
   curl
-  wget
+  ghostty.terminfo
   htop
+  prefect
   unzip
+  vim
+  wget
   zip
 ]
