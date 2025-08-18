@@ -27,6 +27,7 @@
     53
     80
     443
+    3003
   ];
   firewall.allowedUDPPorts = [
     53
