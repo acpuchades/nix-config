@@ -335,6 +335,10 @@
 
 ;; USER SETTINGS
 
+; Set emacs as editor from within
+(setenv "EDITOR" "emacs")
+(setenv "VISUAL" "emacs")
+
 (setq ring-bell-function 'ignore) ;; No bell
 
 ;; Modifier keys mapping (macOS)
