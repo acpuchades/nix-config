@@ -183,7 +183,7 @@ in
   ];
 
   home.sessionVariables = {
-    EDITOR = "emacs";
+    EDITOR = "vim";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
     LC_TIME = "en_DK.UTF-8";
