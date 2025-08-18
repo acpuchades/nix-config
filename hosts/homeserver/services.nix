@@ -45,19 +45,20 @@
     enable = true;
     settings = {
       server_names = [
-        "cloudflare"
-        "quad9-dnscrypt-ip4-filter-pri"
+        "dns4eu-unfiltered"
+        "quad9-dnscrypt-ip4-nofilter-pri"
       ];
       require_dnssec = true;
+      require_nolog = true;
+      require_nofilter = true;
       listen_addresses = [
         "127.0.0.1:53"
+        "192.168.1.2:53"
+        "10.0.0.1:53"
         "[::1]:53"
       ];
     };
   };
-
-  # Use dnscrypt-proxy instead of systemd-resolved
-  resolved.enable = false;
 
   # Nginx
   nginx = {

@@ -24,10 +24,13 @@
   firewall.enable = true;
   # Open ports in the firewall.
   firewall.allowedTCPPorts = [
+    53
     80
     443
   ];
-  #firewall.allowedUDPPorts = [ ... ];
+  firewall.allowedUDPPorts = [
+    53
+  ];
 
   # Enable NAT
   #nat.enable = true;
