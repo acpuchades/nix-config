@@ -21,7 +21,6 @@ let
         ./hardware-configuration.nix
       ];
 
-      fileSystems = import ./filesystems.nix inputs;
       users = import ./users.nix inputs;
 
       # List packages installed in system profile.
