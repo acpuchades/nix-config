@@ -38,6 +38,7 @@ let
       sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 
       sops.secrets = {
+
         "passwd/alex" = {
           key = "passwd/alex";
           neededForUsers = true;
