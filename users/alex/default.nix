@@ -130,6 +130,7 @@ in
     nerd-fonts.fira-code
 
     # System
+    apg
     bat
     direnv
     delta
