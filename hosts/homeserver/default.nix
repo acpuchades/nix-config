@@ -32,6 +32,10 @@ let
 
       # Networking configuration.
       networking = import ./networking.nix inputs;
+      systemd.services.NetworkManager-ensure-profiles = {
+        before = [ "NetworkManager.service" ];
+        wants  = [ "NetworkManager.service" ];
+      };
 
       sops.defaultSopsFile = ./secrets/default.yml;
       sops.defaultSopsFormat = "yaml";
@@ -47,7 +51,6 @@ let
         "ddclient/domain" = { key = "ddclient/domain"; };
         "ddclient/password" = { key = "ddclient/password"; };
 
-        "wifi/ssid" = { key = "wifi/ssid"; };
         "wifi/password" = { key = "wifi/password"; };
 
         "prefect/htpasswd" = {
@@ -73,33 +76,6 @@ let
         password=${config.sops.placeholder."ddclient/password"}
         www,adguard,bitwarden,home,prefect
       '';
-
-      sops.templates."nm-profiles/home-wlan".content = ''
-        [connection]
-        id=home-wlan
-        type=wifi
-        autoconnect=true
-        interface-name=wlan0
-
-        [wifi]
-        mode=infrastructure
-        ssid=${config.sops.placeholder."wifi/ssid"}
-
-        [wifi-security]
-        auth-alg=open
-        key-mgmt=wpa-psk
-        psk=${config.sops.placeholder."wifi/password"}
-
-        [ipv4]
-        method=auto
-
-        [ipv6]
-        addr-gen-mode=default
-        method=auto
-      '';
-
-      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
-        config.sops.templates."nm-profiles/home-wlan".path;
 
       # Copy the NixOS configuration file and link it from the resulting system
       # (/run/current-system/configuration.nix). This is useful in case you
