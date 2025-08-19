@@ -37,8 +37,8 @@
         parental_enabled = false;
         safe_search.enabled = false;
         filters = map(url: { enabled = true; url = url; }) [
-          "https://adguardteam.github.io/HostlistsRegistry/assets/filter_9.txt"  # The Big List of Hacked Malware Web Sites
-          "https://adguardteam.github.io/HostlistsRegistry/assets/filter_11.txt"  # malicious url blocklist
+          "https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_15_DnsFilter/filter.txt" # dns filter
+          "https://filters.adtidy.org/extension/chromium-mv3/filters/24.txt" # quick fixes filter
         ];
       };
     };
