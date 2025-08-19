@@ -29,7 +29,6 @@
   # Adguard Home
   adguardhome = {
     enable = true;
-    openFirewall = true;
     settings = {
       dns.upstream_dns = [ "127.0.0.1:5300" ];
       filtering = {
@@ -89,6 +88,12 @@
       "www.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
+      };
+
+      "adguard.acpuchades.com" = {
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:3000";
+        };
       };
 
       "prefect.acpuchades.com" = {

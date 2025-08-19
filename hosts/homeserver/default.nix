@@ -71,7 +71,7 @@ let
         server=dynamicdns.park-your-domain.com
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
-        www,bitwarden,home,prefect
+        www,adguard,bitwarden,home,prefect
       '';
 
       sops.templates."nm-profiles/home-wlan".content = ''
