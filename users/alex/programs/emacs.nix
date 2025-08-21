@@ -18,6 +18,9 @@
       corfu
       editorconfig
       envrc
+      ess
+      ess-smart-equals
+      ess-view-data
       gcmh
       ligature
       magit
@@ -28,6 +31,8 @@
       no-littering
       orderless
       org-bullets
+      polymode
+      rainbow-delimiters
       treesit-auto
       treesit-grammars.with-all-grammars
       use-package

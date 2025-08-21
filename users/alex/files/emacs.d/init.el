@@ -1,5 +1,15 @@
 ;; FUNCTION DEFINITIONS
 
+(defun my/enable-dark-mode ()
+	"Enable dark mode by activating dark theme"
+	(mapc #'disable-theme custom-enabled-themes)
+	(catppuccin-load-flavor 'mocha))
+
+(defun my/enable-light-mode ()
+	"Enable light mode by activating light theme"
+	(mapc #'disable-theme custom-enabled-themes)
+	(catppuccin-load-flavor 'latte))
+
 (defun my/set-cursor-type ()
 	"Change cursor shape depending on overwrite-mode."
 	(setq cursor-type (if overwrite-mode 'box 'bar)))
@@ -47,13 +57,10 @@
 ;; Keep Emacs directories clean
 (use-package no-littering
 	:init
-
 	;; Store customization settings separately
 	(setq custom-file
 		(no-littering-expand-etc-file-name "custom.el"))
-
 	(when (file-exists-p custom-file) (load custom-file :noerror))
-
 	;; Redirect backups/autosaves
 	(setq backup-directory-alist
 		`(("."  . ,(no-littering-expand-var-file-name "backup/"))))
@@ -81,29 +88,44 @@
 
 ;; Auto switch theme based on system appearance
 (use-package auto-dark
-  :if (display-graphic-p)
-  :after catppuccin-theme
+	:if (display-graphic-p)
+	:after catppuccin-theme
 	:custom
 		(auto-dark-allow-osascript          t) ;; macOS detection
 		(auto-dark-polling-interval-seconds 2) ;; Check every 2s
 	:init
 		(auto-dark-mode 1)
 	:hook
-		(auto-dark-dark-mode  . (lambda	()
-			(mapc #'disable-theme custom-enabled-themes)
-			(catppuccin-load-flavor 'mocha)))
-		(auto-dark-light-mode . (lambda ()
-			(mapc #'disable-theme custom-enabled-themes)
-			(catppuccin-load-flavor 'latte))))
+		(auto-dark-dark-mode  . #'my/enable-dark-mode)
+		(auto-dark-light-mode . #'my/enable-light-mode))
 
 ;; Python auto-formatter
 (use-package blacken
-	:hook (python-base-mode . blacken-mode)
+	:hook
+		(python-mode . blacken-mode)
+		(python-ts-mode . blacken-mode)
 	:custom (blacken-line-length 100))
+
+;; Completion at point extensions
+(use-package cape
+	:bind ("C-c p" . cape-prefix-map) ;; Alternative key: M-<tab>, M-p, M-+
+	:init
+	;; Add to the global default value of `completion-at-point-functions' which is
+	;; used by `completion-at-point'.  The order of the functions matters, the
+	;; first function returning a result wins.  Note that the list of buffer-local
+	;; completion functions takes precedence over the global list.
+	(add-hook 'completion-at-point-functions #'cape-dabbrev)
+	(add-hook 'completion-at-point-functions #'cape-file)
+	(add-hook 'completion-at-point-functions #'cape-elisp-block)
+	(add-hook 'completion-at-point-functions #'cape-elisp-symbol)
+	(add-hook 'completion-at-point-functions #'cape-history)
+	(add-hook 'completion-at-point-functions #'cape-keyword)
+	(add-hook 'completion-at-point-functions #'cape-emoji))
 
 ;; Catppuccin theme setup
 (use-package catppuccin-theme
-	:custom (catppuccin-flavor 'latte)
+	:custom
+		(catppuccin-flavor 'latte)
 	:config
 		(mapc #'disable-theme custom-enabled-themes)
 		(load-theme 'catppuccin t))
@@ -131,35 +153,46 @@
 ;; LSP client (built-in)
 (use-package eglot
 	:ensure nil
-	:hook (python-ts-mode . eglot-ensure)
+	:hook
+	(ess-r-mode     . eglot-ensure)
+	(python-ts-mode . eglot-ensure)
 	:custom
 		(eglot-sync-connect nil)
 		(flymake-no-changes-timeout 0.8)
 		(flymake-start-on-save-buffer t)
 		(flymake-start-on-newline nil)
 	:config
-		(add-to-list 'eglot-server-programs
-			'(python-ts-mode . ("pyright-langserver" "--stdio"))))
-
-;; Completion at point extensions
-(use-package cape
-	:bind ("C-c p" . cape-prefix-map) ;; Alternative key: M-<tab>, M-p, M-+
-	:init
-	;; Add to the global default value of `completion-at-point-functions' which is
-	;; used by `completion-at-point'.  The order of the functions matters, the
-	;; first function returning a result wins.  Note that the list of buffer-local
-	;; completion functions takes precedence over the global list.
-	(add-hook 'completion-at-point-functions #'cape-dabbrev)
-	(add-hook 'completion-at-point-functions #'cape-file)
-	(add-hook 'completion-at-point-functions #'cape-elisp-block)
-	(add-hook 'completion-at-point-functions #'cape-elisp-symbol)
-	(add-hook 'completion-at-point-functions #'cape-history)
-	(add-hook 'completion-at-point-functions #'cape-keyword)
-	(add-hook 'completion-at-point-functions #'cape-emoji))
+	(add-to-list 'eglot-server-programs
+		'(ess-r-mode     . ("R" "--slave" "-e" "languageserver::run()"))
+		'(python-ts-mode . ("pyright-langserver" "--stdio"))))
 
 ;; Envrc support
 (use-package envrc
 	:hook (after-init . envrc-global-mode))
+
+;; Emacs Speaks Statistics (R Support)
+(use-package ess
+	:mode
+	(("\\.[Rr]\\'"     . ess-r-mode)
+	 ("\\.Rprofile\\'" . ess-r-mode))
+	:custom
+		(ess-ask-for-ess-directory nil)
+		(ess-indent-offset         2)
+		(ess-use-flymake           nil))
+
+(use-package ess-r-mode
+	:after ess
+	:ensure nil
+	:no-require t
+	:bind (:map ess-r-mode-map
+				("C-c C-r"    . ess-eval-region)
+				("C-c C-b"    . ess-eval-buffer)
+				("C-c C-n"    . ess-eval-line)
+				("C-<return>" . ess-eval-region-or-function-or-paragraph-and-step)))
+
+(use-package ess-smart-equals
+	:after ess
+	:config (ess-smart-equals-activate))
 
 ;; Fix PATH in GUI Emacs (macOS)
 (use-package exec-path-from-shell
@@ -173,7 +206,6 @@
 		;; Defer GC while the minibuffer is active (snappier M-x etc.)
 		(defun my/gc-minibuffer-setup ()
 			(setq gc-cons-threshold most-positive-fixnum))
-
 		;; Restore a sane GC after minibuffer exits
 		(defun my/gc-minibuffer-exit ()
 			(setq gc-cons-threshold (* 128 1024 1024)
@@ -185,8 +217,7 @@
 		(gcmh-high-cons-threshold (* 64 1024 1024))
 	:hook
 		(minibuffer-setup . my/gc-minibuffer-setup)
-		(minibuffer-exit  . my/gc-minibuffer-exit)
-)
+		(minibuffer-exit  . my/gc-minibuffer-exit))
 
 ;; Icons in completion popups
 (use-package kind-icon
@@ -206,19 +237,20 @@
 	;; `variable-pitch' face supports it
 	(ligature-set-ligatures 'eww-mode '("ff" "fi" "ffi"))
 	;; Enable all Cascadia Code ligatures in programming modes
-	(ligature-set-ligatures 'prog-mode '("|||>" "<|||" "<==>" "<!--" "####" "~~>" "***" "||=" "||>"
-										 ":::" "::=" "=:=" "===" "==>" "=!=" "=>>" "=<<" "=/=" "!=="
-										 "!!." ">=>" ">>=" ">>>" ">>-" ">->" "->>" "-->" "---" "-<<"
-										 "<~~" "<~>" "<*>" "<||" "<|>" "<$>" "<==" "<=>" "<=<" "<->"
-										 "<--" "<-<" "<<=" "<<-" "<<<" "<+>" "</>" "###" "#_(" "..<"
-										 "..." "+++" "/==" "///" "_|_" "www" "&&" "^=" "~~" "~@" "~="
-										 "~>" "~-" "**" "*>" "*/" "||" "|}" "|]" "|=" "|>" "|-" "{|"
-										 "[|" "]#" "::" ":=" ":>" ":<" "$>" "==" "=>" "!=" "!!" ">:"
-										 ">=" ">>" ">-" "-~" "-|" "->" "--" "-<" "<~" "<*" "<|" "<:"
-										 "<$" "<=" "<>" "<-" "<<" "<+" "</" "#{" "#[" "#:" "#=" "#!"
-										 "##" "#(" "#?" "#_" "%%" ".=" ".-" ".." ".?" "+>" "++" "?:"
-										 "?=" "?." "??" ";;" "/*" "/=" "/>" "//" "__" "~~" "(*" "*)"
-										 "\\\\" "://"))
+	(ligature-set-ligatures 'prog-mode
+		'("|||>" "<|||" "<==>" "<!--" "####" "~~>" "***" "||=" "||>"
+		  ":::" "::=" "=:=" "===" "==>" "=!=" "=>>" "=<<" "=/=" "!=="
+		  "!!." ">=>" ">>=" ">>>" ">>-" ">->" "->>" "-->" "---" "-<<"
+		  "<~~" "<~>" "<*>" "<||" "<|>" "<$>" "<==" "<=>" "<=<" "<->"
+		  "<--" "<-<" "<<=" "<<-" "<<<" "<+>" "</>" "###" "#_(" "..<"
+		  "..." "+++" "/==" "///" "_|_" "www" "&&" "^=" "~~" "~@" "~="
+		  "~>" "~-" "**" "*>" "*/" "||" "|}" "|]" "|=" "|>" "|-" "{|"
+		  "[|" "]#" "::" ":=" ":>" ":<" "$>" "==" "=>" "!=" "!!" ">:"
+		  ">=" ">>" ">-" "-~" "-|" "->" "--" "-<" "<~" "<*" "<|" "<:"
+		  "<$" "<=" "<>" "<-" "<<" "<+" "</" "#{" "#[" "#:" "#=" "#!"
+		  "##" "#(" "#?" "#_" "%%" ".=" ".-" ".." ".?" "+>" "++" "?:"
+		  "?=" "?." "??" ";;" "/*" "/=" "/>" "//" "__" "~~" "(*" "*)"
+		  "\\\\" "://"))
 	(global-ligature-mode t))
 
 ;; Git interface
@@ -232,17 +264,17 @@
 
 ;; Multiple cursors
 (use-package multiple-cursors
-  :bind
-  (("C-S-c C-S-c" . mc/edit-lines)
-   ("C-S-<down>"  . mc/mark-next-like-this)
-   ("C-S-<up>"    . mc/mark-previous-like-this)
-   ("C-c C-<"     . mc/mark-all-like-this)))
+	:bind
+	(("C-S-c C-S-c" . mc/edit-lines)
+	 ("C-S-<down>"  . mc/mark-next-like-this)
+	 ("C-S-<up>"    . mc/mark-previous-like-this)
+	 ("C-c C-<"     . mc/mark-all-like-this)))
 
 ;; Nix
 (use-package nix-ts-mode
-  :mode ("\\.nix\\'" . nix-ts-mode)
-  :config (treesit-auto-add-to-auto-mode-alist 'nix)
-  :hook (nix-ts-mode . (lambda ()
+	:mode ("\\.nix\\'" . nix-ts-mode)
+	:config (treesit-auto-add-to-auto-mode-alist 'nix)
+	:hook (nix-ts-mode . (lambda ()
 	  (setq-local indent-tabs-mode nil tab-width 2))))
 
 ;; Fuzzy matching
@@ -311,7 +343,6 @@
 		(whitespace-style '(
 			empty
 			face
-			indentation
 			spaces
 			space-before-tab
 			space-after-tab
