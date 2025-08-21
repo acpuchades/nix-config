@@ -2,6 +2,10 @@
 
 let
 
+  positronConfigDir = if pkgs.stdenv.isDarwin
+  then "${config.home.homeDirectory}/Library/Application Support/Positron"
+  else "${config.xdg.configHome}/Positron";
+
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
       ipykernel
@@ -55,7 +59,6 @@ let
 
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
   radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
-  rstudio-with-packages = pkgs.rstudioWrapper.override { packages = r-packages; };
 
 in
 {
@@ -112,6 +115,21 @@ in
   # home.file.".xxx".text = ''
   #     xxx
   # '';
+
+  home.file."${positronConfigDir}/User/settings.json".text =
+    builtins.toJSON {
+      "positron.r.customBinaries" = [ "${pkgs.R}/bin/R" ];
+    };
+
+  #home.file.".Renviron".text = ''
+  #  R_LIBS_SITE=${pkgs.lib.makeSearchPath "library" r-packages}
+  #  R_LIBS_USER=
+  #'';
+
+  home.activation.writeRenviron = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    echo "R_LIBS_SITE=$(${r-with-packages}/bin/R --vanilla -s -e 'cat(paste(.libPaths(), collapse=":"))')" > "$HOME/.Renviron"
+    echo "R_LIBS_USER=" >> "$HOME/.Renviron"
+  '';
 
   # set cursor size and dpi for 4k monitor
   # xresources.properties = {
@@ -177,10 +195,10 @@ in
 
     # R
     pandoc
-    texliveSmall
+    positron-bin
     r-with-packages
     radian-with-packages
-    rstudio-with-packages
+    texliveSmall
   ];
 
   home.sessionVariables = {
