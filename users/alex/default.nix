@@ -121,14 +121,13 @@ in
       "positron.r.customBinaries" = [ "${pkgs.R}/bin/R" ];
     };
 
-  #home.file.".Renviron".text = ''
-  #  R_LIBS_SITE=${pkgs.lib.makeSearchPath "library" r-packages}
-  #  R_LIBS_USER=
-  #'';
+  home.file.".Rprofile".text = ''
+    dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
+  '';
 
   home.activation.writeRenviron = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    echo "R_LIBS_SITE=$(${r-with-packages}/bin/R --vanilla -s -e 'cat(paste(.libPaths(), collapse=":"))')" > "$HOME/.Renviron"
-    echo "R_LIBS_USER=" >> "$HOME/.Renviron"
+    echo "R_LIBS_SITE=$(${r-with-packages}/bin/R --vanilla -s -e 'Sys.getenv("R_LIBS_SITE")')" > ~/.Renviron
+    echo "R_LIBS_USER=~/.local/share/R/%p-library/%v" >> ~/.Renviron
   '';
 
   # set cursor size and dpi for 4k monitor
