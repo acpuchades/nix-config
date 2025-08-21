@@ -32,10 +32,12 @@ let
 
       # Networking configuration.
       networking = import ./networking.nix inputs;
-      systemd.services.NetworkManager-ensure-profiles = {
-        before = [ "NetworkManager.service" ];
-        wants  = [ "NetworkManager.service" ];
-      };
+
+      systemd.services.NetworkManager-ensure-profiles.before = [ "NetworkManager.service" ];
+      systemd.services.NetworkManager-ensure-profiles.wants  = [ "NetworkManager.service" ];
+
+      systemd.services.ddclient.after = [ "network-online.target" ];
+      systemd.services.ddclient.requires = [ "network-online.target" ];
 
       sops.defaultSopsFile = ./secrets/default.yml;
       sops.defaultSopsFormat = "yaml";
