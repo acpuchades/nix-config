@@ -1,6 +1,7 @@
 { pkgs, ... }:
 {
   enable = true;
+  package = pkgs.emacs-pgtk;
   extraConfig = ''
     ;; Nix-provided grammars
     (setq treesit-extra-load-path
