@@ -313,10 +313,21 @@
 	:after org
 	:hook (org-mode . org-bullets-mode))
 
+;; R-Markdown support
+(use-package polymode)
+(use-package poly-R)
+(use-package poly-markdown
+	:mode (("\\.md\\'"  . poly-markdown-mode)
+		   ("\\.Rmd\\'" . poly-markdown+r-mode)))
+
 ;; Project management
 (use-package project
 	:ensure nil
 	:config (project-remember-projects-under "~/GitHub"))
+
+;; Quarto support
+(use-package quarto-mode
+	:mode (("\\.qmd\\'" . poly-markdown+r-mode)))
 
 ;; Tree-sitter auto mode installation
 (use-package treesit-auto

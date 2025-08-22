@@ -32,6 +32,9 @@
       orderless
       org-bullets
       polymode
+      poly-markdown
+      poly-R
+      quarto-mode
       rainbow-delimiters
       treesit-auto
       treesit-grammars.with-all-grammars
