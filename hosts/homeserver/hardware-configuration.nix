@@ -43,6 +43,14 @@
       ];
     };
 
+    "/srv" = {
+      device = "/dev/disk/by-uuid/20240caa-cc06-4e97-8537-1a1ae9e617ba";
+      fsType = "btrfs";
+      options = [
+        "noatime"
+        "nofail"
+      ];
+    };
   };
 
   swapDevices = [
