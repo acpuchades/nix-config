@@ -54,6 +54,12 @@
       options = [ "bind" ];
       neededForBoot = true;
     };
+
+    "/var/lib/fugazi" = {
+      device = "/srv/fugazi";
+      options = [ "bind" ];
+      neededForBoot = true;
+    };
   };
 
   swapDevices = [
