@@ -45,21 +45,21 @@ let
 
       sops.secrets = {
 
+        "ddclient/domain" = { key = "ddclient/domain"; };
+        "ddclient/password" = { key = "ddclient/password"; };
+
         "passwd/alex" = {
           key = "passwd/alex";
           neededForUsers = true;
         };
-
-        "ddclient/domain" = { key = "ddclient/domain"; };
-        "ddclient/password" = { key = "ddclient/password"; };
-
-        "wifi/password" = { key = "wifi/password"; };
 
         "prefect/htpasswd" = {
           owner = "nginx";
           group = "nginx";
           mode = "0400";
         };
+
+        "wifi/password" = { key = "wifi/password"; };
 
         "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
         "wg/peers/alex-iphone/psk" = { key = "wireguard/peers/alex-iphone/psk"; };
