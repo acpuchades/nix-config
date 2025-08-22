@@ -96,8 +96,8 @@
 	:init
 		(auto-dark-mode 1)
 	:hook
-		(auto-dark-dark-mode  . #'my/enable-dark-mode)
-		(auto-dark-light-mode . #'my/enable-light-mode))
+		(auto-dark-dark-mode  . my/enable-dark-mode)
+		(auto-dark-light-mode . my/enable-light-mode))
 
 ;; Python auto-formatter
 (use-package blacken
@@ -374,9 +374,19 @@
 
 ;; Modifier keys mapping (macOS)
 (setq ns-alternate-modifier       'meta
-	  ns-right-alternate-modifier 'none)
+      ns-right-alternate-modifier 'none)
 
-(set-language-environment "Spanish")
+(set-language-environment  "Spanish")
+
+(set-charset-priority       'unicode)
+(setq locale-coding-system    'utf-8
+      coding-system-for-read  'utf-8
+      coding-system-for-write 'utf-8)
+(set-terminal-coding-system   'utf-8)
+(set-keyboard-coding-system   'utf-8)
+(prefer-coding-system         'utf-8)
+(setq default-process-coding-system '(utf-8-unix . utf-8-unix))
+
 
 (setq-default cursor-type 'bar)
 (add-hook 'overwrite-mode-hook #'my/set-cursor-type)
@@ -387,16 +397,17 @@
 
 ;; Save places & history
 (save-place-mode 1)
-(savehist-mode 1)
+(savehist-mode   1)
 
 ;; Use tabs for indentation
 (setq-default indent-tabs-mode  t
-			  tab-width         4)
+              tab-width         4)
 
 ;; Make backspace unindent
 (setq backward-delete-char-untabify-method 'hungry)
 (global-set-key (kbd "DEL") #'backward-delete-char-untabify)
 
+(setq use-short-answers t)
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
 
