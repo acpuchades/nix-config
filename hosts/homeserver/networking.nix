@@ -63,12 +63,13 @@
   firewall.enable = true;
   # Open ports in the firewall.
   firewall.allowedTCPPorts = [
-    53
-    80
-    443
+    53   # dns
+    80   # http
+    443  # https
+    8333 # bitcoin
   ];
   firewall.allowedUDPPorts = [
-    53
+    53   # dns
   ];
 
   # Enable NAT
