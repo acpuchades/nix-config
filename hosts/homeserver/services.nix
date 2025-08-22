@@ -52,6 +52,16 @@
     publish.userServices = true;
   };
 
+  # Bitcoin
+  bitcoind.main = {
+    enable = true;
+    extraConfig = ''
+      server=1
+      txindex=1
+      rpcallowip=127.0.0.1
+    '';
+  };
+
   # DDClient
   ddclient = {
     enable = true;
