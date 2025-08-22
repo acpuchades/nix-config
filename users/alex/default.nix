@@ -83,7 +83,7 @@ in
     key = "github/token";
   };
 
-  sops.templates."gh-hosts.yml".content = ''
+  sops.templates."gh/hosts.yml".content = ''
     github.com:
       user: acpuchades
       git_protocol: https
@@ -94,7 +94,7 @@ in
   # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
   home.file.".config/gh/hosts.yml".source =
     config.lib.file.mkOutOfStoreSymlink
-      config.sops.templates."gh-hosts.yml".path;
+      config.sops.templates."gh/hosts.yml".path;
 
   # link all files in `./scripts` to `~/.config/i3/scripts`
   # home.file.".config/i3/scripts" = {
