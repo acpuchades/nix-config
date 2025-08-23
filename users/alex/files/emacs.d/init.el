@@ -196,7 +196,8 @@
 	:bind
 	(("C-."   . embark-act)         ;; pick some comfortable binding
 	 ("C-;"   . embark-dwim)        ;; good alternative: do-what-I-mean
-	 ("C-h B" . embark-bindings)) ;; show all availEmbark integration
+	 ("C-h B" . embark-bindings)))  ;; show all availEmbark integration
+
 (use-package embark-consult
 	:after (embark consult)
 	:hook
@@ -254,6 +255,17 @@
 	:hook
 		(minibuffer-setup . my/gc-minibuffer-setup)
 		(minibuffer-exit  . my/gc-minibuffer-exit))
+
+;; Gptel
+(use-package gptel
+	:commands (gptel gptel-send gptel-rewrite gptel-menu)
+	:custom
+	(gptel-default-mode 'org-mode)
+	(gptel-stream               t)
+	:config
+	(setq gptel-backend (gptel-make-anthropic "Claude" :key (getenv "ANTHROPIC_API_KEY")
+							   :model "claude-35sonnet-20240620"))
+	(add-hook 'gptel-post-response-functions #'gptel-end-of-response))
 
 ;; Icons in completion popups
 (use-package kind-icon
@@ -453,6 +465,9 @@
 ;; Make backspace unindent
 (setq backward-delete-char-untabify-method 'hungry)
 (global-set-key (kbd "DEL") #'backward-delete-char-untabify)
+
+;; Enable delete selection mode
+(delete-selection-mode 1)
 
 (setq use-short-answers t)
 (setq confirm-kill-emacs 'y-or-n-p)
