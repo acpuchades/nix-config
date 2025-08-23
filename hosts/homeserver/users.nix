@@ -15,7 +15,7 @@
     group = "fugazi";
     createHome = false;
     isSystemUser = true;
-    home = "/var/empty";
+    home = "/srv/fugazi";
   };
 
   users.prefect = {
@@ -30,8 +30,9 @@
     isNormalUser = true;
     description = "Alejandro Caravaca Puchades";
     extraGroups = [
-      "wheel" # Enable 'sudo' for the user.
+      "wheel"
       "networkmanager"
+      "fugazi"
     ];
 
     hashedPasswordFile = config.sops.secrets."passwd/alex".path;

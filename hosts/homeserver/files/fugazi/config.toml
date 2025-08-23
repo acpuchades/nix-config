@@ -1,0 +1,12 @@
+[klines]
+path = '/srv/fugazi/klines'
+
+[epochs]
+window_length = 50
+window_stride = 25
+warm_up_periods = 100
+path = '/srv/fugazi/epochs'
+
+[epochs.pca]
+n_components = 20
+path = '/srv/fugazi/epoch-pca'
