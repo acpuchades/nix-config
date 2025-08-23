@@ -55,6 +55,7 @@
   # Bitcoin
   bitcoind.main = {
     enable = true;
+    dataDir = "/srv/bitcoind";
     extraConfig = ''
       server=1
       txindex=1
