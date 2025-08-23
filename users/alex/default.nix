@@ -1,10 +1,6 @@
-{ config, host, lib, pkgs, ... }:
+inputs@{ config, host, lib, pkgs, ... }:
 
 let
-
-  positronConfigDir = if pkgs.stdenv.isDarwin
-  then "${config.home.homeDirectory}/Library/Application Support/Positron"
-  else "${config.xdg.configHome}/Positron";
 
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
@@ -60,6 +56,10 @@ let
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
   radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
 
+  positronConfigDir = if pkgs.stdenv.isDarwin
+  then "${config.home.homeDirectory}/Library/Application Support/Positron"
+  else "${config.xdg.configHome}/Positron";
+
 in
 {
   # This value determines the home Manager release that your
@@ -72,14 +72,20 @@ in
   # changes in each release.
   home.stateVersion = "24.11";
 
-  programs = import ./programs { inherit pkgs; };
+  programs = import ./programs inputs;
 
   sops.age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
   sops.age.generateKey = true;
+  sops.defaultSopsFile = ./secrets/default.yml;
+  sops.defaultSopsFormat = "yaml";
+
+  sops.secrets."anthropic/token" = {
+    sopsFile = ./secrets/${host}.yml;
+    key = "anthropic/token";
+  };
 
   sops.secrets."github/token" = {
     sopsFile = ./secrets/${host}.yml;
-    format = "yaml";
     key = "github/token";
   };
 
@@ -207,6 +213,7 @@ in
     LC_TIME = "en_DK.UTF-8";
     LC_NUMERIC = "en_US.UTF-8";
     PAGER = "bat --paging=always";
+
   };
 
   home.shellAliases = {

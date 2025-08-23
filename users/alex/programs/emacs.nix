@@ -25,6 +25,7 @@
       ess-smart-equals
       ess-view-data
       gcmh
+      gptel
       ligature
       magit
       marginalia

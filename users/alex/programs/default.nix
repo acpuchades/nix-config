@@ -1,4 +1,4 @@
-inputs@{ pkgs }:
+inputs@{ pkgs, ... }:
 {
   # Let home Manager install and manage itself.
   home-manager.enable = true;
