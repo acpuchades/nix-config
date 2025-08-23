@@ -130,6 +130,31 @@
 		(mapc #'disable-theme custom-enabled-themes)
 		(load-theme 'catppuccin t))
 
+;; Consult
+(use-package consult
+	:bind (
+	;; C-c bindings (prefix map)
+	("C-c h"   . consult-history)
+	("C-c m"   . consult-mode-command)
+	("C-c k"   . consult-kmacro)
+	;; C-x bindings (ctl-x-map)
+	("C-x M-:" . consult-complex-command)
+	("C-x b"   . consult-buffer)
+	("C-x 4 b" . consult-buffer-other-window)
+	("C-x 5 b" . consult-buffer-other-frame)
+	("C-x r b" . consult-bookmark)
+	("C-x p b" . consult-project-buffer)
+	;; M-g bindings (goto-map)
+	("M-g g"   . consult-goto-line)
+	("M-g M-g" . consult-goto-line)
+	;; M-s bindings (search-map)
+	("M-s r"   . consult-ripgrep)
+	("M-s l"   . consult-line)
+	("M-s L"   . consult-line-multi)
+	("M-s m"   . consult-multi-occur)
+	("M-s k"   . consult-keep-lines)
+	("M-s u"   . consult-focus-lines)))
+
 ;; Completion UI
 (use-package corfu
 	:init
@@ -165,6 +190,17 @@
 	(add-to-list 'eglot-server-programs
 		'(ess-r-mode     . ("R" "--slave" "-e" "languageserver::run()"))
 		'(python-ts-mode . ("pyright-langserver" "--stdio"))))
+
+;; Embark
+(use-package embark
+	:bind
+	(("C-."   . embark-act)         ;; pick some comfortable binding
+	 ("C-;"   . embark-dwim)        ;; good alternative: do-what-I-mean
+	 ("C-h B" . embark-bindings)) ;; show all availEmbark integration
+(use-package embark-consult
+	:after (embark consult)
+	:hook
+	(embark-collect-mode . consult-preview-at-point-mode))
 
 ;; Envrc support
 (use-package envrc
