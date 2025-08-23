@@ -12,24 +12,29 @@ let
 	import ./settings.nix inputs
 	// {
 
-	  # Necessary for using flakes on this system.
-	  nix.settings.experimental-features = "nix-command flakes";
+    # Necessary for using flakes on this system.
+    nix.settings.experimental-features = "nix-command flakes";
 
-	  # Set Git commit hash for darwin-version.
-	  system.configurationRevision = self.rev or self.dirtyRev or null;
+    # Set Git commit hash for darwin-version.
+    system.configurationRevision = self.rev or self.dirtyRev or null;
 
-	  # Used for backwards compatibility, please read the changelog before changing.
-	  # $ darwin-rebuild changelog
-	  system.stateVersion = 5;
+    # Used for backwards compatibility, please read the changelog before changing.
+    # $ darwin-rebuild changelog
+    system.stateVersion = 5;
 
-	  # Set the primary user for the system.
-	  system.primaryUser = "alex";
+    # Set the primary user for the system.
+    system.primaryUser = "alex";
 
-	  #sops.defaultSopsFile = ./secrets/default.yml;
-	  sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+    sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
+    sops.defaultSopsFile = ./secrets/default.yml;
+    sops.defaultSopsFormat = "yaml";
 
-	  environment.systemPackages = import ./packages.nix inputs;
-	  homebrew = import ./homebrew.nix inputs;
+    environment.systemPackages = import ./packages.nix inputs;
+    environment.variables = {
+      HOMEBREW_AUTO_UPDATE_SECS = "86400";
+    };
+
+    homebrew = import ./homebrew.nix inputs;
 	};
 
 in
@@ -39,13 +44,13 @@ nix-darwin.lib.darwinSystem {
 	sops-nix.darwinModules.sops
 	home-manager.darwinModules.home-manager
 	{
-	  home-manager.useGlobalPkgs = true;
-	  home-manager.useUserPackages = true;
-	  home-manager.users.alex = import ../../users/alex;
-	  home-manager.extraSpecialArgs = { host = "macbookpro"; };
-	  home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+    home-manager.useGlobalPkgs = true;
+    home-manager.useUserPackages = true;
+    home-manager.users.alex = import ../../users/alex;
+    home-manager.extraSpecialArgs = { host = "macbookpro"; };
+    home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
-	  users.users.alex.home = "/Users/alex";
+    users.users.alex.home = "/Users/alex";
 	}
   ];
 }
