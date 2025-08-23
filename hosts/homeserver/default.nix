@@ -13,8 +13,7 @@ let
 
   configuration =
     inputs@{ config, lib, pkgs, ... }:
-    import ./settings.nix inputs
-    // {
+    import ./settings.nix inputs // {
 
       imports = [
         # Include the results of the hardware scan.
@@ -27,18 +26,24 @@ let
       # You can use https://search.nixos.org/ to find more packages (and options).
       environment.systemPackages = import ./packages.nix inputs;
 
+      # List configuration files to be stored under /etc.
+      environment.etc."fugazi/config.toml" = {
+        source = ./files/fugazi/config.toml;
+        mode = "0440";
+        user = "fugazi";
+        group = "fugazi";
+      };
+
       # List services that you want to enable:
       services = import ./services.nix inputs;
 
       # Networking configuration.
       networking = import ./networking.nix inputs;
 
-      systemd.services.NetworkManager-ensure-profiles.before = [ "NetworkManager.service" ];
-      systemd.services.NetworkManager-ensure-profiles.wants  = [ "NetworkManager.service" ];
+      # Systemd configuration.
+      systemd = import ./systemd.nix inputs;
 
-      systemd.services.ddclient.after = [ "network-online.target" ];
-      systemd.services.ddclient.requires = [ "network-online.target" ];
-
+      # SOPS-Nix configuration.
       sops.defaultSopsFile = ./secrets/default.yml;
       sops.defaultSopsFormat = "yaml";
       sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
