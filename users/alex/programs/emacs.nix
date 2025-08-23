@@ -15,8 +15,11 @@
       blacken
       cape
       catppuccin-theme
+      consult
       corfu
       editorconfig
+      embark
+      embark-consult
       envrc
       ess
       ess-smart-equals
