@@ -8,43 +8,6 @@
     enable = true; # Easiest to use and most distros use this by default.
     wifi.backend = "iwd";
     dns = "systemd-resolved";
-
-    ensureProfiles = {
-      profiles = {
-
-        "MIWIFI_5G_dehC" = {
-          connection = {
-            uuid = "0AF6F35B-C389-4D9E-8B86-3D0308CA335F";
-            id = "MIWIFI_5G_dehC";
-            type = "wifi";
-            autoconnect = true;
-            autoconnect-priority = 100;
-            interface-name = "wlan0";
-          };
-          wifi = {
-            mode = "infrastructure";
-            ssid = "MIWIFI_5G_dehC";
-          };
-          wifi-security = {
-            key-mgmt = "wpa-psk";
-            psk-flags = 1;
-          };
-          ipv4.method = "auto";
-          ipv6.method = "auto";
-        };
-
-      };
-
-      secrets.entries = [
-        {
-          file = config.sops.secrets."wifi/password".path;
-          matchId = "MIWIFI_5G_dehC";
-          matchType = "wifi";
-          matchSetting = "wifi-security";
-          key = "psk";
-        }
-      ];
-    };
   };
 
   wireless.iwd.enable = true;

@@ -20,29 +20,6 @@ let
         ./hardware-configuration.nix
       ];
 
-      users = import ./users.nix inputs;
-
-      # List packages installed in system profile.
-      # You can use https://search.nixos.org/ to find more packages (and options).
-      environment.systemPackages = import ./packages.nix inputs;
-
-      # List configuration files to be stored under /etc.
-      environment.etc."fugazi/config.toml" = {
-        source = ./files/fugazi/config.toml;
-        mode = "0440";
-        user = "fugazi";
-        group = "fugazi";
-      };
-
-      # List services that you want to enable:
-      services = import ./services.nix inputs;
-
-      # Networking configuration.
-      networking = import ./networking.nix inputs;
-
-      # Systemd configuration.
-      systemd = import ./systemd.nix inputs;
-
       # SOPS-Nix configuration.
       sops.defaultSopsFile = ./secrets/default.yml;
       sops.defaultSopsFormat = "yaml";
@@ -64,6 +41,7 @@ let
           mode = "0400";
         };
 
+        "wifi/network" = { key = "wifi/network"; };
         "wifi/password" = { key = "wifi/password"; };
 
         "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
@@ -83,6 +61,58 @@ let
         password=${config.sops.placeholder."ddclient/password"}
         www,adguard,bitwarden,home,prefect
       '';
+
+      sops.templates."nm-profiles/home-wlan".content = ''
+        [connection]
+        id=home-wlan
+        uuid=0AF6F35B-C389-4D9E-8B86-3D0308CA335F
+        type=wifi
+        autoconnect=true
+        autoconnect-priority=100
+        interface-name=wlan0
+
+        [wifi]
+        ssid=${config.sops.placeholder."wifi/network"}
+        mode=infrastructure
+
+        [wifi-security]
+        key-mgmt=wpa-psk
+        psk=${config.sops.placeholder."wifi/password"}
+
+        [ipv4]
+        method=auto
+
+        [ipv6]
+        method=auto
+      '';
+
+      users = import ./users.nix inputs;
+
+      # List packages installed in system profile.
+      # You can use https://search.nixos.org/ to find more packages (and options).
+      environment.systemPackages = import ./packages.nix inputs;
+
+      # List configuration files to be stored under /etc.
+      environment.etc."fugazi/config.toml" = {
+        source = ./files/fugazi/config.toml;
+        mode = "0440";
+        user = "fugazi";
+        group = "fugazi";
+
+      };
+
+      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
+        config.sops.templates."nm-profiles/home-wlan".path;
+
+      tmpfiles.rules = [
+        "d /srv/fugazi 2770 fugazi fugazi -"
+      ];
+
+      # List services that you want to enable:
+      services = import ./services.nix inputs;
+
+      # Networking configuration.
+      networking = import ./networking.nix inputs;
 
       # Copy the NixOS configuration file and link it from the resulting system
       # (/run/current-system/configuration.nix). This is useful in case you
