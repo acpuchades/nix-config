@@ -178,6 +178,7 @@ in
     mkpasswd
 
     # Dev
+    aider-chat
     awscli2
     docker
 

@@ -86,6 +86,12 @@
 (use-package all-the-icons-dired
 	:hook (dired-mode . all-the-icons-dired-mode))
 
+;; Aider integration
+(use-package aidermacs
+	:bind (("C-c a" . aidermacs-transient-menu))
+	:custom
+	(aidermacs-default-model "sonnet"))
+
 ;; Auto switch theme based on system appearance
 (use-package auto-dark
 	:if (display-graphic-p)
@@ -234,7 +240,7 @@
 ;; Fix PATH in GUI Emacs (macOS)
 (use-package exec-path-from-shell
 	:if (memq window-system '(mac ns x))
-	:init (setq exec-path-from-shell-variables '("PATH" "MANPATH"))
+	:init (setq exec-path-from-shell-variables '("PATH" "MANPATH" "ANTHROPIC_API_KEY"))
 	:config (exec-path-from-shell-initialize))
 
 ;; Smarter GC management
@@ -255,17 +261,6 @@
 	:hook
 		(minibuffer-setup . my/gc-minibuffer-setup)
 		(minibuffer-exit  . my/gc-minibuffer-exit))
-
-;; Gptel
-(use-package gptel
-	:commands (gptel gptel-send gptel-rewrite gptel-menu)
-	:custom
-	(gptel-default-mode 'org-mode)
-	(gptel-stream               t)
-	:config
-	(setq gptel-backend (gptel-make-anthropic "Claude" :key (getenv "ANTHROPIC_API_KEY")
-							   :model "claude-35sonnet-20240620"))
-	(add-hook 'gptel-post-response-functions #'gptel-end-of-response))
 
 ;; Icons in completion popups
 (use-package kind-icon
