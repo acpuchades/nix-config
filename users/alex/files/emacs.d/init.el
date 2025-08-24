@@ -240,7 +240,8 @@
 ;; Fix PATH in GUI Emacs (macOS)
 (use-package exec-path-from-shell
 	:if (memq window-system '(mac ns x))
-	:init (setq exec-path-from-shell-variables '("PATH" "MANPATH" "ANTHROPIC_API_KEY"))
+	:init
+	(setq exec-path-from-shell-variables '("ANTHROPIC_API_KEY" "MANPATH" "PATH"))
 	:config (exec-path-from-shell-initialize))
 
 ;; Smarter GC management
@@ -424,7 +425,11 @@
 (setenv "EDITOR" "emacs")
 (setenv "VISUAL" "emacs")
 
-(setq ring-bell-function 'ignore) ;; No bell
+;; Disable bell sounds
+(setq ring-bell-function 'ignore)
+
+;; Adjust font size scaling step
+(setq text-scale-mode-step 1.05)
 
 ;; Modifier keys mapping (macOS)
 (setq ns-alternate-modifier       'meta
