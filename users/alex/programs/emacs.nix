@@ -9,6 +9,7 @@
   '';
   extraPackages =
     epkgs: with epkgs; [
+      aidermacs
       all-the-icons
       all-the-icons-dired
       auto-dark
@@ -25,7 +26,6 @@
       ess-smart-equals
       ess-view-data
       gcmh
-      gptel
       ligature
       magit
       marginalia
