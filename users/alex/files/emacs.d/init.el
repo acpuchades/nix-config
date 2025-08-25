@@ -473,16 +473,35 @@
   (vterm-toggle-scope 'project)
   (vterm-toggle-fullscreen-p nil)
   :config
-  (add-to-list 'display-buffer-alist
-               '(my/is-vterm-display-buffer-p
-                 (display-buffer-at-bottom)
-                 (dedicated       .      t)
-                 (reusable-frames .    nil)
-                 (window-height   .    0.3))))
+  (add-to-list 'display-buffer-alist '(my/is-vterm-display-buffer-p
+                                       (display-buffer-at-bottom)
+                                       (dedicated       .      t)
+                                       (reusable-frames .    nil)
+                                       (window-height   .    0.3))))
 
 ;; Which-key help
 (use-package which-key
   :init (which-key-mode))
+
+;; Indentation & whitespace
+(use-package whitespace
+  :ensure nil
+  :hook
+    (prog-mode . (lambda ()
+      (whitespace-mode 1)
+      (add-hook 'before-save-hook 'whitespace-cleanup nil t)))
+  :custom
+    (require-final-newline t)
+    (whitespace-style '(
+      empty
+      face
+      spaces
+      space-before-tab
+      space-after-tab
+      tabs
+      tab-mark
+      trailing
+)))
 
 ;; USER SETTINGS
 
