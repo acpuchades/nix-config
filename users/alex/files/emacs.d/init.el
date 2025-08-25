@@ -390,6 +390,38 @@
 (use-package quarto-mode
   :mode (("\\.qmd\\'" . poly-markdown+r-mode)))
 
+;; Treemacs
+(use-package treemacs
+  :defer t
+  :bind
+  (:map global-map
+        ("C-x t t"   . treemacs)
+        ("C-x t d"   . treemacs-select-directory)
+        ("C-x t B"   . treemacs-bookmark)
+        ("C-x t C-t" . treemacs-find-file)
+        ("M-0"       . treemacs-select-window))
+  :custom
+  (treemacs-width 40)
+  (treemacs-position 'left)
+  (treemacs-is-never-other-window t)
+  (treemacs-collapse-dirs 3)
+  (treemacs-show-hidden-files nil)
+  (treemacs-sorting 'alphabetic-asc)
+  (treemacs-indentation 2)
+  (treemacs-git-mode 'deferred)
+  (treemacs-find-workspace-method 'find-for-file-or-pick-first)
+  :config
+  (treemacs-follow-mode 1)
+  (treemacs-filewatch-mode 1)
+  (treemacs-project-follow-mode 1))
+
+(use-package treemacs-all-the-icons
+  :after (treemacs all-the-icons)
+  :config
+  (treemacs-load-theme "all-the-icons"))
+
+(use-package treemacs-magit
+  :after (treemacs magit))
 
 ;; Tree-sitter auto mode installation
 (use-package treesit-auto
@@ -446,7 +478,7 @@
                  (display-buffer-at-bottom)
                  (dedicated       .      t)
                  (reusable-frames .    nil)
-                 (window-height   .   0.25))))
+                 (window-height   .    0.3))))
 
 ;; Which-key help
 (use-package which-key

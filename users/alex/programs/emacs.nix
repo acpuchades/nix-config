@@ -39,7 +39,9 @@
       poly-markdown
       poly-R
       quarto-mode
-      rainbow-delimiters
+      treemacs
+      treemacs-all-the-icons
+      treemacs-magit
       treesit-auto
       treesit-grammars.with-all-grammars
       use-package
