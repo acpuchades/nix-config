@@ -510,10 +510,6 @@
 (unless (server-running-p)
   (server-start))
 
-;; Set emacs as editor from within
-(setenv "EDITOR" "emacsclient -n")
-(setenv "VISUAL" "emacsclient -n")
-
 ;; Disable bell sounds
 (setq ring-bell-function 'ignore)
 

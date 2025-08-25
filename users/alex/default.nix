@@ -208,13 +208,13 @@ in
   ];
 
   home.sessionVariables = {
-    EDITOR = "vim";
+    EDITOR = "emacsclient -n -a ''";
+    VISUAL = "emacsclient -n -a ''";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
     LC_TIME = "en_DK.UTF-8";
     LC_NUMERIC = "en_US.UTF-8";
     PAGER = "bat --paging=always";
-
   };
 
   home.shellAliases = {
