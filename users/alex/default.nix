@@ -89,6 +89,16 @@ in
     key = "github/token";
   };
 
+  sops.secrets."prefect/user" = {
+    sopsFile = ./secrets/default.yml;
+    key = "prefect/user";
+  };
+
+  sops.secrets."prefect/password" = {
+    sopsFile = ./secrets/default.yml;
+    key = "prefect/password";
+  };
+
   sops.templates."gh/hosts.yml".content = ''
     github.com:
       user: acpuchades
@@ -96,11 +106,19 @@ in
       oauth_token: ${config.sops.placeholder."github/token"}
   '';
 
+  sops.templates."prefect/profiles.toml".content = ''
+    active = "ephemeral"
+
+    [profiles.local]
+    PREFECT_API_URL = "http://127.0.0.1:4200/api"
+
+    [profiles.homeserver]
+    PREFECT_API_URL = "https://prefect.acpuchades.com/api"
+    PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
+  '';
+
   # link the configuration file in current directory to the specified location in home directory
   # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
-  home.file.".config/gh/hosts.yml".source =
-    config.lib.file.mkOutOfStoreSymlink
-      config.sops.templates."gh/hosts.yml".path;
 
   # link all files in `./scripts` to `~/.config/i3/scripts`
   # home.file.".config/i3/scripts" = {
@@ -108,6 +126,7 @@ in
   #   recursive = true;   # link recursively
   #   executable = true;  # make all files executable
   # };
+
   home.file.".emacs.d" = {
     source = ./files/emacs.d;
     recursive = true;
@@ -129,6 +148,24 @@ in
 
   home.file.".Rprofile".text = ''
     dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
+  '';
+
+  home.activation.installGithubHosts = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
+    dst="$HOME/.config/gh/hosts.yml"
+    src='${config.sops.templates."gh/hosts.yml".path}'
+    mkdir -p "$HOME/.config/gh"
+    if [ ! -f "$dst" ]; then
+      install -m600 "$src" "$dst"
+    fi
+  '';
+
+  home.activation.installPrefectProfiles = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
+    dst="$HOME/.prefect/profiles.toml"
+    src='${config.sops.templates."prefect/profiles.toml".path}'
+    mkdir -p "$HOME/.prefect"
+    if [ ! -f "$dst" ]; then
+      install -m600 "$src" "$dst"
+    fi
   '';
 
   home.activation.writeRenviron = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -181,6 +218,7 @@ in
     aider-chat
     awscli2
     docker
+    prefect
 
     # Nix
     nil
