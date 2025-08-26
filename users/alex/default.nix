@@ -185,7 +185,6 @@ in
   home.packages = with pkgs; [
 
     # Fonts
-    emacs-all-the-icons-fonts
     font-awesome
     nerd-fonts.fira-code
     nerd-fonts.symbols-only

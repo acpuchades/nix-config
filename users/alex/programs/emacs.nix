@@ -10,8 +10,6 @@
   extraPackages =
     epkgs: with epkgs; [
       aidermacs
-      all-the-icons
-      all-the-icons-dired
       auto-dark
       blacken
       cape
@@ -33,6 +31,10 @@
       marginalia
       markdown-mode
       multiple-cursors
+      nerd-icons
+      nerd-icons-corfu
+      nerd-icons-dired
+      nerd-icons-ibuffer
       nix-ts-mode
       no-littering
       orderless
@@ -45,7 +47,7 @@
       rainbow-mode
       super-save
       treemacs
-      treemacs-all-the-icons
+      treemacs-nerd-icons
       treemacs-magit
       treesit-auto
       treesit-grammars.with-all-grammars
