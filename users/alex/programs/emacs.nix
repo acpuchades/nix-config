@@ -18,6 +18,7 @@
       catppuccin-theme
       consult
       corfu
+      dashboard
       doom-modeline
       editorconfig
       embark

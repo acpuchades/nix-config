@@ -189,6 +189,11 @@
   :bind
     (:map corfu-map ("M-SPC" . corfu-insert-separator)))
 
+;; Dashboard
+(use-package dashboard
+  :config
+  (dashboard-setup-startup-hook))
+
 ;; Doom modeline
 (use-package doom-modeline
   :hook (after-init . doom-modeline-mode))
