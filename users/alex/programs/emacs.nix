@@ -18,6 +18,7 @@
       catppuccin-theme
       consult
       corfu
+      doom-modeline
       editorconfig
       embark
       embark-consult
@@ -34,11 +35,14 @@
       nix-ts-mode
       no-littering
       orderless
-      org-bullets
+      org-modern
+      org-roam
       polymode
       poly-markdown
       poly-R
       quarto-mode
+      rainbow-mode
+      super-save
       treemacs
       treemacs-all-the-icons
       treemacs-magit

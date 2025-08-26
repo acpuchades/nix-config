@@ -189,6 +189,10 @@
   :bind
     (:map corfu-map ("M-SPC" . corfu-insert-separator)))
 
+;; Doom modeline
+(use-package doom-modeline
+  :hook (after-init . doom-modeline-mode))
+
 ;; EditorConfig support
 (use-package editorconfig
   :config (editorconfig-mode 1))
@@ -326,10 +330,9 @@
 ;; Multiple cursors
 (use-package multiple-cursors
   :bind
-  (("C-S-c C-S-c" . mc/edit-lines)
-   ("C-S-<down>"  . mc/mark-next-like-this)
-   ("C-S-<up>"  . mc/mark-previous-like-this)
-   ("C-c C-<"   . mc/mark-all-like-this)))
+  (("C->"     . mc/mark-next-like-this)
+   ("C-<"     . mc/mark-previous-like-this)
+   ("C-c C-<" . mc/mark-all-like-this)))
 
 ;; Nix
 (use-package nix-ts-mode
@@ -347,15 +350,15 @@
   :mode ("\\.org\\'" . org-mode)
   :hook (org-mode . org-indent-mode)
   :custom
-    (org-ellipsis         " ▼")
-    (org-enforce-todo-dependencies    t)
+    (org-ellipsis " ▼")
+    (org-enforce-todo-dependencies t)
     (org-enforce-todo-checkbox-dependencies t)
-    (org-hide-emphasis-markers      t)
-    (org-hide-leading-stars     t)
-    (org-special-ctrl-a/e       t)
-    (org-use-fast-todo-selection    t)
-    (org-log-done         'time)
-    (org-startup-folded       'showeverything)
+    (org-hide-emphasis-markers t)
+    (org-hide-leading-stars t)
+    (org-special-ctrl-a/e t)
+    (org-use-fast-todo-selection t)
+    (org-log-done 'time)
+    (org-startup-folded 'showeverything)
     (org-todo-keywords
       '((sequence "TODO(t)" "ACTIVE(a)" "WAITING(w)" "|" "DONE(d)" "CANCELLED(c)")))
     (org-tag-alist
@@ -370,16 +373,25 @@
   :config
     (set-face-attribute 'org-ellipsis nil :underline nil))
 
-(use-package org-bullets
-  :after org
-  :hook (org-mode . org-bullets-mode))
+(use-package org-modern
+  :hook (org-mode . org-modern-mode)
+  :custom
+  (org-modern-todo-faces
+   '(("WAIT" . (:inherit warning :weight bold)))))
+
+(use-package org-roam
+  :custom (org-roam-directory "~/Org/roam")
+  :bind (("C-c n l" . org-roam-buffer-toggle)
+         ("C-c n f" . org-roam-node-find)
+         ("C-c n i" . org-roam-node-insert))
+  :config (org-roam-db-autosync-mode))
 
 ;; R-Markdown support
 (use-package polymode)
 (use-package poly-R)
 (use-package poly-markdown
   :mode (("\\.md\\'"  . poly-markdown-mode)
-       ("\\.Rmd\\'" . poly-markdown+r-mode)))
+         ("\\.Rmd\\'" . poly-markdown+r-mode)))
 
 ;; Project management
 (use-package project
@@ -389,6 +401,20 @@
 ;; Quarto support
 (use-package quarto-mode
   :mode (("\\.qmd\\'" . poly-markdown+r-mode)))
+
+;; Rainbow delimiters
+(use-package rainbow-delimiters
+  :hook ((prog-mode conf-mode) . rainbow-delimiters-mode))
+
+;; Rainbow mode
+(use-package rainbow-mode
+  :hook ((css-mode html-mode conf-mode prog-mode) . rainbow-mode)
+  :custom (rainbow-x-colors nil)) ; avoid huge X11 name list in completions
+
+;; Auto-save files when idle
+(use-package super-save
+  :init (super-save-mode 1)
+  :custom (super-save-auto-save-when-idle t))
 
 ;; Treemacs
 (use-package treemacs
@@ -436,30 +462,11 @@
 (use-package vertico
   :init (vertico-mode))
 
-;; Indentation & whitespace
-(use-package whitespace
-  :ensure nil
-  :hook
-    (prog-mode . (lambda ()
-      (whitespace-mode 1)
-      (add-hook 'before-save-hook 'whitespace-cleanup nil t)))
-  :custom
-    (require-final-newline t)
-    (whitespace-style '(
-      empty
-      face
-      spaces
-      space-before-tab
-      space-after-tab
-      tabs
-      tab-mark
-      trailing
-)))
-
 ;; Terminal emulator
 (use-package vterm
   :commands vterm
-  :custom (vterm-timer-delay 0.01))
+  :custom
+  (vterm-timer-delay 0.01))
 
 (use-package vterm-toggle
   :bind (("C-c v" . vterm-toggle))
@@ -531,7 +538,6 @@
 (prefer-coding-system       'utf-8)
 (setq default-process-coding-system '(utf-8-unix . utf-8-unix))
 
-
 (setq-default cursor-type 'bar)
 (add-hook 'overwrite-mode-hook #'my/set-cursor-type)
 
@@ -539,13 +545,14 @@
 (setq font-lock-maximum-decoration t)
 (global-font-lock-mode 1)
 
-;; Save places & history
-(save-place-mode 1)
+;; Save recent files, history & places
+(recentf-mode    1)
 (savehist-mode   1)
+(save-place-mode 1)
 
-;; Use tabs for indentation
-(setq-default indent-tabs-mode  t
-              tab-width         4)
+;; Avoid tabs for indentation
+(setq-default indent-tabs-mode nil
+              tab-width          4)
 
 ;; Make backspace unindent
 (setq backward-delete-char-untabify-method 'hungry)
@@ -554,14 +561,10 @@
 ;; Enable delete selection mode
 (delete-selection-mode 1)
 
+;; GUI tweaks
 (setq use-short-answers t)
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
-
-;; Font
-(set-face-attribute 'default nil
-  :family "FiraCode Nerd Font Mono"
-  :height 130)
 
 ;; Line numbers in prog-mode
 (add-hook 'prog-mode-hook #'column-number-mode)
@@ -570,3 +573,17 @@
 ;; Column indicator
 (setq display-fill-column-indicator-column 100)
 (add-hook 'prog-mode-hook #'display-fill-column-indicator-mode)
+
+;; Main Monospace font
+(set-face-attribute 'default nil
+                    :family "FiraCode Nerd Font Mono"
+                    :height 130)
+
+;; Prefer Symbols NF for private-use glyphs (NF v3)
+(when (find-font (font-spec :family "Symbols Nerd Font Mono"))
+  (set-fontset-font t 'symbol  (font-spec :family "Symbols Nerd Font Mono") nil 'prepend)
+  (set-fontset-font t 'unicode (font-spec :family "Symbols Nerd Font Mono") nil 'prepend))
+
+;; Good idea on macOS: ensure emoji fallback too
+(when (find-font (font-spec :family "Apple Color Emoji"))
+  (set-fontset-font t 'emoji (font-spec :family "Apple Color Emoji") nil 'prepend))

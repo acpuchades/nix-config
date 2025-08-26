@@ -188,6 +188,10 @@ in
     emacs-all-the-icons-fonts
     font-awesome
     nerd-fonts.fira-code
+    nerd-fonts.symbols-only
+    nerd-fonts.ubuntu
+    nerd-fonts.ubuntu-mono
+    nerd-fonts.ubuntu-sans
 
     # System
     apg
