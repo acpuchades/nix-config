@@ -66,11 +66,11 @@
     (when (file-exists-p custom-file) (load custom-file :noerror))
     ;; Redirect backups/autosaves
     (setq backup-directory-alist
-        `(("."  . ,(no-littering-expand-var-file-name    "backup/"))))
+        `(("."  . ,(no-littering-expand-var-file-name "backup/"))))
     (setq auto-save-file-name-transforms
         `((".*"   ,(no-littering-expand-var-file-name "auto-save/") t)))
     (setq auto-save-list-file-prefix
-        (no-littering-expand-var-file-name   "auto-save/sessions/"))
+        (no-littering-expand-var-file-name "auto-save/sessions/"))
 
     ;; Redirect histories & caches
     (setq recentf-save-file           (no-littering-expand-var-file-name   "recentf.el")
@@ -81,13 +81,18 @@
           url-history-file            (no-littering-expand-var-file-name  "url/history"))
 
     ;; Redirect Eshell history
-    (setq eshell-history-file-name (no-littering-expand-var-file-name "eshell/history")))
+    (setq eshell-history-file-name (no-littering-expand-var-file-name  "eshell/history")))
 
-(use-package all-the-icons
-    :if (display-graphic-p)) ;; Icons only in GUI mode
-
-(use-package all-the-icons-dired
-    :hook (dired-mode . all-the-icons-dired-mode))
+;; Nerd icons everywhere
+(use-package nerd-icons)
+(use-package nerd-icons-corfu
+  :after corfu
+  :config
+  (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode))
+(use-package nerd-icons-ibuffer
+  :hook (ibuffer-mode . nerd-icons-ibuffer-mode))
 
 ;; Aider integration
 (use-package aidermacs
@@ -191,6 +196,18 @@
 
 ;; Dashboard
 (use-package dashboard
+  :custom
+  (dashboard-startup-banner 'logo)
+  (dashboard-center-content t)
+  (dashboard-verticallly-center-content t)
+  (dashboard-display-icons-p t)
+  (dashboard-icon-type 'nerd-icons)
+  (dashboard-set-heading-icons t)
+  (dashboard-set-file-icons t)
+  (dashboard-items '((projects  . 5)
+                     (recents   . 5)
+                     (bookmarks . 5)
+                     (agenda    . 5)))
   :config
   (dashboard-setup-startup-hook))
 
@@ -288,15 +305,6 @@
     (focus-out  . #'garbage-collect)
     (minibuffer-setup . my/gc-minibuffer-setup)
     (minibuffer-exit  . my/gc-minibuffer-exit))
-
-;; Icons in completion popups
-(use-package kind-icon
-  :after corfu
-  :custom
-    (kind-icon-use-icons t)
-    (kind-icon-default-face 'corfu-default)
-  :config
-    (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
 
 ;; Ligatures
 (use-package ligature
@@ -446,10 +454,10 @@
   (treemacs-filewatch-mode 1)
   (treemacs-project-follow-mode 1))
 
-(use-package treemacs-all-the-icons
-  :after (treemacs all-the-icons)
+(use-package treemacs-nerd-icons
+  :after (treemacs nerd-icons)
   :config
-  (treemacs-load-theme "all-the-icons"))
+  (treemacs-load-theme "nerd-icons"))
 
 (use-package treemacs-magit
   :after (treemacs magit))
