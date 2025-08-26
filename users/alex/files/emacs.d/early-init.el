@@ -6,7 +6,7 @@
 ;; Set frame size and other visual parameters before first frame
 (setq default-frame-alist
       '((width                . 120)
-        (height               .  40)
+        (height               .  60)
         (menu-bar-lines       .   0)
         (tool-bar-lines       .   0)
         (vertical-scroll-bars . nil)))
