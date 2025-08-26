@@ -197,7 +197,7 @@
 ;; Dashboard
 (use-package dashboard
   :custom
-  (dashboard-startup-banner 'logo)
+  (dashboard-startup-banner "~/.emacs.d/share/logo.svg")
   (dashboard-center-content t)
   (dashboard-verticallly-center-content t)
   (dashboard-display-icons-p t)
