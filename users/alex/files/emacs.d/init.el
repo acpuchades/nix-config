@@ -484,7 +484,7 @@
                                        (display-buffer-at-bottom)
                                        (dedicated       .      t)
                                        (reusable-frames .    nil)
-                                       (window-height   .    0.3))))
+                                       (window-height   .    0.4))))
 
 ;; Which-key help
 (use-package which-key
@@ -566,15 +566,15 @@
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
 
-;; Line numbers in prog-mode
-(add-hook 'prog-mode-hook #'column-number-mode)
-(add-hook 'prog-mode-hook #'display-line-numbers-mode)
+;; Programming tweaks
+(add-hook 'prog-mode-hook #'hl-line-mode)  ;; highlight line
+(add-hook 'prog-mode-hook #'column-number-mode)  ;; column numbers
+(add-hook 'prog-mode-hook #'display-line-numbers-mode)  ;; line numbers
 
-;; Column indicator
 (setq display-fill-column-indicator-column 100)
-(add-hook 'prog-mode-hook #'display-fill-column-indicator-mode)
+(add-hook 'prog-mode-hook #'display-fill-column-indicator-mode)  ;; fill column
 
-;; Main Monospace font
+;; Set fira code mono as default
 (set-face-attribute 'default nil
                     :family "FiraCode Nerd Font Mono"
                     :height 130)
