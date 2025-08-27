@@ -104,7 +104,7 @@ let
       environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
         config.sops.templates."nm-profiles/home-wlan".path;
 
-      tmpfiles.rules = [
+      systemd.tmpfiles.rules = [
         "d /srv/fugazi 2770 fugazi fugazi -"
       ];
 
