@@ -109,6 +109,14 @@
         };
       };
 
+      "bitwarden.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:8222";
+        };
+      };
+
       "prefect.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
@@ -161,6 +169,12 @@
       X11Forwarding = false;
     };
     openFirewall = true; # keep closed by default; open explicitly if needed
+  };
+
+  # Bitwarden
+  vaultwarden = {
+    enable = true;
+    dbBackend = "postgresql";
   };
 
 }
