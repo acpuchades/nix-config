@@ -113,7 +113,7 @@
         forceSSL = true;
         enableACME = true;
         locations."/" = {
-          proxyPass = "http://127.0.0.1:8222";
+          proxyPass = "http://127.0.0.1:8000";
         };
       };
 
@@ -134,10 +134,17 @@
   # Postgres
   postgresql = {
     enable = true;
-    ensureDatabases = [ "prefect" ];
+    ensureDatabases = [
+      "prefect"
+      "vaultwarden"
+    ];
     ensureUsers = [
       {
         name = "prefect";
+        ensureDBOwnership = true;
+      }
+      {
+        name = "vaultwarden";
         ensureDBOwnership = true;
       }
     ];
@@ -175,6 +182,10 @@
   vaultwarden = {
     enable = true;
     dbBackend = "postgresql";
+    config = {
+      DOMAIN = "https://bitwarden.acpuchades.com";
+      DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
+    };
   };
 
 }
