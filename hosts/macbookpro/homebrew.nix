@@ -8,7 +8,7 @@
   taps = [ ];
 
   brews = [
-  "mas"
+    "mas"
   ];
 
   casks = [
@@ -18,7 +18,6 @@
     "affinity-publisher"
     "alcove"
     "balenaetcher"
-    "bitwarden"
     "blender"
     "claude"
     "cleanshot"
@@ -36,6 +35,7 @@
     "the-unarchiver"
     "transmission"
     "unclack"
+    "veracrypt"
     "whatsapp"
     "zoom"
     "zotero"
