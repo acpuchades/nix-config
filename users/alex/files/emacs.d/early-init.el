@@ -4,12 +4,14 @@
 (scroll-bar-mode -1)
 
 ;; Set frame size and other visual parameters before first frame
-(setq default-frame-alist
-      '((width                . 120)
-        (height               .  50)
-        (menu-bar-lines       .   0)
-        (tool-bar-lines       .   0)
-        (vertical-scroll-bars . nil)))
+(setq default-frame-alist '((width                . 120)
+                            (height               .  50)
+                            (menu-bar-lines       .   0)
+                            (tool-bar-lines       .   0)
+                            (vertical-scroll-bars . nil)))
+
+(when (eq window-system 'ns)
+  (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t)))
 
 ;; Avoid resizing flicker
 (setq frame-inhibit-implied-resize t)

@@ -1,18 +1,25 @@
 ;; FUNCTION DEFINITIONS
 
 (defun my/enable-dark-mode ()
-    "Enable dark mode by activating dark theme"
-    (mapc #'disable-theme custom-enabled-themes)
-    (catppuccin-load-flavor 'mocha))
+  "Enable dark mode by activating dark theme"
+  (unless (eq catppuccin-flavor 'mocha)
+    (setq catppuccin-flavor 'mocha)
+    (catppuccin-reload)))
 
 (defun my/enable-light-mode ()
-    "Enable light mode by activating light theme"
-    (mapc #'disable-theme custom-enabled-themes)
-    (catppuccin-load-flavor 'latte))
+  "Enable light mode by activating light theme"
+  (unless (eq catppuccin-flavor 'latte)
+    (setq catppuccin-flavor 'latte)
+    (catppuccin-reload)))
+
+(defun my/apply-system-appearance ()
+  "Apply appropriate theme depending on system mode"
+  (if (eq (frame-parameter nil 'background-mode) 'dark)
+      (my/enable-dark-mode) (my/enable-light-mode)))
 
 (defun my/set-cursor-type ()
-    "Change cursor shape depending on overwrite-mode."
-    (setq cursor-type (if overwrite-mode 'box 'bar)))
+  "Change cursor shape depending on overwrite-mode."
+  (setq cursor-type (if overwrite-mode 'box 'bar)))
 
 ;; PERFORMANCE TWEAKS
 
@@ -113,19 +120,20 @@
   :if (display-graphic-p)
   :after catppuccin-theme
   :custom
-    (auto-dark-allow-osascript    t) ;; macOS detection
-    (auto-dark-polling-interval-seconds 2) ;; Check every 2s
+  (auto-dark-allow-osascript t) ;; macOS detection
+  (auto-dark-polling-interval-seconds 2) ;; Check every 2s
   :init
-    (auto-dark-mode 1)
+  (auto-dark-mode 1)
   :hook
-    (auto-dark-dark-mode  . my/enable-dark-mode)
-    (auto-dark-light-mode . my/enable-light-mode))
+  (window-setup . my/apply-system-appearance)
+  (auto-dark-dark-mode  . my/enable-dark-mode)
+  (auto-dark-light-mode . my/enable-light-mode))
 
 ;; Python auto-formatter
 (use-package blacken
   :hook
-    (python-mode . blacken-mode)
-    (python-ts-mode . blacken-mode)
+  (python-mode . blacken-mode)
+  (python-ts-mode . blacken-mode)
   :custom (blacken-line-length 100))
 
 ;; Completion at point extensions
@@ -147,10 +155,10 @@
 ;; Catppuccin theme setup
 (use-package catppuccin-theme
   :custom
-    (catppuccin-flavor 'latte)
+  (catppuccin-flavor 'latte)
   :config
-    (mapc #'disable-theme custom-enabled-themes)
-    (load-theme 'catppuccin t))
+  (mapc #'disable-theme custom-enabled-themes)
+  (load-theme 'catppuccin :no-confirm))
 
 ;; Consult
 (use-package consult
