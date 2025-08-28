@@ -152,7 +152,7 @@ in
     dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
   '';
 
-  home.activation.installGithubHosts = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
+  home.activation.installGhHosts = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
     dst="$HOME/.config/gh/hosts.yml"
     src='${config.sops.templates."gh/hosts.yml".path}'
     mkdir -p "$HOME/.config/gh"
