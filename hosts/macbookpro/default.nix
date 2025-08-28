@@ -32,6 +32,7 @@ let
     environment.systemPackages = import ./packages.nix inputs;
     environment.variables = {
       HOMEBREW_AUTO_UPDATE_SECS = "86400";
+      HOMEBREW_NO_ENV_HINTS = "1";
     };
 
     homebrew = import ./homebrew.nix inputs;
