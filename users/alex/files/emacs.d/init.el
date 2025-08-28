@@ -369,9 +369,9 @@
 ;; Org mode tweaks
 (use-package org
   :mode ("\\.org\\'" . org-mode)
+  :bind (("C-c a" . org-agenda))
   :hook (org-mode . org-indent-mode)
   :custom
-    (org-ellipsis " ▼")
     (org-enforce-todo-dependencies t)
     (org-enforce-todo-checkbox-dependencies t)
     (org-hide-emphasis-markers t)
@@ -380,28 +380,49 @@
     (org-use-fast-todo-selection t)
     (org-log-done 'time)
     (org-startup-folded 'showeverything)
+    (org-agenda-files (directory-files-recursively "~/Org" "\\.org$"))
     (org-todo-keywords
-      '((sequence "TODO(t)" "ACTIVE(a)" "WAITING(w)" "|" "DONE(d)" "CANCELLED(c)")))
+     '((sequence "TODO(t)" "NEXT(a)" "|" "DONE(d)")
+       (sequence "WAITING(w@/!)" "HOLD(h@/!)" "|" "CANCELLED(c@/!)")))
     (org-tag-alist
       '((:startgroup)
         ("@home"     . ?h)
-        ("@work"     . ?w)
-        ("@errand"   . ?e)
+        ("@hospital" . ?b)
         ("@computer" . ?c)
+        ("@tablet"   . ?t)
         ("@phone"    . ?p)
-        ("@online"   . ?o)
-      (:endgroup)))
+        ("@email"    . ?m)
+        ("@errand"   . ?e)
+        (:endgroup)))
+    (org-agenda-custom-commands
+     `(
+       ;; Quick single-views
+       ("h" "Home"           tags-todo "@home")
+       ("b" "Hospital"       tags-todo "@hospital")
+       ("c" "Computer"       tags-todo "@computer")
+       ("t" "Tablet"         tags-todo "@tablet")
+       ("m" "Email"          tags-todo "@email")
+       ("p" "Phone calls"    tags-todo "@phone")
+       ("e" "Errands"        tags-todo "@errand")
+       ("n" "Next actions"   todo      "NEXT")
+       ("w" "Waiting"        todo      "WAITING")
+       ("j" "On hold"        todo      "HOLD")
+      ))
   :config
     (set-face-attribute 'org-ellipsis nil :underline nil))
 
 (use-package org-modern
-  :hook (org-mode . org-modern-mode)
+  :after org
+  :hook
+  (org-mode . org-modern-mode)
   :custom
-  (org-modern-todo-faces
-   '(("WAIT" . (:inherit warning :weight bold)))))
+  (org-ellipsis " ▼")
+  (org-auto-align-tags nil)
+  (org-tags-column 0)
+  (org-pretty-entities t))
 
 (use-package org-roam
-  :custom (org-roam-directory "~/Org/roam")
+  :custom (org-roam-directory "~/Org/Roam")
   :bind (("C-c n l" . org-roam-buffer-toggle)
          ("C-c n f" . org-roam-node-find)
          ("C-c n i" . org-roam-node-insert))
