@@ -529,7 +529,32 @@
       tabs
       tab-mark
       trailing
-)))
+      )))
+
+(use-package yasnippet
+  :preface
+  (defun my/yas-alias-tree-sitter-modes ()
+    "Alias tree-sitter modes to their non-ts counterparts for yasnippet"
+    (when (boundp 'yas-extra-modes)
+      (pcase major-mode
+        ('bash-ts-mode       (add-to-list 'yas-extra-modes 'sh-mode))
+        ('c-ts-mode          (add-to-list 'yas-extra-modes 'c-mode))
+        ('c++-ts-mode        (add-to-list 'yas-extra-modes 'c++-mode))
+        ('css-ts-mode        (add-to-list 'yas-extra-modes 'css-mode))
+        ('javascript-ts-mode (add-to-list 'yas-extra-modes 'js-mode))
+        ('python-ts-mode     (add-to-list 'yas-extra-modes 'python-mode))
+        ('typescript-ts-mode (add-to-list 'yas-extra-modes 'typescript-mode))
+        ('json-ts-mode       (add-to-list 'yas-extra-modes 'json-mode))
+        ('yaml-ts-mode       (add-to-list 'yas-extra-modes 'yaml-mode))
+      )))
+  :hook
+  (prog-mode      . yas-minor-mode)
+  (yas-minor-mode . my/yas-alias-tree-sitter-modes)
+  :config
+  (yas-reload-all))
+
+(use-package yasnippet-snippets
+  :after yasnippet)
 
 ;; USER SETTINGS
 
