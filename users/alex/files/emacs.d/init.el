@@ -48,6 +48,10 @@
 ;; Smooth frame resizing
 (setq frame-resize-pixelwise t)
 
+;; KEYBOARD MAPS
+(define-prefix-command 'my/terminal-map)
+(global-set-key (kbd "C-c t") 'my/terminal-map)
+
 ;; PACKAGE CONFIG
 
 ;; Manually initialize packages (auto-init is disabled in early-init.el)
@@ -251,6 +255,10 @@
 ;; Envrc support
 (use-package envrc
   :hook (after-init . envrc-global-mode))
+
+;; EShell
+(use-package eshell
+  :bind (:map my/terminal-map ("e" . eshell)))
 
 ;; Emacs Speaks Statistics (R Support)
 (use-package ess
@@ -507,11 +515,14 @@
 ;; Terminal emulator
 (use-package vterm
   :commands vterm
+  :bind
+  (:map my/terminal-map ("v" . vterm))
   :custom
   (vterm-timer-delay 0.01))
 
 (use-package vterm-toggle
-  :bind (("C-c v" . vterm-toggle))
+  :bind
+  (:map my/terminal-map ("t" . vterm-toggle))
   :preface
   (defun my/is-vterm-display-buffer-p (buffer-or-name _)
     (let ((buffer (get-buffer buffer-or-name)))
