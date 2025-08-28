@@ -90,20 +90,9 @@
     ;; Redirect Eshell history
     (setq eshell-history-file-name (no-littering-expand-var-file-name  "eshell/history")))
 
-;; Nerd icons everywhere
-(use-package nerd-icons)
-(use-package nerd-icons-corfu
-  :after corfu
-  :config
-  (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
-(use-package nerd-icons-dired
-  :hook (dired-mode . nerd-icons-dired-mode))
-(use-package nerd-icons-ibuffer
-  :hook (ibuffer-mode . nerd-icons-ibuffer-mode))
-
 ;; Aider integration
 (use-package aidermacs
-  :bind (("C-c a" . aidermacs-transient-menu))
+  :bind (("C-c A" . aidermacs-transient-menu))
   :init
   (add-to-list 'display-buffer-alist
                '("\\*Aider\\*"
@@ -231,8 +220,8 @@
 (use-package eglot
   :ensure nil
   :hook
-  (ess-r-mode   . eglot-ensure)
-  (nix-ts-mode  . eglot-ensure)
+  (ess-r-mode     . eglot-ensure)
+  (nix-ts-mode    . eglot-ensure)
   (python-ts-mode . eglot-ensure)
   :custom
   (eglot-sync-connect nil)
@@ -241,11 +230,11 @@
   (flymake-start-on-newline nil)
   :config
   (add-to-list 'eglot-server-programs
-         '(nix-ts-mode  . ("nil")))
+               '(nix-ts-mode  . ("nil")))
   (add-to-list 'eglot-server-programs
-         '(ess-r-mode   . ("R" "--slave" "-e" "languageserver::run()")))
+               '(ess-r-mode   . ("R" "--slave" "-e" "languageserver::run()")))
   (add-to-list 'eglot-server-programs
-         '(python-ts-mode . ("pyright-langserver" "--stdio"))))
+               '(python-ts-mode python-mode . ("pyright-langserver" "--stdio"))))
 
 ;; Embark
 (use-package embark
@@ -354,6 +343,17 @@
   (("C->"     . mc/mark-next-like-this)
    ("C-<"     . mc/mark-previous-like-this)
    ("C-c C-<" . mc/mark-all-like-this)))
+
+;; Nerd icons everywhere
+(use-package nerd-icons)
+(use-package nerd-icons-corfu
+  :after corfu
+  :config
+  (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode))
+(use-package nerd-icons-ibuffer
+  :hook (ibuffer-mode . nerd-icons-ibuffer-mode))
 
 ;; Nix
 (use-package nix-ts-mode
