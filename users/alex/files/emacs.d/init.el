@@ -448,7 +448,7 @@
         ("C-x t C-t" . treemacs-find-file)
         ("M-0"       . treemacs-select-window))
   :custom
-  (treemacs-width 40)
+  (treemacs-width 30)
   (treemacs-position 'left)
   (treemacs-is-never-other-window t)
   (treemacs-collapse-dirs 3)
@@ -462,13 +462,13 @@
   (treemacs-filewatch-mode 1)
   (treemacs-project-follow-mode 1))
 
+(use-package treemacs-magit
+  :after (treemacs magit))
+
 (use-package treemacs-nerd-icons
   :after (treemacs nerd-icons)
   :config
   (treemacs-load-theme "nerd-icons"))
-
-(use-package treemacs-magit
-  :after (treemacs magit))
 
 ;; Tree-sitter auto mode installation
 (use-package treesit-auto
