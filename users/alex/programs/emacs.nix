@@ -56,5 +56,7 @@
       vterm
       vterm-toggle
       which-key
+      yasnippet
+      yasnippet-snippets
     ];
 }
