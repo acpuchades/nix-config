@@ -48,13 +48,8 @@
 ;; Smooth frame resizing
 (setq frame-resize-pixelwise t)
 
-;; KEYBOARD MAPS
-(define-prefix-command 'my/terminal-map)
-(global-set-key (kbd "C-c t") 'my/terminal-map)
-
 ;; PACKAGE CONFIG
 
-;; Manually initialize packages (auto-init is disabled in early-init.el)
 (require 'package)
 (package-initialize)
 
@@ -256,19 +251,28 @@
 (use-package envrc
   :hook (after-init . envrc-global-mode))
 
-;; EShell
+;; Eshell
 (use-package eshell
-  :bind (:map my/terminal-map ("e" . eshell)))
+  :bind ("C-x e" . eshell))
+
+;; Eshell Toggle
+(use-package eshell-toggle
+  :bind ("C-c e" . eshell-toggle)
+  :custom
+  (eshell-toggle-size-fraction 3)
+  (eshell-toggle-default-directory "~")
+  (eshell-toggle-find-project-root-package 'project)
+  (eshell-toggle-init-function #'eshell-toggle-init-eshell))
 
 ;; Emacs Speaks Statistics (R Support)
 (use-package ess
   :mode
-  (("\\.[Rr]\\'"   . ess-r-mode)
+  (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
   :custom
-    (ess-ask-for-ess-directory nil)
-    (ess-indent-offset   2)
-    (ess-use-flymake     nil))
+  (ess-ask-for-ess-directory nil)
+  (ess-indent-offset 2)
+  (ess-use-flymake nil))
 
 (use-package ess-r-mode
   :after ess
@@ -511,33 +515,6 @@
 ;; Minibuffer completion
 (use-package vertico
   :init (vertico-mode))
-
-;; Terminal emulator
-(use-package vterm
-  :commands vterm
-  :bind
-  (:map my/terminal-map ("v" . vterm))
-  :custom
-  (vterm-timer-delay 0.01))
-
-(use-package vterm-toggle
-  :bind
-  (:map my/terminal-map ("t" . vterm-toggle))
-  :preface
-  (defun my/is-vterm-display-buffer-p (buffer-or-name _)
-    (let ((buffer (get-buffer buffer-or-name)))
-      (with-current-buffer buffer
-        (or (equal major-mode 'vterm-mode)
-            (string-prefix-p vterm-buffer-name (buffer-name buffer))))))
-  :custom
-  (vterm-toggle-scope 'project)
-  (vterm-toggle-fullscreen-p nil)
-  :config
-  (add-to-list 'display-buffer-alist '(my/is-vterm-display-buffer-p
-                                       (display-buffer-at-bottom)
-                                       (dedicated       .      t)
-                                       (reusable-frames .    nil)
-                                       (window-height   .    0.4))))
 
 ;; Which-key help
 (use-package which-key
