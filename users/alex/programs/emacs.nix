@@ -22,6 +22,7 @@
       embark
       embark-consult
       envrc
+      eshell-toggle
       ess
       ess-smart-equals
       ess-view-data
@@ -53,8 +54,6 @@
       treesit-grammars.with-all-grammars
       use-package
       vertico
-      vterm
-      vterm-toggle
       which-key
       yasnippet
       yasnippet-snippets
