@@ -288,6 +288,11 @@
   :after ess
   :config (ess-smart-equals-activate))
 
+(use-package ess-view-data
+  :after ess
+  :bind (:map ess-r-mode-map
+         ("C-c v" . ess-view-data-print)))
+
 ;; Fix PATH in GUI Emacs (macOS)
 (use-package exec-path-from-shell
   :if (memq window-system '(mac ns x))
