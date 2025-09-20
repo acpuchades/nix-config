@@ -3,7 +3,6 @@
 with pkgs;
 [
   # System
-  bartender
   bitwarden-desktop
   ext4fuse
   ntfs3g

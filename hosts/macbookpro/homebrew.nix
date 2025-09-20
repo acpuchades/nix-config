@@ -17,9 +17,7 @@
     "affinity-photo"
     "affinity-publisher"
     "alcove"
-    "balenaetcher"
-    "blender"
-    "claude"
+    "bartender"
     "cleanshot"
     "clop"
     "ghostty"
@@ -49,7 +47,6 @@
     Noir = 1592917505;
     Reeder = 6475002485;
     Things3 = 904280696;
-    WindowsApp = 1295203466;
     WireGuard = 1451685025;
   };
 }
