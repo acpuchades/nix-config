@@ -269,6 +269,14 @@
   :mode
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
+  :preface
+  (defun my/ess-repl-setup ()
+    (setq-local comint-prompt-read-only t
+                comint-input-ignoredups t
+                comint-buffer-maximum-size 20000)
+    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
+  :hook
+  (inferior-ess-r-mode . my/ess-repl-setup)
   :custom
   (ess-ask-for-ess-directory nil)
   (ess-indent-offset 2)
@@ -278,11 +286,29 @@
   :after ess
   :ensure nil
   :no-require t
-  :bind (:map ess-r-mode-map
-        ("C-c C-r"  . ess-eval-region)
-        ("C-c C-b"  . ess-eval-buffer)
-        ("C-c C-n"  . ess-eval-line)
-        ("C-<return>" . ess-eval-region-or-function-or-paragraph-and-step)))
+  :preface
+  (defun my/ess-at-cmdline-p ()
+    (when-let ((proc (get-buffer-process (current-buffer))))
+      (>= (point) (marker-position (process-mark proc)))))
+  (defun my/ess-goto-cmdline ()
+    (interactive)
+    (goto-char (marker-position (process-mark (get-buffer-process (current-buffer))))))
+  (defun my/ess-up-or-prev-line ()
+    (interactive)
+    (if (my/ess-at-cmdline-p) (comint-previous-input 1) (previous-line 1)))
+  (defun my/ess-down-or-next-line ()
+    (interactive)
+    (if (my/ess-at-cmdline-p) (comint-next-input 1) (next-line 1)))
+  :bind
+  (:map ess-r-mode-map
+        ("C-c C-r"    . ess-eval-region)
+        ("C-c C-b"    . ess-eval-buffer)
+        ("C-c C-n"    . ess-eval-line)
+        ("C-<return>" . ess-eval-region-or-function-or-paragraph-and-step))
+  (:map inferior-ess-r-mode-map
+        ("C-a"        . my/ess-goto-cmdline)
+        ("<up>"       . my/ess-up-or-prev-line)
+        ("<down>"     . my/ess-down-or-next-line)))
 
 (use-package ess-smart-equals
   :after ess
@@ -316,7 +342,7 @@
     (gcmh-idle-delay 2)
     (gcmh-high-cons-threshold (* 64 1024 1024))
   :hook
-    (focus-out  . #'garbage-collect)
+    (focus-out . #'garbage-collect)
     (minibuffer-setup . my/gc-minibuffer-setup)
     (minibuffer-exit  . my/gc-minibuffer-exit))
 
@@ -433,7 +459,7 @@
   :hook
   (org-mode . org-modern-mode)
   :custom
-  (org-ellipsis " ▼")
+  ;(org-ellipsis " ▼")
   (org-auto-align-tags nil)
   (org-tags-column 0)
   (org-pretty-entities t))
@@ -634,16 +660,32 @@
 (setq display-fill-column-indicator-column 100)
 (add-hook 'prog-mode-hook #'display-fill-column-indicator-mode)  ;; fill column
 
+;; Text editing tweaks
+(add-hook 'text-mode-hook #'visual-line-mode)
+
 ;; Set fira code mono as default
 (set-face-attribute 'default nil
                     :family "FiraCode Nerd Font Mono"
                     :height 130)
+
+;; Proper Unicode symbols first
+(when (find-font (font-spec :family "Noto Sans Symbols2"))
+  (set-fontset-font t 'symbol "Noto Sans Symbols2" nil 'prepend))
+(when (find-font (font-spec :family "Noto Sans Symbols"))
+  (set-fontset-font t 'symbol "Noto Sans Symbols"  nil 'prepend))
+
+;; Good idea on macOS: ensure emoji fallback too
+(when (find-font (font-spec :family "Apple Color Emoji"))
+  (set-fontset-font t 'emoji (font-spec :family "Apple Color Emoji") nil 'prepend))
+
+;; Emoji fallback
+(when (find-font (font-spec :family "Noto Color Emoji"))
+  (set-fontset-font t 'emoji "Noto Color Emoji" nil 'prepend))
 
 ;; Prefer Symbols NF for private-use glyphs (NF v3)
 (when (find-font (font-spec :family "Symbols Nerd Font Mono"))
   (set-fontset-font t 'symbol  (font-spec :family "Symbols Nerd Font Mono") nil 'prepend)
   (set-fontset-font t 'unicode (font-spec :family "Symbols Nerd Font Mono") nil 'prepend))
 
-;; Good idea on macOS: ensure emoji fallback too
-(when (find-font (font-spec :family "Apple Color Emoji"))
-  (set-fontset-font t 'emoji (font-spec :family "Apple Color Emoji") nil 'prepend))
+(when (find-font (font-spec :family "Unifont"))
+  (set-fontset-font t 'unicode "Unifont" nil 'append))
