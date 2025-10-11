@@ -39,12 +39,13 @@ let
     labelled
     languageserver
     lme4
+    MatchIt
     mgcv
     nls_multstart
     nlme
     psych
     readxl
-    renv
+    rix
     robustlmm
     rmarkdown
     RSQLite
@@ -142,13 +143,7 @@ in
   #     xxx
   # '';
 
-  home.file."${positronConfigDir}/User/settings.json".text =
-    builtins.toJSON {
-      "positron.r.customBinaries" = [ "${pkgs.R}/bin/R" ];
-    };
-
   home.file.".Rprofile".text = ''
-
     dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
   '';
 
@@ -168,6 +163,10 @@ in
     if [ ! -f "$dst" ]; then
       install -m600 "$src" "$dst"
     fi
+  '';
+
+  home.activation.writePositronConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    echo '{ "positron.r.customBinaries": [ "${pkgs.R}/bin/R" ] }' > "${positronConfigDir}/User/settings.json"
   '';
 
   home.activation.writeRenviron = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
@@ -193,6 +192,10 @@ in
     nerd-fonts.ubuntu
     nerd-fonts.ubuntu-mono
     nerd-fonts.ubuntu-sans
+    noto-fonts
+    noto-fonts-extra
+    noto-fonts-emoji
+    unifont
 
     # System
     apg
@@ -221,12 +224,12 @@ in
 
     # Dev
     aider-chat
-    awscli2
     docker
     prefect
 
     # Nix
     nil
+    nix-direnv
     nixd
     nixfmt-rfc-style
     sops
