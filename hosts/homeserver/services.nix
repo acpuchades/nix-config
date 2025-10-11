@@ -70,7 +70,7 @@
   };
 
   # DNSCrypt
-  dnscrypt-proxy2 = {
+  dnscrypt-proxy = {
     enable = true;
     settings = {
       server_names = [
