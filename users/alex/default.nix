@@ -28,7 +28,6 @@ let
     emmeans
     ggeffects
     ggsurvfit
-    ggpubr
     gamm4
     glmmTMB
     gtsummary
@@ -46,7 +45,6 @@ let
     psych
     readxl
     rix
-    robustlmm
     rmarkdown
     RSQLite
     sjPlot
@@ -224,6 +222,7 @@ in
 
     # Dev
     aider-chat
+
     docker
     prefect
 
