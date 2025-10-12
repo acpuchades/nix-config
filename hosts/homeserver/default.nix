@@ -64,6 +64,15 @@ let
         www,adguard,bitwarden,home,prefect
       '';
 
+      sops.templates."postfix/sasl_passwd" = {
+        owner = "postfix";
+        group = "postfix";
+        mode = "0400";
+        content = ''
+          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:"{config.sops.placeholder."mailjet/secret"}
+        '';
+      };
+
       sops.templates."nm-profiles/home-wlan".content = ''
         [connection]
         id=home-wlan

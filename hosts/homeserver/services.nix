@@ -88,23 +88,23 @@
   };
 
   # SMTP
-  msmtp = {
+  postfix = {
     enable = true;
-    setSendmail = true;
-    defaults = {
-      tls = true;
-      tls_starttls = true;
-      auth = true;
-      logfile = "/var/log/msmtp.log";
+    hostname = "mail.acpuchades.com";
+    settings.main = {
+      relayHost = [
+        "[in-v3.mailjet.com]:587"
+      ];
+      inet_interfaces = "loopback-only";
+      mydestination = "";
+      smtp_address_preference = "ipv4";
+      smtp_use_tls = "yes";
+      smtp_tls_security_level = "encrypt";
+      smtp_tls_loglevel = "1";
+      smtp_sasl_auth_enable = "yes";
+      smtp_sasl_password_maps = "hash:${config.sops.templates."postfix/sasl_passwd".path}";
+      smtp_sasl_security_options = "noanonymous";
     };
-    accounts.default = {
-      host = "in-v3.mailjet.com";
-      port = 587;
-      from = "admin@acpuchades.com";
-      user = "${config.sops.placeholder."mailjet/token"}";
-      passwordeval = "cat ${config.sops.secrets."mailjet/secret".path}";
-    };
-    accountDefault = "default";
   };
 
   # Nginx
