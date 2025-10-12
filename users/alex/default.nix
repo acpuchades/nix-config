@@ -99,21 +99,21 @@ in
   };
 
   sops.templates."gh/hosts.yml".content = ''
-    github.com:
-      user: acpuchades
-      git_protocol: https
-      oauth_token: ${config.sops.placeholder."github/token"}
+  github.com:
+    user: acpuchades
+    git_protocol: https
+    oauth_token: ${config.sops.placeholder."github/token"}
   '';
 
   sops.templates."prefect/profiles.toml".content = ''
-    active = "ephemeral"
+  active = "ephemeral"
 
-    [profiles.local]
-    PREFECT_API_URL = "http://127.0.0.1:4200/api"
+  [profiles.local]
+  PREFECT_API_URL = "http://127.0.0.1:4200/api"
 
-    [profiles.homeserver]
-    PREFECT_API_URL = "https://prefect.acpuchades.com/api"
-    PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
+  [profiles.homeserver]
+  PREFECT_API_URL = "https://prefect.acpuchades.com/api"
+  PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
   '';
 
   # link the configuration file in current directory to the specified location in home directory
@@ -145,22 +145,10 @@ in
     dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
   '';
 
-  home.activation.installGhHosts = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
-    dst="$HOME/.config/gh/hosts.yml"
-    src='${config.sops.templates."gh/hosts.yml".path}'
-    mkdir -p "$HOME/.config/gh"
-    if [ ! -f "$dst" ]; then
-      install -m600 "$src" "$dst"
-    fi
-  '';
-
-  home.activation.installPrefectProfiles = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
-    dst="$HOME/.prefect/profiles.toml"
-    src='${config.sops.templates."prefect/profiles.toml".path}'
-    mkdir -p "$HOME/.prefect"
-    if [ ! -f "$dst" ]; then
-      install -m600 "$src" "$dst"
-    fi
+  home.activation.linkSecrets = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
+    mkdir -p "$HOME/.config/gh" "$HOME/.prefect"
+    ln -sf ${config.sops.templates."gh/hosts.yml".path} "$HOME/.config/gh/hosts.yml"
+    ln -sf ${config.sops.templates."prefect/profiles.toml".path} "$HOME/.prefect/profiles.toml"
   '';
 
   home.activation.writePositronConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
