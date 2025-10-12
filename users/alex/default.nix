@@ -164,6 +164,7 @@ in
   '';
 
   home.activation.writePositronConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    mkdir -p "${positronConfigDir}/User"
     echo '{ "positron.r.customBinaries": [ "${pkgs.R}/bin/R" ] }' > "${positronConfigDir}/User/settings.json"
   '';
 
