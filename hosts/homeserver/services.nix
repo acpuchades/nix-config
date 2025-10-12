@@ -87,6 +87,26 @@
     };
   };
 
+  # SMTP
+  msmtp = {
+    enable = true;
+    setSendmail = true;
+    defaults = {
+      tls = true;
+      tls_starttls = true;
+      auth = true;
+      logfile = "/var/log/msmtp.log";
+    };
+    accounts.default = {
+      host = "in-v3.mailjet.com";
+      port = 587;
+      from = "admin@acpuchades.com";
+      user = "${config.sops.placeholder."mailjet/token"}";
+      passwordeval = "cat ${config.sops.secrets."mailjet/secret".path}";
+    };
+    accountDefault = "default";
+  };
+
   # Nginx
   nginx = {
     enable = true;
@@ -131,6 +151,18 @@
     };
   };
 
+  # SSH
+  openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "no";
+      PasswordAuthentication = false; # ensure you have SSH keys set
+      AllowTcpForwarding = "yes";
+      X11Forwarding = false;
+    };
+    openFirewall = true; # keep closed by default; open explicitly if needed
+  };
+
   # Postgres
   postgresql = {
     enable = true;
@@ -166,18 +198,6 @@
     };
   };
 
-  # SSH
-  openssh = {
-    enable = true;
-    settings = {
-      PermitRootLogin = "no";
-      PasswordAuthentication = false; # ensure you have SSH keys set
-      AllowTcpForwarding = "yes";
-      X11Forwarding = false;
-    };
-    openFirewall = true; # keep closed by default; open explicitly if needed
-  };
-
   # Bitwarden
   vaultwarden = {
     enable = true;
@@ -185,6 +205,12 @@
     config = {
       DOMAIN = "https://bitwarden.acpuchades.com";
       DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
+      SIGNUPS_ALLOWED = false;
+      SMTP_HOST = "127.0.0.1";
+      SMTP_PORT = 25;
+      SMTP_SSL = false;
+      SMTP_FROM = "noreply@acpuchades.com";
+      SMTP_FROM_NAME = "acpuchades.com Bitwarden Server";
     };
   };
 

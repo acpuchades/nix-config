@@ -26,9 +26,11 @@ let
       sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 
       sops.secrets = {
-
         "ddclient/domain" = { key = "ddclient/domain"; };
         "ddclient/password" = { key = "ddclient/password"; };
+
+        "mailjet/token" = { key = "mailjet/token"; };
+        "mailjet/secret" = { key = "mailjet/secret"; };
 
         "passwd/alex" = {
           key = "passwd/alex";
@@ -41,15 +43,15 @@ let
           mode = "0400";
         };
 
-        "wifi/network" = { key = "wifi/network"; };
-        "wifi/password" = { key = "wifi/password"; };
-
         "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
         "wg/peers/alex-iphone/psk" = { key = "wireguard/peers/alex-iphone/psk"; };
         "wg/peers/alex-ipad/psk" = { key = "wireguard/peers/alex-ipad/psk"; };
         "wg/peers/alex-macbookpro/psk" = { key = "wireguard/peers/alex-macbookpro/psk"; };
         "wg/peers/mubin-phone/psk" = { key = "wireguard/peers/mubin-phone/psk"; };
         "wg/peers/mubin-laptop/psk" = { key = "wireguard/peers/mubin-laptop/psk"; };
+
+        "wifi/network" = { key = "wifi/network"; };
+        "wifi/password" = { key = "wifi/password"; };
       };
 
       sops.templates."ddclient/config".content = ''
