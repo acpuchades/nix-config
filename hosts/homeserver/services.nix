@@ -90,8 +90,8 @@
   # SMTP
   postfix = {
     enable = true;
-    hostname = "mail.acpuchades.com";
     settings.main = {
+      myhostname = "mail.acpuchades.com";
       relayHost = [
         "[in-v3.mailjet.com]:587"
       ];
