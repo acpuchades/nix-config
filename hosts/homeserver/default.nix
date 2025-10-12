@@ -69,7 +69,7 @@ let
         group = "postfix";
         mode = "0400";
         content = ''
-          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:"{config.sops.placeholder."mailjet/secret"}
+          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${config.sops.placeholder."mailjet/secret"}
           '';
       };
 
