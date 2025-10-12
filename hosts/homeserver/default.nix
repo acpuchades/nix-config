@@ -62,7 +62,7 @@ let
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
         www,adguard,bitwarden,home,prefect
-      '';
+        '';
 
       sops.templates."postfix/sasl_passwd" = {
         owner = "postfix";
@@ -70,7 +70,7 @@ let
         mode = "0400";
         content = ''
           [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:"{config.sops.placeholder."mailjet/secret"}
-        '';
+          '';
       };
 
       sops.templates."nm-profiles/home-wlan".content = ''
@@ -95,7 +95,7 @@ let
 
         [ipv6]
         method=auto
-      '';
+        '';
 
       users = import ./users.nix inputs;
 
