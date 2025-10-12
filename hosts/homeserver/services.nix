@@ -91,18 +91,16 @@
   postfix = {
     enable = true;
     settings.main = {
-      myhostname = "mail.acpuchades.com";
-      relayHost = [
-        "[in-v3.mailjet.com]:587"
-      ];
+      myorigin = "acpuchades.com";
+      myhostname = "home.acpuchades.com";
       inet_interfaces = "loopback-only";
-      mydestination = "";
+      mydestination = "localhost, localhost.localdomain, $myhostname, homeserver";
+      relayhost = [ "[in-v3.mailjet.com]:587" ];
       smtp_address_preference = "ipv4";
-      smtp_use_tls = "yes";
       smtp_tls_security_level = "encrypt";
       smtp_tls_loglevel = "1";
       smtp_sasl_auth_enable = "yes";
-      smtp_sasl_password_maps = "hash:${config.sops.templates."postfix/sasl_passwd".path}";
+      smtp_sasl_password_maps = "texthash:${config.sops.templates."postfix/sasl_passwd".path}";
       smtp_sasl_security_options = "noanonymous";
     };
   };
