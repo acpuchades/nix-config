@@ -19,27 +19,21 @@ let
   );
 
   r-packages = with pkgs.rPackages; [
-    brms
     car
     cardx
-    cli
     DBI
     effects
     emmeans
     ggeffects
     ggsurvfit
-    gamm4
-    glmmTMB
     gtsummary
     Hmisc
     IRkernel
     janitor
     knitr
-    labelled
     languageserver
     lme4
     MatchIt
-    mgcv
     nls_multstart
     nlme
     psych
@@ -54,10 +48,6 @@ let
 
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
   radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
-
-  positronConfigDir = if pkgs.stdenv.isDarwin
-  then "${config.home.homeDirectory}/Library/Application Support/Positron"
-  else "${config.xdg.configHome}/Positron";
 
 in
 {
@@ -141,24 +131,10 @@ in
   #     xxx
   # '';
 
-  home.file.".Rprofile".text = ''
-    dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
-  '';
-
   home.activation.linkSecrets = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
     mkdir -p "$HOME/.config/gh" "$HOME/.prefect"
     ln -sf ${config.sops.templates."gh/hosts.yml".path} "$HOME/.config/gh/hosts.yml"
     ln -sf ${config.sops.templates."prefect/profiles.toml".path} "$HOME/.prefect/profiles.toml"
-  '';
-
-  home.activation.writePositronConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    mkdir -p "${positronConfigDir}/User"
-    echo '{ "positron.r.customBinaries": [ "${pkgs.R}/bin/R" ] }' > "${positronConfigDir}/User/settings.json"
-  '';
-
-  home.activation.writeRenviron = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    echo "R_LIBS_SITE=$(${r-with-packages}/bin/R --vanilla -s -e 'Sys.getenv("R_LIBS_SITE")')" > ~/.Renviron
-    echo "R_LIBS_USER=~/.local/share/R/%p-library/%v" >> ~/.Renviron
   '';
 
   # set cursor size and dpi for 4k monitor
