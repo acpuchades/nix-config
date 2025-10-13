@@ -187,6 +187,7 @@ in
     # System
     apg
     bat
+    coreutils
     direnv
     delta
     eza

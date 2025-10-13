@@ -3,6 +3,9 @@
   enable = true;
   package = pkgs.emacs-pgtk;
   extraConfig = ''
+    ;; Nix-provided coreutils
+    (setq insert-directory-program "${pkgs.coreutils}/bin/ls")
+
     ;; Nix-provided grammars
     (setq treesit-extra-load-path
         '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
