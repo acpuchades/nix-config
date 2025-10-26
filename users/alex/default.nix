@@ -117,6 +117,16 @@ in
   #   executable = true;  # make all files executable
   # };
 
+  home.file.".condarc".text = ''
+    channels:
+      - bioconda
+      - conda-forge
+      - defaults
+    changeps1: false
+    channel_priority: strict
+    auto_activate_base: false
+  '';
+
   home.file.".emacs.d" = {
     source = ./files/emacs.d;
     recursive = true;
@@ -125,6 +135,8 @@ in
   home.file.".config/starship.toml" = {
     source = ./files/starship.toml;
   };
+
+
 
   # encode the file content in nix configuration file directly
   # home.file.".xxx".text = ''
@@ -188,8 +200,8 @@ in
 
     # Dev
     aider-chat
-
     docker
+    mamba-cpp
     prefect
 
     # Nix
