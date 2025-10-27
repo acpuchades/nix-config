@@ -192,7 +192,7 @@
     databaseName = "prefect";
     baseUrl = "https://prefect.acpuchades.com";
     workerPools = {
-      default.installPolicy = "always";
+      default.installPolicy = "if-not-present";
     };
   };
 

@@ -96,7 +96,7 @@ in
   '';
 
   sops.templates."prefect/profiles.toml".content = ''
-  active = "ephemeral"
+  active = "homeserver"
 
   [profiles.local]
   PREFECT_API_URL = "http://127.0.0.1:4200/api"

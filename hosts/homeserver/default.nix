@@ -119,6 +119,22 @@ let
         group = "root";
       };
 
+      systemd.services.prefect-server = {
+        environment = {
+          PREFECT_HOME = "/var/lib/prefect-server/.prefect";
+          HOME = "/var/lib/prefect-server";
+        };
+        serviceConfig = {
+          User = "prefect";
+          Group = "prefect";
+          StateDirectory = "prefect-server";
+          WorkingDirectory = "/var/lib/prefect-server";
+        };
+        preStart = ''
+          mkdir -p /var/lib/prefect-server/.prefect
+        '';
+      };
+
       systemd.tmpfiles.rules = [
         "d /srv/fugazi 2770 fugazi fugazi -"
       ];

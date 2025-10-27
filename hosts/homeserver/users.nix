@@ -20,9 +20,7 @@
 
   users.prefect = {
     group = "prefect";
-    createHome = false;
     isSystemUser = true;
-    home = "/var/lib/prefect-server";
   };
 
   # User accounts
