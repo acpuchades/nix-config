@@ -80,11 +80,11 @@ let
         type=wifi
         autoconnect=true
         autoconnect-priority=100
-        interface-name=wlan0
 
         [wifi]
         ssid=${config.sops.placeholder."wifi/network"}
         mode=infrastructure
+        cloned-mac-address=preserve
 
         [wifi-security]
         key-mgmt=wpa-psk
@@ -112,8 +112,12 @@ let
 
       };
 
-      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection".source =
-        config.sops.templates."nm-profiles/home-wlan".path;
+      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection" = {
+        source = config.sops.templates."nm-profiles/home-wlan".path;
+        mode = "0600";
+        user = "root";
+        group = "root";
+      };
 
       systemd.tmpfiles.rules = [
         "d /srv/fugazi 2770 fugazi fugazi -"

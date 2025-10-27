@@ -6,8 +6,9 @@
   # wireless.enable = true;  # Enables wireless support via wpa_supplicant.
   networkmanager = {
     enable = true; # Easiest to use and most distros use this by default.
-    wifi.backend = "iwd";
     dns = "systemd-resolved";
+    wifi.backend = "iwd";
+    wifi.powersave = false;
   };
 
   wireless.iwd.enable = true;
