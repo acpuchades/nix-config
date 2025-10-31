@@ -18,6 +18,7 @@
     "affinity-publisher"
     "alcove"
     "bartender"
+    "chatgpt-atlas"
     "cleanshot"
     "clop"
     "ghostty"
