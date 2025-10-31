@@ -4,8 +4,11 @@ let
 
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
+      datasets
       ipykernel
+      ipywidgets
       jupyter
+      jupyterlab-widgets
       matplotlib
       numpy
       pandas
@@ -15,6 +18,7 @@ let
       scipy
       seaborn
       statsmodels
+      tensorflow
     ]
   );
 
@@ -135,8 +139,6 @@ in
   home.file.".config/starship.toml" = {
     source = ./files/starship.toml;
   };
-
-
 
   # encode the file content in nix configuration file directly
   # home.file.".xxx".text = ''
