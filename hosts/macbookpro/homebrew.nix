@@ -13,9 +13,7 @@
 
   casks = [
     "adobe-acrobat-reader"
-    "affinity-designer"
-    "affinity-photo"
-    "affinity-publisher"
+    "affinity"
     "alcove"
     "bartender"
     "chatgpt-atlas"
