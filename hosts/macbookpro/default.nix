@@ -7,10 +7,9 @@
 }:
 
 let
-  configuration =
-	inputs@{ config, pkgs, ... }:
-	import ./settings.nix inputs
-	// {
+  configuration = inputs@{ config, pkgs, ... }:
+
+    import ./settings.nix inputs // {
 
     # Necessary for using flakes on this system.
     nix.settings.experimental-features = "nix-command flakes";
