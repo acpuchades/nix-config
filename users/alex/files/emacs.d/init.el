@@ -279,6 +279,16 @@
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
   :preface
+  (defun my/ess-add-sent-code-to-history (proc string &rest _args)
+    "Mirror STRING sent by ESS into the inferior's comint history."
+    (when (and (string-match-p "[^[:space:]]" string) ; ignore pure whitespace
+               (process-live-p proc))
+      (when-let ((buf (process-buffer proc)))
+        (with-current-buffer buf
+          (when (derived-mode-p 'inferior-ess-mode)
+            ;; One history entry per send (region/line/etc. as a single item)
+            (comint-add-to-input-history string))))))
+
   (defun my/ess-at-cmdline-p ()
     (when-let ((proc (get-buffer-process (current-buffer))))
       (>= (point) (marker-position (process-mark proc)))))
@@ -292,20 +302,10 @@
     (interactive)
     (if (my/ess-at-cmdline-p) (comint-next-input 1) (next-line 1)))
 
-  (defun my/ess-add-sent-code-to-history (proc string &rest _args)
-    "Mirror STRING sent by ESS into the inferior's comint history."
-    (when (and (string-match-p "[^[:space:]]" string) ; ignore pure whitespace
-               (process-live-p proc))
-      (when-let ((buf (process-buffer proc)))
-        (with-current-buffer buf
-          (when (derived-mode-p 'inferior-ess-mode)
-            ;; One history entry per send (region/line/etc. as a single item)
-            (comint-add-to-input-history string))))))
-
   (defun my/ess-repl-setup ()
     (setq-local comint-prompt-read-only t
                 comint-input-ignoredups t
-                comint-buffer-maximum-size 20000)
+                comint-buffer-maximum-size 5000)
     (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
 
   (defun my/ess-setup-eval-keys ()
@@ -314,14 +314,14 @@
     (local-set-key (kbd "C-c C-n")    #'ess-eval-line)
     (local-set-key (kbd "C-<return>") #'ess-eval-region-or-function-or-paragraph-and-step))
 
-  (defun my/ess-inf-setup-keys ()
+  (defun my/ess-inf-setup-navigate-keys ()
     (local-set-key (kbd "C-a")        #'my/ess-goto-cmdline)
     (local-set-key (kbd "<up>")       #'my/ess-up-or-prev-line)
     (local-set-key (kbd "<down>")     #'my/ess-down-or-next-line))
   :hook
   (ess-mode          . my/ess-setup-eval-keys)
   (inferior-ess-mode . my/ess-repl-setup)
-  (inferior-ess-mode . my/ess-inf-setup-keys)
+  (inferior-ess-mode . my/ess-inf-setup-navigate-keys)
   :config
   (advice-add 'ess-send-string :after #'my/ess-add-sent-code-to-history)
   :custom
@@ -352,7 +352,9 @@
         ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
   (:map inferior-ess-r-mode-map
         ("M-p SPC"      . my/ess-r-insert-pipe)
-        ("M-p <return>" . my/ess-r-insert-pipe-and-newline)))
+        ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
+  :custom
+  (inferior-R-args "--no-save --no-restore-data --quiet"))
 
 (use-package ess-smart-equals
   :after ess
