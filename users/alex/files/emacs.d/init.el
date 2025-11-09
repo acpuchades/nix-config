@@ -270,23 +270,6 @@
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
   :preface
-  (defun my/ess-repl-setup ()
-    (setq-local comint-prompt-read-only t
-                comint-input-ignoredups t
-                comint-buffer-maximum-size 20000)
-    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
-  :hook
-  (inferior-ess-r-mode . my/ess-repl-setup)
-  :custom
-  (ess-ask-for-ess-directory nil)
-  (ess-indent-offset 2)
-  (ess-use-flymake nil))
-
-(use-package ess-r-mode
-  :after ess
-  :ensure nil
-  :no-require t
-  :preface
   (defun my/ess-at-cmdline-p ()
     (when-let ((proc (get-buffer-process (current-buffer))))
       (>= (point) (marker-position (process-mark proc)))))
@@ -299,16 +282,52 @@
   (defun my/ess-down-or-next-line ()
     (interactive)
     (if (my/ess-at-cmdline-p) (comint-next-input 1) (next-line 1)))
+  (defun my/ess-repl-setup ()
+    (setq-local comint-prompt-read-only t
+                comint-input-ignoredups t
+                comint-buffer-maximum-size 20000)
+    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
+  :bind
+  (:map inferior-ess-mode-map
+        ("C-a"          . my/ess-goto-cmdline)
+        ("<up>"         . my/ess-up-or-prev-line)
+        ("<down>"       . my/ess-down-or-next-line))
+  :hook
+  (inferior-ess-r-mode . my/ess-repl-setup)
+  :custom
+  (ess-ask-for-ess-directory nil)
+  (ess-indent-offset 2)
+  (ess-use-flymake nil))
+
+(use-package ess-r-mode
+  :after ess
+  :ensure nil
+  :no-require t
+  :preface
+  (defun my/ess-r-insert-pipe ()
+    "Insert the R pipe operator `|>` at point, with preceding space."
+    (interactive)
+    (just-one-space 1)
+    (insert "|> "))
+  (defun my/ess-r-insert-pipe-and-newline ()
+    "Insert the R pipe operator `|>` at point, with preceding space and followed by newline."
+    (interactive)
+    (end-of-line)
+    (just-one-space 1)
+    (insert "|>")
+    (newline-and-indent))
   :bind
   (:map ess-r-mode-map
-        ("C-c C-r"    . ess-eval-region)
-        ("C-c C-b"    . ess-eval-buffer)
-        ("C-c C-n"    . ess-eval-line)
-        ("C-<return>" . ess-eval-region-or-function-or-paragraph-and-step))
+        ("C-c C-r"      . ess-eval-region)
+        ("C-c C-b"      . ess-eval-buffer)
+        ("C-c C-n"      . ess-eval-line)
+        ("C-<return>"   . ess-eval-region-or-function-or-paragraph-and-step)
+
+        ("M-p SPC"      . my/ess-r-insert-pipe)
+        ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
   (:map inferior-ess-r-mode-map
-        ("C-a"        . my/ess-goto-cmdline)
-        ("<up>"       . my/ess-up-or-prev-line)
-        ("<down>"     . my/ess-down-or-next-line)))
+        ("M-p SPC"      . my/ess-r-insert-pipe)
+        ("M-p <return>" . my/ess-r-insert-pipe-and-newline)))
 
 (use-package ess-smart-equals
   :after ess
