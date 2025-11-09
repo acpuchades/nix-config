@@ -270,33 +270,6 @@
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
   :preface
-  (defun my/ess-add-sent-code-to-history (proc string &rest _args)
-    "Mirror STRING sent by ESS into the inferior's comint history."
-    (when (and (string-match-p "[^[:space:]]" string) ; ignore pure whitespace
-               (process-live-p proc))
-      (when-let ((buf (process-buffer proc)))
-        (with-current-buffer buf
-          (when (derived-mode-p 'inferior-ess-mode)
-            ;; One history entry per send (region/line/etc. as a single item)
-            (comint-add-to-input-history string))))))
-  (defun my/ess-repl-setup ()
-    (setq-local comint-prompt-read-only t
-                comint-input-ignoredups t
-                comint-buffer-maximum-size 20000)
-    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
-  :hook
-  (inferior-ess-mode . my/ess-repl-setup)
-  :config
-  (advice-add 'ess-send-string :after #'my/ess-add-sent-code-to-history)
-  :custom
-  (ess-ask-for-ess-directory nil)
-  (ess-indent-offset 2)
-  (ess-use-flymake nil))
-
-(use-package ess-inf
-  :after ess
-  :ensure nil
-  :preface
   (defun my/ess-at-cmdline-p ()
     (when-let ((proc (get-buffer-process (current-buffer))))
       (>= (point) (marker-position (process-mark proc)))))
@@ -309,11 +282,43 @@
   (defun my/ess-down-or-next-line ()
     (interactive)
     (if (my/ess-at-cmdline-p) (comint-next-input 1) (next-line 1)))
-  :bind
-  (:map inferior-ess-mode-map
-        ("C-a"    . my/ess-goto-cmdline)
-        ("<up>"   . my/ess-up-or-prev-line)
-        ("<down>" . my/ess-down-or-next-line)))
+
+  (defun my/ess-add-sent-code-to-history (proc string &rest _args)
+    "Mirror STRING sent by ESS into the inferior's comint history."
+    (when (and (string-match-p "[^[:space:]]" string) ; ignore pure whitespace
+               (process-live-p proc))
+      (when-let ((buf (process-buffer proc)))
+        (with-current-buffer buf
+          (when (derived-mode-p 'inferior-ess-mode)
+            ;; One history entry per send (region/line/etc. as a single item)
+            (comint-add-to-input-history string))))))
+  
+  (defun my/ess-repl-setup ()
+    (setq-local comint-prompt-read-only t
+                comint-input-ignoredups t
+                comint-buffer-maximum-size 20000)
+    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
+  
+  (defun my/ess-setup-eval-keys ()
+    (local-set-key (kbd "C-c C-r")    #'ess-eval-region)
+    (local-set-key (kbd "C-c C-b")    #'ess-eval-buffer)
+    (local-set-key (kbd "C-c C-n")    #'ess-eval-line)
+    (local-set-key (kbd "C-<return>") #'ess-eval-region-or-function-or-paragraph-and-step))
+
+  (defun my/ess-inf-setup-keys ()
+    (local-set-key (kbd "C-a")        #'my/ess-goto-cmdline)
+    (local-set-key (kbd "<up>")       #'my/ess-up-or-prev-line)
+    (local-set-key (kbd "<down>")     #'my/ess-down-or-next-line))
+  :hook
+  (ess-mode          . my/ess-setup-eval-keys)
+  (inferior-ess-mode . my/ess-repl-setup)
+  (inferior-ess-mode . my/ess-inf-setup-keys)
+  :config
+  (advice-add 'ess-send-string :after #'my/ess-add-sent-code-to-history)
+  :custom
+  (ess-ask-for-ess-directory nil)
+  (ess-indent-offset 2)
+  (ess-use-flymake nil))
 
 (use-package ess-r-mode
   :after ess
@@ -334,11 +339,6 @@
     (newline-and-indent))
   :bind
   (:map ess-r-mode-map
-        ("C-c C-r"      . ess-eval-region)
-        ("C-c C-b"      . ess-eval-buffer)
-        ("C-c C-n"      . ess-eval-line)
-        ("C-<return>"   . ess-eval-region-or-function-or-paragraph-and-step)
-
         ("M-p SPC"      . my/ess-r-insert-pipe)
         ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
   (:map inferior-ess-r-mode-map
