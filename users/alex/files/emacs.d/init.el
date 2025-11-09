@@ -258,11 +258,20 @@
 ;; Eshell Toggle
 (use-package eshell-toggle
   :bind ("C-c e" . eshell-toggle)
+  :preface
+  (defun my/eshell-toggle-close-window-on-exit ()
+    "Close the window showing Eshell when exiting."
+    (when (eq major-mode 'eshell-mode)
+      ;; Only delete if there is more than one window in the frame
+      (unless (one-window-p t)
+        (delete-window))))
   :custom
   (eshell-toggle-size-fraction 3)
   (eshell-toggle-default-directory "~")
   (eshell-toggle-find-project-root-package 'project)
-  (eshell-toggle-init-function #'eshell-toggle-init-eshell))
+  (eshell-toggle-init-function #'eshell-toggle-init-eshell)
+  :hook
+  (eshell-exit . my/eshell-toggle-close-window-on-exit))
 
 ;; Emacs Speaks Statistics
 (use-package ess
@@ -292,13 +301,13 @@
           (when (derived-mode-p 'inferior-ess-mode)
             ;; One history entry per send (region/line/etc. as a single item)
             (comint-add-to-input-history string))))))
-  
+
   (defun my/ess-repl-setup ()
     (setq-local comint-prompt-read-only t
                 comint-input-ignoredups t
                 comint-buffer-maximum-size 20000)
     (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
-  
+
   (defun my/ess-setup-eval-keys ()
     (local-set-key (kbd "C-c C-r")    #'ess-eval-region)
     (local-set-key (kbd "C-c C-b")    #'ess-eval-buffer)
