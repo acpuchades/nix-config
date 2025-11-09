@@ -264,11 +264,27 @@
   (eshell-toggle-find-project-root-package 'project)
   (eshell-toggle-init-function #'eshell-toggle-init-eshell))
 
-;; Emacs Speaks Statistics (R Support)
+;; Emacs Speaks Statistics
 (use-package ess
   :mode
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
+  :preface
+  (defun my/ess-repl-setup ()
+    (setq-local comint-prompt-read-only t
+                comint-input-ignoredups t
+                comint-buffer-maximum-size 20000)
+    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
+  :hook
+  (inferior-ess-mode . my/ess-repl-setup)
+  :custom
+  (ess-ask-for-ess-directory nil)
+  (ess-indent-offset 2)
+  (ess-use-flymake nil))
+
+(use-package ess-inf
+  :after ess
+  :ensure nil
   :preface
   (defun my/ess-at-cmdline-p ()
     (when-let ((proc (get-buffer-process (current-buffer))))
@@ -282,22 +298,11 @@
   (defun my/ess-down-or-next-line ()
     (interactive)
     (if (my/ess-at-cmdline-p) (comint-next-input 1) (next-line 1)))
-  (defun my/ess-repl-setup ()
-    (setq-local comint-prompt-read-only t
-                comint-input-ignoredups t
-                comint-buffer-maximum-size 20000)
-    (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
   :bind
   (:map inferior-ess-mode-map
-        ("C-a"          . my/ess-goto-cmdline)
-        ("<up>"         . my/ess-up-or-prev-line)
-        ("<down>"       . my/ess-down-or-next-line))
-  :hook
-  (inferior-ess-r-mode . my/ess-repl-setup)
-  :custom
-  (ess-ask-for-ess-directory nil)
-  (ess-indent-offset 2)
-  (ess-use-flymake nil))
+        ("C-a"    . my/ess-goto-cmdline)
+        ("<up>"   . my/ess-up-or-prev-line)
+        ("<down>" . my/ess-down-or-next-line)))
 
 (use-package ess-r-mode
   :after ess
