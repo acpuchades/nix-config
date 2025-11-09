@@ -270,6 +270,15 @@
   (("\\.[Rr]\\'"     . ess-r-mode)
    ("\\.Rprofile\\'" . ess-r-mode))
   :preface
+  (defun my/ess-add-sent-code-to-history (proc string &rest _args)
+    "Mirror STRING sent by ESS into the inferior's comint history."
+    (when (and (string-match-p "[^[:space:]]" string) ; ignore pure whitespace
+               (process-live-p proc))
+      (when-let ((buf (process-buffer proc)))
+        (with-current-buffer buf
+          (when (derived-mode-p 'inferior-ess-mode)
+            ;; One history entry per send (region/line/etc. as a single item)
+            (comint-add-to-input-history string))))))
   (defun my/ess-repl-setup ()
     (setq-local comint-prompt-read-only t
                 comint-input-ignoredups t
@@ -277,6 +286,8 @@
     (add-hook 'comint-output-filter-functions #'comint-truncate-buffer nil t))
   :hook
   (inferior-ess-mode . my/ess-repl-setup)
+  :config
+  (advice-add 'ess-send-string :after #'my/ess-add-sent-code-to-history)
   :custom
   (ess-ask-for-ess-directory nil)
   (ess-indent-offset 2)
