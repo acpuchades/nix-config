@@ -8,6 +8,8 @@ inputs@{ pkgs, ... }:
   zsh = import ./zsh.nix inputs;
 
   direnv.enable = true;
+  direnv.nix-direnv.enable = true;
+
   gh.enable = true;
   starship.enable = true;
 }
