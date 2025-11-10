@@ -231,7 +231,7 @@
   (add-to-list 'eglot-server-programs
                '(nix-ts-mode  . ("nil")))
   (add-to-list 'eglot-server-programs
-               '(ess-r-mode   . ("R" "--slave" "-e" "languageserver::run()")))
+               '(ess-r-mode   . ("air" "language-server")))
   (add-to-list 'eglot-server-programs
                '(python-ts-mode python-mode . ("pyright-langserver" "--stdio"))))
 
@@ -326,7 +326,7 @@
   (advice-add 'ess-send-string :after #'my/ess-add-sent-code-to-history)
   :custom
   (ess-ask-for-ess-directory nil)
-  (ess-indent-offset 2)
+  (ess-default-style 'RStudio)
   (ess-use-flymake nil))
 
 (use-package ess-r-mode
