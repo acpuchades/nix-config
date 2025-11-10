@@ -225,6 +225,7 @@ in
     virtualenv
 
     # R
+    air-formatter
     pandoc
     positron-bin
     r-with-packages
