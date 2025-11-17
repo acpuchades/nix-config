@@ -736,9 +736,9 @@
 (setq-default indent-tabs-mode nil
               tab-width          4)
 
-;; Make backspace unindent
+;; Make shift+backspace unindent
 (setq backward-delete-char-untabify-method 'hungry)
-(global-set-key (kbd "DEL") #'backward-delete-char-untabify)
+(global-set-key (kbd "S-<backspace>") #'backward-delete-char-untabify)
 
 ;; Enable delete selection mode
 (delete-selection-mode 1)
