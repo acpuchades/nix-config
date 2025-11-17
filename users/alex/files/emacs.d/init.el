@@ -170,29 +170,30 @@
 
 ;; Consult
 (use-package consult
-  :bind (
-  ;; C-c bindings (prefix map)
-  ("C-c h"   . consult-history)
-  ("C-c m"   . consult-mode-command)
-  ("C-c k"   . consult-kmacro)
-  ;; C-x bindings (ctl-x-map)
-  ("C-x M-:" . consult-complex-command)
-  ("C-x b"   . consult-buffer)
-  ("C-x C-b" . consult-buffer)
-  ("C-x 4 b" . consult-buffer-other-window)
-  ("C-x 5 b" . consult-buffer-other-frame)
-  ("C-x r b" . consult-bookmark)
-  ("C-x p b" . consult-project-buffer)
-  ;; M-g bindings (goto-map)
-  ("M-g g"   . consult-goto-line)
-  ("M-g M-g" . consult-goto-line)
-  ;; M-s bindings (search-map)
-  ("M-s r"   . consult-ripgrep)
-  ("M-s l"   . consult-line)
-  ("M-s L"   . consult-line-multi)
-  ("M-s m"   . consult-multi-occur)
-  ("M-s k"   . consult-keep-lines)
-  ("M-s u"   . consult-focus-lines)))
+  :bind
+  (
+   ;; C-c bindings (prefix map)
+   ("C-c h"   . consult-history)
+   ("C-c m"   . consult-mode-command)
+   ("C-c k"   . consult-kmacro)
+   ;; C-x bindings (ctl-x-map)
+   ("C-x M-:" . consult-complex-command)
+   ("C-x b"   . consult-buffer)
+   ("C-x C-b" . consult-buffer)
+   ("C-x 4 b" . consult-buffer-other-window)
+   ("C-x 5 b" . consult-buffer-other-frame)
+   ("C-x r b" . consult-bookmark)
+   ("C-x p b" . consult-project-buffer)
+   ;; M-g bindings (goto-map)
+   ("M-g g"   . consult-goto-line)
+   ("M-g M-g" . consult-goto-line)
+   ;; M-s bindings (search-map)
+   ("M-s r"   . consult-ripgrep)
+   ("M-s l"   . consult-line)
+   ("M-s L"   . consult-line-multi)
+   ("M-s m"   . consult-multi-occur)
+   ("M-s k"   . consult-keep-lines)
+   ("M-s u"   . consult-focus-lines)))
 
 ;; Completion UI
 (use-package corfu
@@ -269,7 +270,8 @@
 
 ;; Envrc support
 (use-package envrc
-  :hook (after-init . envrc-global-mode))
+  :hook
+  (after-init . envrc-global-mode))
 
 ;; Eshell
 (use-package eshell
@@ -382,8 +384,9 @@
 
 (use-package ess-view-data
   :after ess
-  :bind (:map ess-r-mode-map
-         ("C-c v" . ess-view-data-print)))
+  :bind
+  (:map ess-r-mode-map
+        ("C-c v" . ess-view-data-print)))
 
 ;; Fix PATH in GUI Emacs (macOS)
 (use-package exec-path-from-shell
@@ -455,12 +458,16 @@
 
 ;; Nerd icons everywhere
 (use-package nerd-icons)
+
 (use-package nerd-icons-corfu
   :after corfu
   :config
-  (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter))
+  (add-to-list 'corfu-margin-formatters
+               #'nerd-icons-corfu-formatter))
+
 (use-package nerd-icons-dired
   :hook (dired-mode . nerd-icons-dired-mode))
+
 (use-package nerd-icons-ibuffer
   :hook (ibuffer-mode . nerd-icons-ibuffer-mode))
 
