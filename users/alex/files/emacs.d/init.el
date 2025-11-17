@@ -370,11 +370,11 @@
     (newline-and-indent))
   :bind
   (:map ess-r-mode-map
-        ("M-p SPC"      . my/ess-r-insert-pipe)
-        ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
+        ("C-c p SPC"      . my/ess-r-insert-pipe)
+        ("C-c p <return>" . my/ess-r-insert-pipe-and-newline))
   (:map inferior-ess-r-mode-map
-        ("M-p SPC"      . my/ess-r-insert-pipe)
-        ("M-p <return>" . my/ess-r-insert-pipe-and-newline))
+        ("C-c p SPC"      . my/ess-r-insert-pipe)
+        ("C-c p <return>" . my/ess-r-insert-pipe-and-newline))
   :custom
   (inferior-R-args "--no-save --no-restore-data --quiet"))
 
