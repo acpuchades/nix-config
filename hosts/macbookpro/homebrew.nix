@@ -20,7 +20,7 @@
     "cleanshot"
     "clop"
     "ghostty"
-    "ledger-live"
+    "ledger-wallet"
     "logi-options+"
     "macfuse"
     "microsoft-office"
