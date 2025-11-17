@@ -18,5 +18,4 @@ with pkgs;
 
   # IA
   chatgpt
-  ollama
 ]
