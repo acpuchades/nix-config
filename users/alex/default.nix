@@ -23,31 +23,9 @@ let
   );
 
   r-packages = with pkgs.rPackages; [
-    car
-    cardx
-    DBI
-    effects
-    emmeans
-    ggeffects
-    ggsurvfit
-    gtsummary
-    Hmisc
-    IRkernel
-    janitor
-    knitr
-    languageserver
-    lme4
-    MatchIt
-    nls_multstart
-    nlme
-    psych
-    readxl
+    devtools
+    gitignore
     rix
-    rmarkdown
-    RSQLite
-    sjPlot
-    tidyverse
-    writexl
   ];
 
   r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
