@@ -449,6 +449,32 @@
 (use-package marginalia
   :init (marginalia-mode))
 
+(use-package mu4e
+  :commands (mu4e)
+  :bind (("C-c m" . mu4e))
+  ;:init
+  ;(setq mu4e-mu-binary nix-mu-path)
+  :custom
+  ;; basic folders (adapt if iCloud uses different names)
+  (mu4e-maildir "~/Mail")
+  (mu4e-sent-folder "/Sent")
+  (mu4e-drafts-folder "/Drafts")
+  (mu4e-trash-folder "/Trash")
+  ;; update mail
+  (mu4e-get-mail-command "mbsync icloud")
+  (mu4e-update-interval 300)
+  ;; compose mail
+  (user-full-name "Alejandro Caravaca Puchades")
+  (user-mail-address "acaravacapuchades@icloud.com")
+  (message-kill-buffer-on-exit t)
+  ;; use SMTP (msmtp recommended)
+  (send-mail-function 'message-send-mail-with-sendmail)
+  (message-send-mail-function 'message-send-mail-with-sendmail)
+  ;(sendmail-program nix-msmtp-path)
+  ;; UI tweaks
+  (mu4e-use-fancy-chars t)
+  (message-kill-buffer-on-exit t))
+
 ;; Multiple cursors
 (use-package multiple-cursors
   :bind
