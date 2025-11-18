@@ -34,6 +34,7 @@
       magit
       marginalia
       markdown-mode
+      mu4e
       multiple-cursors
       nerd-icons
       nerd-icons-corfu

@@ -60,6 +60,10 @@ in
     key = "github/token";
   };
 
+  sops.secrets."icloud/password" = {
+    key = "icloud/password";
+  };
+
   sops.secrets."prefect/user" = {
     sopsFile = ./secrets/default.yml;
     key = "prefect/user";
@@ -168,6 +172,8 @@ in
 
     # Network
     curl
+    msmtp
+    mu
     nmap
     netcat
     samba
