@@ -724,10 +724,14 @@
         ('yaml-ts-mode       (add-to-list 'yas-extra-modes 'yaml-mode))
       )))
   :hook
-  (prog-mode      . yas-minor-mode)
-  (yas-minor-mode . my/yas-alias-tree-sitter-modes)
+  ((prog-mode      . yas-minor-mode)
+   (text-mode      . yas-minor-mode)
+   (yas-minor-mode . my/yas-alias-tree-sitter-modes))
+  :init
+  (add-to-list 'yas-snippet-dirs "~/.emacs.d/snippets")
   :config
-  (yas-reload-all))
+  (yas-reload-all)
+  (setq yas-fallback-behavior 'auto))
 
 (use-package yasnippet-snippets
   :after yasnippet)
