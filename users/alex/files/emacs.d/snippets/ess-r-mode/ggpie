@@ -1,0 +1,21 @@
+# contributor: acpuchades <acaravacapuchades@gmail.com>
+# name: ggplot2 pie
+# key: ggpie
+# --
+${1:p} <- ${2:data} |>
+  count(${3:category}) |>
+  mutate(
+    pct = n / sum(n),
+    lab = scales::percent(pct)
+  ) |> 
+  ggplot(aes(x = "", y = pct, fill = ${3})) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  labs(
+    title = "${4:title}",
+    fill  = "${5:legend}"
+  ) +
+  theme_void() +
+  theme(legend.position = "right")
+
+${1}

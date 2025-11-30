@@ -1,0 +1,22 @@
+# contributor: acpuchades <acaravacapuchades@gmail.com>
+# name: rix
+# key: rix
+# --
+rix::rix(
+  project_dir="${1:`(let* ((proj (project-current))
+                           (root (when proj (project-root proj)))
+                           (buf (or (buffer-file-name) default-directory))
+                           (buf-dir (file-name-directory buf)))
+                      (if (and root (file-in-directory-p buf root))
+                        (let ((rel (file-relative-name buf-dir root)))
+                          (if (string= rel "./") "." rel))
+                        buf-dir))`}",
+  r_ver="${2:latest-upstream}",
+  r_pkgs=c(
+    "rix"${3:, ${4:"tidyverse"}}
+  ),
+  system_pkgs=${5:NULL},
+  git_pkgs=${6:NULL},
+  ide="${7:emacs}",
+  overwrite=TRUE
+)

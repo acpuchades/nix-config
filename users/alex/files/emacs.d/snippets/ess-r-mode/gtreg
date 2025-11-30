@@ -1,0 +1,20 @@
+# contributor: acpuchades <acaravacapuchades@gmail.com>
+# name: gtsummary tbl_regression
+# key: gtreg
+# --
+${1:fit} <- ${2:coxph}(
+  ${3:Surv(${4:time}, ${5:status})} ~ ${6:var1}${7: + ${8:var2}},
+  data = ${9:data}
+)
+
+${10:tab_reg} <- gtsummary::tbl_regression(
+  ${1},
+  exponentiate = ${11:TRUE},
+  label = list(${6} ~ "${12:Variable}"),
+  conf.level = ${13:0.95}
+) |>
+  gtsummary::add_global_p() |>
+  gtsummary::bold_p() |>
+  gtsummary::bold_labels()
+
+${10}
