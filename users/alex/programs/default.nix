@@ -4,11 +4,13 @@ inputs: {
 
   emacs = import ./emacs.nix inputs;
   git = import ./git.nix inputs;
-  mbsync = import ./mbsync.nix inputs;
   zsh = import ./zsh.nix inputs;
 
   direnv.enable = true;
   direnv.nix-direnv.enable = true;
   gh.enable = true;
+  mbsync.enable = true;
+  msmtp.enable = true;
+  mu.enable = true;
   starship.enable = true;
 }
