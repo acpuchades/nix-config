@@ -2,6 +2,15 @@ inputs@{ config, host, lib, pkgs, ... }:
 
 let
 
+  inherit (lib) mkIf;
+  isDarwin = pkgs.stdenv.isDarwin;
+  isLinux = pkgs.stdenv.isLinux;
+
+  mbsyncCmd = [
+    "${config.programs.mbsync.package}"
+    "-a"
+  ];
+
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
       datasets
@@ -44,6 +53,35 @@ in
   home.stateVersion = "24.11";
 
   programs = import ./programs inputs;
+
+  launchd.agents.mbsync = mkIf (config.programs.mbsync.enable && isDarwin) {
+    enable = true;
+    config = {
+      ProgramArguments = mbsyncCmd;
+      StartInterval = 300;
+      RunAtLoad = true;
+      StandardOutPath = "${config.xdg.dataHome}/mbsync.log";
+      StandardErrorPath = "${config.xdg.dataHome}/mbsync-error.log";
+    };
+  };
+
+  systemd.user.services.mbsync = mkIf (config.programs.mbsync.enable && isLinux) {
+    Unit.Description = "mbsync mail synchronization";
+    Service = {
+      Type = "oneshot";
+      ExecStart = mbsyncCmd;
+    };
+  };
+
+  systemd.user.timers.mbsync = mkIf (config.programs.mbsync.enable && isLinux) {
+    Unit.Description = "Periodically run mbsync";
+    Timer = {
+      OnBootSec = "2m";
+      OnUnitActiveSec = "5m";
+      Unit = "mbsync.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 
   sops.age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
   sops.age.generateKey = true;
