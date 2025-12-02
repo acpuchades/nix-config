@@ -138,8 +138,7 @@
       "prefect.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
-        basicAuthFile =
-          config.sops.secrets."prefect/htpasswd".path;
+        basicAuthFile = config.sops.secrets."prefect/htpasswd".path;
         locations."/" = {
           proxyPass = "http://127.0.0.1:4200";
           proxyWebsockets = true;
@@ -190,6 +189,7 @@
     databasePort = 0;
     databaseUser = "prefect";
     databaseName = "prefect";
+    dataDir = "/var/lib/prefect-server";
     baseUrl = "https://prefect.acpuchades.com";
     workerPools = {
       default.installPolicy = "if-not-present";
