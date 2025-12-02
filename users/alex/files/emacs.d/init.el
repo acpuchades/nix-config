@@ -510,6 +510,7 @@
 
 ;; Org mode tweaks
 (use-package org
+  :disabled t
   :mode ("\\.org\\'" . org-mode)
   :bind
   (("C-c a" . org-agenda)
@@ -591,6 +592,7 @@
   (set-face-attribute 'org-ellipsis nil :underline nil))
 
 (use-package org-modern
+  :disabled t
   :after org
   :hook
   (org-mode . org-modern-mode)
@@ -600,6 +602,7 @@
   (org-pretty-entities t))
 
 (use-package org-roam
+  :disabled t
   :custom (org-roam-directory "~/Org/Roam")
   :bind
   (("C-c n l" . org-roam-buffer-toggle)
@@ -621,7 +624,10 @@
 
 ;; Quarto support
 (use-package quarto-mode
-  :mode (("\\.qmd\\'" . poly-markdown+r-mode)))
+  :mode (("\\.qmd\\'" . poly-quarto-mode))
+  :bind
+  (:map poly-quarto-mode-map
+        ("C-c C-c" . polymode-eval-chunk)))
 
 ;; Rainbow delimiters
 (use-package rainbow-delimiters

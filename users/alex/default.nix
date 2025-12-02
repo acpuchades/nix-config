@@ -129,8 +129,7 @@ in
     nerd-fonts.ubuntu-mono
     nerd-fonts.ubuntu-sans
     noto-fonts
-    noto-fonts-extra
-    noto-fonts-emoji
+    noto-fonts-color-emoji
     unifont
 
     # System

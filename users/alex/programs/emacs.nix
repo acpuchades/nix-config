@@ -43,8 +43,8 @@
       nix-ts-mode
       no-littering
       orderless
-      org-modern
-      org-roam
+      #org-modern
+      #org-roam
       polymode
       poly-markdown
       poly-R
