@@ -127,6 +127,7 @@ let
         serviceConfig = {
           User = "prefect";
           Group = "prefect";
+          DynamicUser = lib.mkForce false;
           StateDirectory = "prefect-server";
           WorkingDirectory = "/var/lib/prefect-server";
         };

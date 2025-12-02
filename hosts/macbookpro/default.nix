@@ -7,6 +7,7 @@
 }:
 
 let
+
   configuration = inputs@{ config, pkgs, ... }:
 
     import ./settings.nix inputs // {
@@ -35,22 +36,22 @@ let
     };
 
     homebrew = import ./homebrew.nix inputs;
-	};
+  };
 
 in
 nix-darwin.lib.darwinSystem {
   modules = [
-	configuration
-	sops-nix.darwinModules.sops
-	home-manager.darwinModules.home-manager
-	{
-    home-manager.useGlobalPkgs = true;
-    home-manager.useUserPackages = true;
-    home-manager.users.alex = import ../../users/alex;
-    home-manager.extraSpecialArgs = { host = "macbookpro"; };
-    home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+    configuration
+    sops-nix.darwinModules.sops
+    home-manager.darwinModules.home-manager
+    {
+      home-manager.useGlobalPkgs = true;
+      home-manager.useUserPackages = true;
+      home-manager.users.alex = import ../../users/alex;
+      home-manager.extraSpecialArgs = { host = "macbookpro"; };
+      home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
-    users.users.alex.home = "/Users/alex";
-	}
+      users.users.alex.home = "/Users/alex";
+    }
   ];
 }
