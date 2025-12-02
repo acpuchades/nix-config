@@ -449,31 +449,41 @@
 (use-package marginalia
   :init (marginalia-mode))
 
+;; Mu4e
 (use-package mu4e
   :commands (mu4e)
   :bind (("C-c m" . mu4e))
-  ;:init
-  ;(setq mu4e-mu-binary nix-mu-path)
   :custom
-  ;; basic folders (adapt if iCloud uses different names)
   (mu4e-maildir "~/Mail")
-  (mu4e-sent-folder "/Sent")
-  (mu4e-drafts-folder "/Drafts")
-  (mu4e-trash-folder "/Trash")
-  ;; update mail
-  (mu4e-get-mail-command "mbsync icloud")
   (mu4e-update-interval 300)
-  ;; compose mail
-  (user-full-name "Alejandro Caravaca Puchades")
-  (user-mail-address "acaravacapuchades@icloud.com")
-  (message-kill-buffer-on-exit t)
-  ;; use SMTP (msmtp recommended)
-  (send-mail-function 'message-send-mail-with-sendmail)
+  (mu4e-get-mail-command nil)
+  (mu4e-index-update-error-warning nil)
+  (mu4e-index-update-in-background nil)
+  (mu4e-change-filenames-when-moving t)
+  (mu4e-context-policy 'pick-first)
+  (mu4e-compose-context-policy 'ask-if-none)
+  :config
+  (setq mu4e-contexts
+        (list
+         (make-mu4e-context
+          :name "icloud"
+          :match-func (lambda (msg)
+                        (when msg (string-prefix-p "/iCloud"
+                                                   (mu4e-message-field msg :maildir))))
+          :vars '((user-mail-address  . "acaravacapuchades@icloud.com")
+                  (user-full-name     . "Alejandro Caravaca Puchades")
+                  (mu4e-drafts-folder . "/iCloud/Drafts")
+                  (mu4e-sent-folder   . "/iCloud/Sent Messages")
+                  (mu4e-trash-folder  . "/iCloud/Deleted Messages")
+                  (mu4e-refile-folder . "/iCloud/Archive"))))))
+
+(use-package message
+  :ensure nil
+  :after mu4e
+  :custom
+  (sendmail-program "msmtp")
   (message-send-mail-function 'message-send-mail-with-sendmail)
-  ;(sendmail-program nix-msmtp-path)
-  ;; UI tweaks
-  (mu4e-use-fancy-chars t)
-  (message-kill-buffer-on-exit t))
+  (message-sendmail-envelope-from 'header))
 
 ;; Multiple cursors
 (use-package multiple-cursors

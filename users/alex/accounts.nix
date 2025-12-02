@@ -1,4 +1,4 @@
-inputs@{ config, ... }:
+inputs@{ config, pkgs, ... }:
 
 {
   email = {
@@ -8,7 +8,7 @@ inputs@{ config, ... }:
       address = "acaravacapuchades@icloud.com";
       userName = "acaravacapuchades@icloud.com";
       realName = "Alejandro Caravaca Puchades";
-      passwordCommand = "cat ${config.sops.secrets."icloud/password".path}";
+      passwordCommand = "${pkgs.coreutils}/bin/cat ${config.sops.secrets."icloud/password".path}";
 
       maildir = {
         path = "iCloud";
@@ -23,7 +23,10 @@ inputs@{ config, ... }:
       smtp = {
         host = "smtp.mail.me.com";
         port = 587;
-        tls.enable = true;
+        tls = {
+          enable = true;
+          useStartTls = true;
+        };
       };
 
       mbsync = {
@@ -32,7 +35,7 @@ inputs@{ config, ... }:
         expunge = "both";
         remove = "maildir";
         subFolders = "Verbatim";
-        patterns = [ "*" "!Trash" "!Junk" ];
+        patterns = [ "*" "!Junk" ];
 
         extraConfig = {
           account = {
@@ -50,6 +53,7 @@ inputs@{ config, ... }:
         };
       };
 
+      msmtp.enable = true;
       mu.enable = true;
 
     };

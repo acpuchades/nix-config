@@ -58,14 +58,14 @@ in
     enable = true;
     config = {
       ProgramArguments = [ "${mailSyncScript}" ];
-      StartInterval = 300;
+      StartInterval = 600;
       RunAtLoad = true;
     };
   };
 
   services.mbsync = lib.mkIf pkgs.stdenv.isLinux {
     enable = true;
-    frequency = "*:0/5";
+    frequency = "*:0/10";
     postExec = "${config.programs.mu.package}/bin/mu index";
   };
 
