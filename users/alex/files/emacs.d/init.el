@@ -228,6 +228,12 @@
   :config
   (dashboard-setup-startup-hook))
 
+;; Direnv
+(use-package direnv
+  :config
+  (direnv-mode 1)
+  (setq direnv-always-show-summary t))
+
 ;; Doom modeline
 (use-package doom-modeline
   :hook (after-init . doom-modeline-mode))
@@ -270,6 +276,8 @@
 
 ;; Envrc support
 (use-package envrc
+  :config
+  (setq envrc-remote t)
   :hook
   (after-init . envrc-global-mode))
 
@@ -652,6 +660,13 @@
 (use-package super-save
   :init (super-save-mode 1)
   :custom (super-save-auto-save-when-idle t))
+
+;; TRAMP
+(use-package tramp
+  :defer t
+  :config
+  ;; Make TRAMP also use the remote user's own PATH
+  (add-to-list 'tramp-remote-path 'tramp-own-remote-path))
 
 ;; Treemacs
 (use-package treemacs
