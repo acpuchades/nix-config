@@ -2,15 +2,6 @@ inputs@{ config, host, lib, pkgs, ... }:
 
 let
 
-  inherit (lib) mkIf;
-  isDarwin = pkgs.stdenv.isDarwin;
-  isLinux = pkgs.stdenv.isLinux;
-
-  mbsyncCmd = [
-    "${config.programs.mbsync.package}"
-    "-a"
-  ];
-
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
       datasets
@@ -54,81 +45,8 @@ in
 
   programs = import ./programs inputs;
 
-  launchd.agents.mbsync = mkIf (config.programs.mbsync.enable && isDarwin) {
-    enable = true;
-    config = {
-      ProgramArguments = mbsyncCmd;
-      StartInterval = 300;
-      RunAtLoad = true;
-      StandardOutPath = "${config.xdg.dataHome}/mbsync.log";
-      StandardErrorPath = "${config.xdg.dataHome}/mbsync-error.log";
-    };
-  };
-
-  systemd.user.services.mbsync = mkIf (config.programs.mbsync.enable && isLinux) {
-    Unit.Description = "mbsync mail synchronization";
-    Service = {
-      Type = "oneshot";
-      ExecStart = mbsyncCmd;
-    };
-  };
-
-  systemd.user.timers.mbsync = mkIf (config.programs.mbsync.enable && isLinux) {
-    Unit.Description = "Periodically run mbsync";
-    Timer = {
-      OnBootSec = "2m";
-      OnUnitActiveSec = "5m";
-      Unit = "mbsync.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
-
-  sops.age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
-  sops.age.generateKey = true;
-  sops.defaultSopsFile = ./secrets/default.yml;
-  sops.defaultSopsFormat = "yaml";
-
-  sops.secrets."anthropic/token" = {
-    sopsFile = ./secrets/${host}.yml;
-    key = "anthropic/token";
-  };
-
-  sops.secrets."github/token" = {
-    sopsFile = ./secrets/${host}.yml;
-    key = "github/token";
-  };
-
-  sops.secrets."icloud/password" = {
-    key = "icloud/password";
-  };
-
-  sops.secrets."prefect/user" = {
-    sopsFile = ./secrets/default.yml;
-    key = "prefect/user";
-  };
-
-  sops.secrets."prefect/password" = {
-    sopsFile = ./secrets/default.yml;
-    key = "prefect/password";
-  };
-
-  sops.templates."gh/hosts.yml".content = ''
-  github.com:
-    user: acpuchades
-    git_protocol: https
-    oauth_token: ${config.sops.placeholder."github/token"}
-  '';
-
-  sops.templates."prefect/profiles.toml".content = ''
-  active = "homeserver"
-
-  [profiles.local]
-  PREFECT_API_URL = "http://127.0.0.1:4200/api"
-
-  [profiles.homeserver]
-  PREFECT_API_URL = "https://prefect.acpuchades.com/api"
-  PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
-  '';
+  accounts = import ./accounts.nix inputs;
+  sops = import ./sops.nix inputs;
 
   # link the configuration file in current directory to the specified location in home directory
   # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
