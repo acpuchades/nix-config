@@ -14,6 +14,18 @@ inputs@{ config, ... }:
         path = "iCloud";
       };
 
+      imap = {
+        host = "imap.mail.me.com";
+        port = 993;
+        tls.enable = true;
+      };
+
+      smtp = {
+        host = "smtp.mail.me.com";
+        port = 587;
+        tls.enable = true;
+      };
+
       mbsync = {
         enable = true;
         create = "both";
@@ -38,17 +50,8 @@ inputs@{ config, ... }:
         };
       };
 
-      imap = {
-        host = "imap.mail.me.com";
-        port = 993;
-        tls.enable = true;
-      };
+      mu.enable = true;
 
-      smtp = {
-        host = "smtp.mail.me.com";
-        port = 587;
-        tls.enable = true;
-      };
     };
   };
 }
