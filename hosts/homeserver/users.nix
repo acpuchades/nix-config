@@ -18,11 +18,6 @@
     home = "/srv/fugazi";
   };
 
-  users.prefect = {
-    group = "prefect";
-    isSystemUser = true;
-  };
-
   # User accounts
   users.alex = {
     isNormalUser = true;
