@@ -3,7 +3,7 @@
 # key: rix
 # --
 rix::rix(
-  project_dir="${1:`(let* ((proj (project-current))
+  project_path="${1:`(let* ((proj (project-current))
                            (root (when proj (project-root proj)))
                            (buf (or (buffer-file-name) default-directory))
                            (buf-dir (file-name-directory buf)))
@@ -13,10 +13,11 @@ rix::rix(
                         buf-dir))`}",
   r_ver="${2:latest-upstream}",
   r_pkgs=c(
-    "rix"${3:, ${4:"tidyverse"}}
+    "rix",
+    "${3:"tidyverse"}
   ),
-  system_pkgs=${5:NULL},
-  git_pkgs=${6:NULL},
-  ide="${7:emacs}",
+  system_pkgs=${4:NULL},
+  git_pkgs=${5:NULL},
+  ide="${6:positron}",
   overwrite=TRUE
 )
