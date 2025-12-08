@@ -3,6 +3,7 @@ inputs: {
   home-manager.enable = true;
 
   emacs = import ./emacs.nix inputs;
+  ghostty = import ./ghostty.nix inputs;
   git = import ./git.nix inputs;
   zsh = import ./zsh.nix inputs;
 

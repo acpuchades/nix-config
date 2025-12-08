@@ -19,7 +19,6 @@
     "chatgpt-atlas"
     "cleanshot"
     "clop"
-    "ghostty"
     "ledger-wallet"
     "logi-options+"
     "macfuse"
