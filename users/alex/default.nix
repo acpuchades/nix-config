@@ -195,12 +195,12 @@ in
 
   home.sessionVariables = {
     EDITOR = "emacsclient -a ''";
+    PAGER = "bat --paging=always";
     VISUAL = "emacsclient -a ''";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
     LC_TIME = "en_DK.UTF-8";
     LC_NUMERIC = "en_US.UTF-8";
-    PAGER = "bat --paging=always";
   };
 
   home.shellAliases = {
