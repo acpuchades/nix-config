@@ -18,6 +18,6 @@ in
     font-feature = "liga,clig,calt";
     font-size = 13;
     term = "xterm-256color";
-    theme = "dark:Catppuccin Mocha,light:Catppuccin Latte";
+    theme = "Catppuccin Mocha";
   };
 }
