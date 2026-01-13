@@ -24,22 +24,28 @@
   # proxy.noProxy = "127.0.0.1,localhost,internal.domain";
 
   # Enable firewall
-  firewall.enable = true;
-  # Open ports in the firewall.
-  firewall.allowedTCPPorts = [
-    53   # dns
-    80   # http
-    443  # https
-    8333 # bitcoin
-  ];
-  firewall.allowedUDPPorts = [
-    53   # dns
-  ];
+  firewall = {
+    enable = true;
+    # Open ports in the firewall.
+    allowedTCPPorts = [
+      53    # dns
+      80    # http
+      443   # https
+      8333  # bitcoin
+    ];
+    allowedUDPPorts = [
+      53    # dns
+      51820 # wireguard
+    ];
+    trustedInterfaces = [ "wg0" ];
+  };
 
   # Enable NAT
-  nat.enable = true;
-  nat.externalInterface = "wlan0";
-  nat.internalInterfaces = [ "wg0" ];
+  nat = {
+    enable = true;
+    externalInterface = "wlan0";
+    internalInterfaces = [ "wg0" ];
+  };
 
   # Enable WireGuard
   wireguard = {
@@ -54,41 +60,31 @@
           # alex-iphone
           publicKey = "ydxXaMhlYBE43YdvCP00mJTiSpn907G5qb51DqTOVjA=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-iphone/psk".path;
-          allowedIPs = [ "10.0.0.0/24" ];
-          endpoint = "home.acpuchades.com:51820";
-          persistentKeepalive = 25;
+          allowedIPs = [ "10.0.0.2/32" ];
         }
         {
           # alex-ipad
           publicKey = "nP9sZryp7DwUBMjOyTnjEEXOV8PeMJNchn+WN9IM8FQ=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-ipad/psk".path;
-          allowedIPs = [ "10.0.0.0/24" ];
-          endpoint = "home.acpuchades.com:51820";
-          persistentKeepalive = 25;
+          allowedIPs = [ "10.0.0.3/32" ];
         }
         {
           # alex-macbookpro
           publicKey = "rbTxWfmkK3YAGRqAPqic3br14/bocwW0o2qThWfgjDE=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-macbookpro/psk".path;
-          allowedIPs = [ "10.0.0.0/24" ];
-          endpoint = "home.acpuchades.com:51820";
-          persistentKeepalive = 25;
+          allowedIPs = [ "10.0.0.4/32" ];
         }
         {
           # mubin-phone
           publicKey = "vOJgOdMoC1YTfNyJM9LVnJMQSRzc7tAatJJNoEY4DnA=";
           presharedKeyFile = config.sops.secrets."wg/peers/mubin-phone/psk".path;
-          allowedIPs = [ "10.0.0.0/24" ];
-          endpoint = "home.acpuchades.com:51820";
-          persistentKeepalive = 25;
+          allowedIPs = [ "10.0.0.5/32" ];
         }
         {
           # mubin-laptop
           publicKey = "2HGtWcDxkTjZM24qqtFwg3BSIBSE9dBeedlUZOygpBE=";
           presharedKeyFile = config.sops.secrets."wg/peers/mubin-laptop/psk".path;
-          allowedIPs = [ "10.0.0.0/24" ];
-          endpoint = "home.acpuchades.com:51820";
-          persistentKeepalive = 25;
+          allowedIPs = [ "10.0.0.6/32" ];
         }
       ];
     };
