@@ -43,6 +43,11 @@ let
           mode = "0400";
         };
 
+        "protonvpn/wg-in/private-key" = {
+          owner = "root";
+          mode = "0400";
+        };
+
         "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
         "wg/peers/alex-iphone/psk" = { key = "wireguard/peers/alex-iphone/psk"; };
         "wg/peers/alex-ipad/psk" = { key = "wireguard/peers/alex-ipad/psk"; };

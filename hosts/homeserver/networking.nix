@@ -50,43 +50,49 @@
   # Enable WireGuard
   wireguard = {
     enable = true;
-    interfaces.wg0 = {
-      # Server interface
-      ips = [ "10.0.0.1/24" ];
-      listenPort = 51820;
-      privateKeyFile = config.sops.secrets."wg/server/private-key".path;
-      peers = [
-        {
+    interfaces = {
+      wg0 = {
+        # Server interface
+        ips = [ "10.0.0.1/24" ];
+        listenPort = 51820;
+        privateKeyFile = config.sops.secrets."wg/server/private-key".path;
+        peers = [{
           # alex-iphone
           publicKey = "ydxXaMhlYBE43YdvCP00mJTiSpn907G5qb51DqTOVjA=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-iphone/psk".path;
           allowedIPs = [ "10.0.0.2/32" ];
-        }
-        {
+        } {
           # alex-ipad
           publicKey = "nP9sZryp7DwUBMjOyTnjEEXOV8PeMJNchn+WN9IM8FQ=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-ipad/psk".path;
           allowedIPs = [ "10.0.0.3/32" ];
-        }
-        {
+        } {
           # alex-macbookpro
           publicKey = "rbTxWfmkK3YAGRqAPqic3br14/bocwW0o2qThWfgjDE=";
           presharedKeyFile = config.sops.secrets."wg/peers/alex-macbookpro/psk".path;
           allowedIPs = [ "10.0.0.4/32" ];
-        }
-        {
+        } {
           # mubin-phone
           publicKey = "vOJgOdMoC1YTfNyJM9LVnJMQSRzc7tAatJJNoEY4DnA=";
           presharedKeyFile = config.sops.secrets."wg/peers/mubin-phone/psk".path;
           allowedIPs = [ "10.0.0.5/32" ];
-        }
-        {
+        } {
           # mubin-laptop
           publicKey = "2HGtWcDxkTjZM24qqtFwg3BSIBSE9dBeedlUZOygpBE=";
           presharedKeyFile = config.sops.secrets."wg/peers/mubin-laptop/psk".path;
           allowedIPs = [ "10.0.0.6/32" ];
-        }
-      ];
+        }];
+      };
+      wg-proton-in = {
+        ips = [ "10.2.0.2/32" ];
+        privateKeyFile = config.sops.secrets."protonvpn/wg-in/private-key".path;
+        peers = [{
+          publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
+          endpoint = "146.70.142.18:51820";
+          allowedIPs = [ "0.0.0.0/0" ];
+          persistentKeepalive = 25;
+        }];
+      };
     };
   };
 }
