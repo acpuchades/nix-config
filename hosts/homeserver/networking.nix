@@ -9,9 +9,12 @@
     dns = "systemd-resolved";
     wifi.backend = "iwd";
     wifi.powersave = false;
+    unmanaged = [ "wlan1" ];
   };
 
-  wireless.iwd.enable = true;
+  wireless = {
+    iwd.enable = true;
+  };
 
   # DNS name servers
   nameservers = [
@@ -83,13 +86,13 @@
           allowedIPs = [ "10.0.0.6/32" ];
         }];
       };
-      wg-proton-in = {
+      wg-vpn-in = {
         ips = [ "10.2.0.2/32" ];
-        privateKeyFile = config.sops.secrets."protonvpn/wg-in/private-key".path;
+        privateKeyFile = config.sops.secrets."vpn/in/wg-private-key".path;
         peers = [{
           publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
           endpoint = "146.70.142.18:51820";
-          allowedIPs = [ "0.0.0.0/0" ];
+          allowedIPs = [ "10.2.0.0/24" ];
           persistentKeepalive = 25;
         }];
       };
