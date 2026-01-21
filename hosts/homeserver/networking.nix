@@ -22,6 +22,25 @@
     "::1"
   ];
 
+  nftables = {
+    enable = true;
+    ruleset = ''
+      table inet mangle {
+        chain prerouting {
+          type filter hook prerouting priority -150;
+          iifname "wlan1" meta mark set 0x1
+        }
+      }
+    '';
+  };
+
+  # Enable NAT
+  nat = {
+    enable = true;
+    externalInterface = "wlan1";
+    internalInterfaces = [ "wg-vpn-in" ];
+  };
+
   # Configure network proxy if necessary
   # proxy.default = "http://user:password@proxy:port/";
   # proxy.noProxy = "127.0.0.1,localhost,internal.domain";
@@ -41,13 +60,6 @@
       51820 # wireguard
     ];
     trustedInterfaces = [ "wg0" ];
-  };
-
-  # Enable NAT
-  nat = {
-    enable = true;
-    externalInterface = "wlan0";
-    internalInterfaces = [ "wg0" ];
   };
 
   # Enable WireGuard
@@ -88,11 +100,13 @@
       };
       wg-vpn-in = {
         ips = [ "10.2.0.2/32" ];
+        table = "51820";
+        fwMark = "0x1";
         privateKeyFile = config.sops.secrets."vpn/in/wg-private-key".path;
         peers = [{
           publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
           endpoint = "146.70.142.18:51820";
-          allowedIPs = [ "10.2.0.0/24" ];
+          allowedIPs = [ "0.0.0.0/0" ];
           persistentKeepalive = 25;
         }];
       };
