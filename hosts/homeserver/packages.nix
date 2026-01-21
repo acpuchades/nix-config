@@ -6,6 +6,7 @@ with pkgs;
   curl
   ghostty.terminfo
   htop
+  iw
   mailutils
   prefect
   unzip

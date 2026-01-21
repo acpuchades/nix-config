@@ -26,6 +26,9 @@
   # Timestamps & logs
   timesyncd.enable = true;
 
+  # Disable systemd-resolved
+  resolved.enable = false;
+
   # Adguard Home
   adguardhome = {
     enable = true;
@@ -84,6 +87,41 @@
         "127.0.0.1:5300"
         "[::1]:5300"
       ];
+    };
+  };
+
+  # DNSMasq
+  dnsmasq = {
+    enable = true;
+    settings = {
+      interface = "wlan1";
+      bind-dynamic = true;
+      port = 0; # disable DNS
+      dhcp-range = [
+        "192.168.50.100,192.168.50.200,12h"
+      ];
+      dhcp-option = [
+        "option:dns-server,10.2.0.1" # Proton DNS via WG
+      ];
+    };
+  };
+
+  # Hostapd
+  hostapd = {
+    enable = true;
+    radios.wlan1 = {
+      band = "2g";
+      channel = 6;
+      countryCode = "ES";
+      networks = {
+        wlan1 = {
+          ssid = "HomeServerVPN-IN";
+          authentication = {
+            mode = "wpa2-sha256";
+            wpaPasswordFile = config.sops.secrets."vpn/in/wifi-password".path;
+          };
+        };
+      };
     };
   };
 
