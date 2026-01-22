@@ -58,7 +58,7 @@ let
       };
 
       sops.templates."ddclient/config".content = ''
-        use=web, web=dynamicdns.park-your-domain.com/getip
+        use=web, web=checkip.amazonaws.com
         protocol=namecheap
         ssl=yes
         server=dynamicdns.park-your-domain.com
