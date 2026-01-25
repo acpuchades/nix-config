@@ -36,7 +36,13 @@ let
           neededForUsers = true;
         };
 
-        "prefect/htpasswd" = {
+        "nginx/htpasswd/adguard" = {
+          owner = "nginx";
+          group = "nginx";
+          mode = "0400";
+        };
+
+        "nginx/htpasswd/prefect" = {
           owner = "nginx";
           group = "nginx";
           mode = "0400";
