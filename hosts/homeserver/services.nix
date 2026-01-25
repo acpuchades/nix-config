@@ -27,7 +27,7 @@
   # Timestamps & logs
   timesyncd.enable = true;
 
-  # Disable systemd-resolved
+  # systemd-resolved
   resolved.enable = true;
 
   # Adguard Home
@@ -35,10 +35,12 @@
     enable = true;
     settings = {
       dns = {
+        bind_hosts = [
+          "10.0.0.1"     # wg0
+          "192.168.2.2"  # wlan0
+        ];
         port = 53;
-        bind_hosts = [ "0.0.0.0" "::" ];
         upstream_dns = [ "127.0.0.1:5300" ];
-        bootstrap_dns = [ "1.1.1.1" "1.0.0.1" ];
       };
       filtering = {
         protection_enabled = true;
@@ -110,10 +112,10 @@
       bind-dynamic = true;
       port = 0; # disable DNS
       dhcp-range = [
-        "192.168.50.100,192.168.50.200,12h"
+        "192.168.10.2,192.168.10.254,12h"
       ];
       dhcp-option = [
-        "option:dns-server,10.2.0.1" # Proton DNS via WG
+        "option:dns-server,10.2.0.1" # Proton DNS via wg-vpn-in
       ];
     };
   };
@@ -122,9 +124,8 @@
   hostapd = {
     enable = true;
     radios.wlan1 = {
-      band = "2g";
-      channel = 6;
-      countryCode = "ES";
+      band = "5g";
+      channel = 36;
       networks = {
         wlan1 = {
           ssid = "HomeServerVPN-IN";
