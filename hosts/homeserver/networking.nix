@@ -18,8 +18,7 @@
 
   # DNS name servers
   nameservers = [
-    "127.0.0.1"
-    "::1"
+    "127.0.0.53"
   ];
 
   nftables = {
