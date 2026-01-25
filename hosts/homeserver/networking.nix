@@ -7,13 +7,13 @@
   networkmanager = {
     enable = true; # Easiest to use and most distros use this by default.
     dns = "systemd-resolved";
-    wifi.backend = "iwd";
     wifi.powersave = false;
     unmanaged = [ "wlan1" ];
   };
 
   wireless = {
-    iwd.enable = true;
+    enable = true;
+    interfaces = [ "wlan0" ];
   };
 
   # DNS name servers
