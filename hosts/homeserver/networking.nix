@@ -25,6 +25,16 @@
   nftables = {
     enable = true;
     ruleset = ''
+      table inet filter {
+        chain forward {
+          type filter hook forward priority 0;
+          policy drop;
+
+          iifname "wlan1" oifname "wg-vpn-in" accept
+          iifname "wg-vpn-in" oifname "wlan1" ct state established,related accept
+        }
+      }
+
       table inet mangle {
         chain prerouting {
           type filter hook prerouting priority -150;
@@ -37,8 +47,8 @@
   # Enable NAT
   nat = {
     enable = true;
-    externalInterface = "wlan1";
-    internalInterfaces = [ "wg-vpn-in" ];
+    externalInterface = "wg-vpn-in";
+    internalInterfaces = [ "wlan1" ];
   };
 
   # Configure network proxy if necessary
