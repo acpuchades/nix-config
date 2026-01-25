@@ -14,9 +14,8 @@ let
   configuration =
     inputs@{ config, lib, pkgs, ... }:
     import ./settings.nix inputs // {
-
       imports = [
-        # Include the results of the hardware scan.
+        # Include the results of thpe hardware scan.
         ./hardware-configuration.nix
       ];
 
@@ -60,7 +59,6 @@ let
       sops.templates."ddclient/config".content = ''
         use=web, web=checkip.amazonaws.com
         protocol=namecheap
-        ssl=yes
         server=dynamicdns.park-your-domain.com
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
@@ -73,7 +71,7 @@ let
         mode = "0400";
         content = ''
           [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${config.sops.placeholder."mailjet/secret"}
-          '';
+        '';
       };
 
       sops.templates."nm-profiles/home-wlan".content = ''

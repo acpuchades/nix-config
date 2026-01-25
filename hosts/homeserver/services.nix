@@ -14,7 +14,8 @@
   # pulseaudio.enable = true;
   # OR
   pipewire = {
-    enable = true;pulse.enable = true;
+    enable = true;
+    pulse.enable = true;
   };
 
   # Enable CUPS to print documents
@@ -27,21 +28,32 @@
   timesyncd.enable = true;
 
   # Disable systemd-resolved
-  resolved.enable = false;
+  resolved.enable = true;
 
   # Adguard Home
   adguardhome = {
     enable = true;
     settings = {
-      dns.upstream_dns = [ "127.0.0.1:5300" ];
+      dns = {
+        port = 53;
+        bind_hosts = [ "0.0.0.0" "::" ];
+        upstream_dns = [ "127.0.0.1:5300" ];
+        bootstrap_dns = [ "1.1.1.1" "1.0.0.1" ];
+      };
       filtering = {
         protection_enabled = true;
         filtering_enabled = true;
         parental_enabled = false;
         safe_search.enabled = false;
         filters = map(url: { enabled = true; url = url; }) [
-          "https://raw.githubusercontent.com/AdguardTeam/FiltersRegistry/master/filters/filter_15_DnsFilter/filter.txt" # dns filter
-          "https://filters.adtidy.org/extension/chromium-mv3/filters/24.txt" # quick fixes filter
+          # Ads
+          "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
+          "https://easylist.to/easylist/easylist.txt"
+          "https://easylist.to/easylist/easyprivacy.txt"
+
+          # Privacy
+          "https://easylist.to/easylist/fanboy-enhanced-tracking.txt"
+          "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml"
         ];
       };
     };
@@ -70,6 +82,9 @@
   ddclient = {
     enable = true;
     configFile = config.sops.templates."ddclient/config".path;
+    extraConfig = ''
+      cache=/var/lib/ddclient/cache
+      '';
   };
 
   # DNSCrypt
@@ -81,8 +96,8 @@
         "quad9-dnscrypt-ip4-nofilter-pri"
       ];
       require_dnssec = true;
-      #require_nolog = true;
       require_nofilter = true;
+      #require_nolog = true;
       listen_addresses = [
         "127.0.0.1:5300"
         "[::1]:5300"
