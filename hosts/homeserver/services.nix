@@ -82,9 +82,6 @@
   ddclient = {
     enable = true;
     configFile = config.sops.templates."ddclient/config".path;
-    extraConfig = ''
-      cache=/var/lib/ddclient/cache
-      '';
   };
 
   # DNSCrypt
@@ -175,6 +172,7 @@
       "adguard.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
+        basicAuthFile = config.sops.secrets."nginx/htpasswd/adguard".path;
         locations."/" = {
           proxyPass = "http://127.0.0.1:3000";
         };
@@ -191,7 +189,7 @@
       "prefect.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
-        basicAuthFile = config.sops.secrets."prefect/htpasswd".path;
+        basicAuthFile = config.sops.secrets."nginx/htpasswd/prefect".path;
         locations."/" = {
           proxyPass = "http://127.0.0.1:4200";
           proxyWebsockets = true;
