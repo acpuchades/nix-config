@@ -35,10 +35,7 @@
     enable = true;
     settings = {
       dns = {
-        bind_hosts = [
-          "10.0.0.1"     # wg0
-          "192.168.2.2"  # wlan0
-        ];
+        bind_host = "0.0.0.0";
         port = 53;
         upstream_dns = [ "127.0.0.1:5300" ];
       };

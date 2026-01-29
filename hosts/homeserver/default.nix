@@ -80,29 +80,19 @@ let
         '';
       };
 
-      sops.templates."nm-profiles/home-wlan".content = ''
-        [connection]
-        id=home-wlan
-        uuid=0AF6F35B-C389-4D9E-8B86-3D0308CA335F
-        type=wifi
-        autoconnect=true
-        autoconnect-priority=100
+      sops.templates."wifi/secrets".content = ''
+        home-wlan-psk=${config.sops.placeholder."wifi/password"}
+      '';
 
-        [wifi]
-        ssid=${config.sops.placeholder."wifi/network"}
-        mode=infrastructure
-        cloned-mac-address=preserve
-
-        [wifi-security]
-        key-mgmt=wpa-psk
-        psk=${config.sops.placeholder."wifi/password"}
-
-        [ipv4]
-        method=auto
-
-        [ipv6]
-        method=auto
-        '';
+      systemd.network.networks = {
+        "10-wlp3s0" = {
+          matchConfig.Name = "wlp3s0";
+          networkConfig = {
+            DHCP = "yes";
+            DNS = [ "127.0.0.1" ];
+          };
+        };
+      };
 
       users = import ./users.nix inputs;
 
@@ -117,13 +107,6 @@ let
         user = "fugazi";
         group = "fugazi";
 
-      };
-
-      environment.etc."NetworkManager/system-connections/home-wlan.nmconnection" = {
-        source = config.sops.templates."nm-profiles/home-wlan".path;
-        mode = "0600";
-        user = "root";
-        group = "root";
       };
 
       systemd.tmpfiles.rules = [
