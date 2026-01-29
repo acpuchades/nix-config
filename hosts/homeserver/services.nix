@@ -122,7 +122,8 @@
     enable = true;
     radios.wlan1 = {
       band = "5g";
-      channel = 36;
+      channel = 0;
+      countryCode = "ES";
       networks = {
         wlan1 = {
           ssid = "HomeServerVPN-IN";
