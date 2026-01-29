@@ -4,22 +4,18 @@
 
   # Pick only one of the below networking options.
   # wireless.enable = true;  # Enables wireless support via wpa_supplicant.
-  networkmanager = {
-    enable = true; # Easiest to use and most distros use this by default.
-    dns = "systemd-resolved";
-    wifi.powersave = false;
-    unmanaged = [ "wlan1" ];
-  };
+  useNetworkd = true;
+  networkmanager.enable = false;
 
   wireless = {
     enable = true;
-    interfaces = [ "wlan0" ];
+    interfaces = [ "wlp3s0" ];
+    userControlled.enable = false;
+    secretsFile = config.sops.templates."wifi/secrets".path;
+    networks."MIWIFI_5G_dehC" = {
+      pskRaw = "ext:home-wlan-psk";
+    };
   };
-
-  # DNS name servers
-  nameservers = [
-    "127.0.0.53"
-  ];
 
   nftables = {
     enable = true;
