@@ -25,15 +25,15 @@
           type filter hook forward priority 0;
           policy drop;
 
-          iifname "wlan1" oifname "wg-vpn-in" accept
-          iifname "wg-vpn-in" oifname "wlan1" ct state established,related accept
+          iifname "wlp229s0f3u4" oifname "wg-vpn-in" accept
+          iifname "wg-vpn-in" oifname "wlp229s0f3u4" ct state established,related accept
         }
       }
 
       table inet mangle {
         chain prerouting {
           type filter hook prerouting priority -150;
-          iifname "wlan1" meta mark set 0x1
+          iifname "wlp229s0f3u4" meta mark set 0x1
         }
       }
     '';
@@ -43,7 +43,7 @@
   nat = {
     enable = true;
     externalInterface = "wg-vpn-in";
-    internalInterfaces = [ "wlan1" ];
+    internalInterfaces = [ "wlp229s0f3u4" ];
   };
 
   # Configure network proxy if necessary

@@ -105,7 +105,7 @@
   dnsmasq = {
     enable = true;
     settings = {
-      interface = "wlan1";
+      interface = "wlp229s0f3u4";
       bind-dynamic = true;
       port = 0; # disable DNS
       dhcp-range = [
@@ -120,12 +120,12 @@
   # Hostapd
   hostapd = {
     enable = true;
-    radios.wlan1 = {
+    radios.wlp229s0f3u4 = {
       band = "5g";
       channel = 0;
       countryCode = "ES";
       networks = {
-        wlan1 = {
+        wlp229s0f3u4 = {
           ssid = "HomeServerVPN-IN";
           authentication = {
             mode = "wpa2-sha256";
