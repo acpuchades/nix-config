@@ -12,10 +12,6 @@ with pkgs;
   wget
   wireshark
 
-  # Internet
-  google-chrome
-  notion-app
-
   # IA
   chatgpt
 ]
