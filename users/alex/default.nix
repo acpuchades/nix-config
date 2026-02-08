@@ -80,6 +80,11 @@ in
   #   executable = true;  # make all files executable
   # };
 
+  # encode the file content in nix configuration file directly
+  # home.file.".xxx".text = ''
+  #     xxx
+  # '';
+
   home.file.".condarc".text = ''
     channels:
       - bioconda
@@ -99,15 +104,22 @@ in
     source = ./files/starship.toml;
   };
 
-  # encode the file content in nix configuration file directly
-  # home.file.".xxx".text = ''
-  #     xxx
-  # '';
+  home.activation.writeGhHosts = lib.hm.dag.entryAfter [ "sops-nix" ] ''
+    set -euo pipefail
 
-  home.activation.linkSecrets = lib.hm.dag.entryAfter [ "sops-nix" "writeBoundary" ] ''
-    mkdir -p "$HOME/.config/gh" "$HOME/.prefect"
-    ln -sf ${config.sops.templates."gh/hosts.yml".path} "$HOME/.config/gh/hosts.yml"
-    ln -sf ${config.sops.templates."prefect/profiles.toml".path} "$HOME/.prefect/profiles.toml"
+    mkdir -p "$HOME/.config/gh"
+    install -C -m 600 \
+      "${config.sops.templates."gh/hosts.yml".path}" \
+      "$HOME/.config/gh/hosts.yml"
+  '';
+
+  home.activation.writePrefectProfiles = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      set -euo pipefail
+
+      mkdir -p "$HOME/.prefect"
+      install -C -m 600 \
+        "${config.sops.templates."prefect/profiles.toml".path}" \
+        "$HOME/.prefect/profiles.toml"
   '';
 
   # set cursor size and dpi for 4k monitor

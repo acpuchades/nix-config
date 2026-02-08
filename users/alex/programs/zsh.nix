@@ -7,6 +7,7 @@
   history.size = 10000;
   loginExtra = ''
     # export api keys from secrets
+
     if [[ -r '${config.sops.secrets."anthropic/token".path}' ]]; then
       export ANTHROPIC_API_KEY="$(<'${config.sops.secrets."anthropic/token".path}')"
     fi
