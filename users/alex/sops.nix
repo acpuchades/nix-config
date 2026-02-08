@@ -34,7 +34,6 @@ inputs@{ config, host, ...}:
   };
 
   templates = {
-
     "gh/hosts.yml".content = ''
       github.com:
         user: acpuchades
@@ -43,7 +42,7 @@ inputs@{ config, host, ...}:
     '';
 
     "prefect/profiles.toml".content = ''
-      active = "homeserver"
+      active = "ephemeral"
 
       [profiles.local]
       PREFECT_API_URL = "http://127.0.0.1:4200/api"
@@ -52,6 +51,6 @@ inputs@{ config, host, ...}:
       PREFECT_API_URL = "https://prefect.acpuchades.com/api"
       PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
     '';
-
   };
+
 }
