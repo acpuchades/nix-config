@@ -16,7 +16,6 @@
     "affinity"
     "alcove"
     "bartender"
-    "chatgpt-atlas"
     "cleanshot"
     "clop"
     "ledger-wallet"
