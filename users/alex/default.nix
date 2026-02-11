@@ -156,6 +156,7 @@ in
     fastfetch
     jq
     ripgrep
+    tree
     vim
 
     # Network
