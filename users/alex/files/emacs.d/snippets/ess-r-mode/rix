@@ -9,7 +9,7 @@ rix::rix(
                            (buf-dir (file-name-directory buf)))
                       (if (and root (file-in-directory-p buf root))
                         (let ((rel (file-relative-name buf-dir root)))
-                          (if (string= rel ".") "." rel))
+                          (if (string= rel "./") "." rel))
                         buf-dir))`}",
   r_ver="${2:latest-upstream}",
   r_pkgs=c(
@@ -18,6 +18,6 @@ rix::rix(
   ),
   system_pkgs=${4:NULL},
   git_pkgs=${5:NULL},
-  ide="${6i:positron}",
+  ide="${6:positron}",
   overwrite=TRUE
 )
