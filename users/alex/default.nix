@@ -170,12 +170,12 @@ in
 
     # Encryption
     age
-    gnupg
     mkpasswd
 
     # Dev
     aider-chat
     docker
+    git-crypt
     mamba-cpp
     prefect
 

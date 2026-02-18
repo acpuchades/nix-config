@@ -4,6 +4,7 @@ inputs: {
 
   emacs = import ./emacs.nix inputs;
   ghostty = import ./ghostty.nix inputs;
+  gpg = import ./gpg.nix inputs;
   git = import ./git.nix inputs;
   zsh = import ./zsh.nix inputs;
 
