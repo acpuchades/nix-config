@@ -166,6 +166,7 @@
       "www.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
+        root = "/var/www/acpuchades.com";
       };
 
       "adguard.acpuchades.com" = {
