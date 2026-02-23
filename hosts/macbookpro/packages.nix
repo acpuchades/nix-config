@@ -14,4 +14,7 @@ with pkgs;
 
   # IA
   chatgpt
+
+  # Web
+  google-chrome
 ]
