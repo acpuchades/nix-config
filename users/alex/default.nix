@@ -50,6 +50,7 @@ in
   home.stateVersion = "24.11";
 
   programs = import ./programs inputs;
+  services = import ./services.nix inputs;
 
   accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
@@ -61,12 +62,6 @@ in
       StartInterval = 600;
       RunAtLoad = true;
     };
-  };
-
-  services.mbsync = lib.mkIf pkgs.stdenv.isLinux {
-    enable = true;
-    frequency = "*:0/10";
-    postExec = "${config.programs.mu.package}/bin/mu index";
   };
 
   # link the configuration file in current directory to the specified location in home directory
