@@ -199,16 +199,16 @@
     };
   };
 
-  # SSH
+  # OpenSSH
   openssh = {
     enable = true;
+    openFirewall = true;
     settings = {
       PermitRootLogin = "no";
-      PasswordAuthentication = false; # ensure you have SSH keys set
+      PasswordAuthentication = false;
       AllowTcpForwarding = "yes";
       X11Forwarding = false;
     };
-    openFirewall = true; # keep closed by default; open explicitly if needed
   };
 
   # Postgres

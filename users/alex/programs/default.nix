@@ -6,6 +6,7 @@ inputs: {
   ghostty = import ./ghostty.nix inputs;
   gpg = import ./gpg.nix inputs;
   git = import ./git.nix inputs;
+  ssh = import ./ssh.nix inputs;
   zsh = import ./zsh.nix inputs;
 
   direnv.enable = true;
