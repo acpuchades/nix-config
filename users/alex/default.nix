@@ -160,12 +160,15 @@ in
     mu
     nmap
     netcat
+    openssh
     samba
     wget
 
-    # Encryption
+    # Security
     age
+    libfido2
     mkpasswd
+    pynitrokey
 
     # Dev
     aider-chat

@@ -52,6 +52,9 @@ nix-darwin.lib.darwinSystem {
       home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
       users.users.alex.home = "/Users/alex";
+      users.users.alex.openssh.authorizedKeys.keys = [
+        "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIOsBCI8pMjSqQFPxJsyFWBrKxo2scz9zLhCyJKKiBJZFAAAABHNzaDo= acpuchades-nitrokey-20260225"
+      ];
     }
   ];
 }

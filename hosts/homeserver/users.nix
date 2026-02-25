@@ -1,5 +1,10 @@
 { config, pkgs, ... }:
-{
+let
+
+  nitrokeySshPublicKey = "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIOsBCI8pMjSqQFPxJsyFWBrKxo2scz9zLhCyJKKiBJZFAAAABHNzaDo= acpuchades-nitrokey-20260225";
+
+in {
+
   # Ensure users are managed by Nix
   mutableUsers = false;
 
@@ -32,8 +37,7 @@
     shell = pkgs.zsh;
 
     openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINToP7vyGXG7vrxR8W3T3I2NalZkc1IPd0WaETssf1X5 alex@macbookpro"
-      "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBGInkVDbDTNXoUs27tUFuU1sFRRKzZQh1hc0aFyW6xMtyK9olt0lgFGvi1TauS4twSPf4a5UeDLtrkNxSahIAqc= alex@iphone"
+      nitrokeySshPublicKey
     ];
   };
 }
