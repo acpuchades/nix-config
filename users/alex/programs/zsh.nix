@@ -17,7 +17,7 @@
       eval "$(${pkgs.mamba-cpp}/bin/mamba shell hook --shell zsh)"
     fi
   '';
-  initExtra = ''
+  initContent = ''
     if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ]; then
       tmux attach -t main || tmux new -s main
     fi
