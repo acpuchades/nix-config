@@ -29,7 +29,6 @@
     "telegram"
     "the-unarchiver"
     "transmission"
-    "unclack"
     "veracrypt"
     "whatsapp"
     "zoom"
