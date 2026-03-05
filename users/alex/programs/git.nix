@@ -11,6 +11,9 @@
     merge.conflictstyle = "zdiff3";
     user.name = "acpuchades";
     user.email = "59510094+acpuchades@users.noreply.github.com";
+    pull.rebase = true;
+    pull.ff = "only";
     push.autoSetupRemote = true;
+    rebase.autoStash = true;
   };
 }
