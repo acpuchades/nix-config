@@ -19,6 +19,7 @@
   '';
   initContent = ''
     if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ]; then
+      alias emacs="emacs -nw"
       tmux attach -t main || tmux new -s main
     fi
   '';
