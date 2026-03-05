@@ -163,7 +163,7 @@
 ;; Catppuccin theme setup
 (use-package catppuccin-theme
   :custom
-  (catppuccin-flavor 'latte)
+  (catppuccin-flavor 'mocha)
   :config
   (mapc #'disable-theme custom-enabled-themes)
   (load-theme 'catppuccin :no-confirm))
