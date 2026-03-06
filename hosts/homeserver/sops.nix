@@ -4,7 +4,8 @@
   defaultSopsFormat = "yaml";
   age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 
-  ssecrets = {
+  secrets = {
+
     "ddclient/domain" = { key = "ddclient/domain"; };
     "ddclient/password" = { key = "ddclient/password"; };
 
@@ -40,6 +41,7 @@
 
     "wifi/network" = { key = "wifi/network"; };
     "wifi/password" = { key = "wifi/password"; };
+
   };
 
   templates = {
