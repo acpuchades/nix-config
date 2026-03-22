@@ -1,12 +1,6 @@
-inputs@{ config, host, lib, pkgs, ... }:
+inputs@{ config, lib, pkgs, ... }:
 
 let
-
-  mailSyncScript = pkgs.writeShellScript "mbsync-mu-sync" ''
-    set -euo pipefail
-    "${config.programs.mbsync.package}/bin/mbsync" -a
-    "${config.programs.mu.package}/bin/mu" index
-  '';
 
   python3-with-packages = pkgs.python3.withPackages (
     ps: with ps; [
@@ -54,15 +48,7 @@ in
 
   accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
-
-  launchd.agents.mbsync-mu = lib.mkIf pkgs.stdenv.isDarwin {
-    enable = true;
-    config = {
-      ProgramArguments = [ "${mailSyncScript}" ];
-      StartInterval = 600;
-      RunAtLoad = true;
-    };
-  };
+  launchd = lib.mkIf pkgs.stdenv.isDarwin (import ./launchd.nix inputs);
 
   # link the configuration file in current directory to the specified location in home directory
   # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
@@ -177,6 +163,7 @@ in
     docker
     git-crypt
     mamba-cpp
+    ntfy
     prefect
 
     # Nix
