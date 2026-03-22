@@ -15,5 +15,6 @@
     pull.ff = "only";
     push.autoSetupRemote = true;
     rebase.autoStash = true;
+    rebase.updateRefs = true;
   };
 }
