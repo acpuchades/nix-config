@@ -145,14 +145,16 @@ in
     coreutils
     direnv
     delta
+    duckdb
     eza
     fd
     fzf
     fastfetch
     jq
+    lnav
     ripgrep
     tree
-    vim
+    zoxide
 
     # Network
     curl
@@ -198,7 +200,6 @@ in
     # R
     air-formatter
     pandoc
-    positron-bin
     r-with-packages
     radian-with-packages
     texliveSmall
