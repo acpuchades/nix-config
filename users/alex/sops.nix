@@ -21,6 +21,11 @@ inputs@{ config, host, ...}:
       key = "icloud/password";
     };
 
+    "ntfy/token" = {
+      sopsFile = ./secrets/${host}.yml;
+      key = "ntfy/token";
+    };
+
     "prefect/user" = {
       sopsFile = ./secrets/default.yml;
       key = "prefect/user";
