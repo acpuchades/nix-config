@@ -2,19 +2,12 @@
 
 with pkgs;
 [
-  # System
   bitwarden-desktop
   ext4fuse
+  google-chrome
   ntfs3g
-  raycast
   utm
   vim
   wget
   wireshark
-
-  # IA
-  chatgpt
-
-  # Web
-  google-chrome
 ]
