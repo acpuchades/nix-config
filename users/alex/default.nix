@@ -76,6 +76,10 @@ in
     auto_activate_base: false
   '';
 
+  home.file.".Rprofile" = {
+    source = ./files/Rprofile;
+  };
+
   home.file.".emacs.d" = {
     source = ./files/emacs.d;
     recursive = true;

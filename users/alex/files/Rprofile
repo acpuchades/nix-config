@@ -1,0 +1,110 @@
+# ─── ggplot2 defaults ──────────────────────────────────────────────────────────
+
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+
+  # ── 1. Custom base theme ────────────────────────────────────────────────────
+  theme_user <- function(base_size = 12,
+                         base_family = "Helvetica",
+                         grid = c("both", "x", "y", "none")) {
+    grid <- match.arg(grid)
+
+    base <- ggplot2::theme_bw(base_size = base_size, base_family = base_family) +
+      ggplot2::theme(
+        # Panel
+        panel.background   = ggplot2::element_rect(fill = "white", colour = NA),
+        panel.border       = ggplot2::element_rect(fill = NA, colour = "grey30", linewidth = 0.5),
+        panel.grid.major   = ggplot2::element_line(colour = "grey90", linewidth = 0.35),
+        panel.grid.minor   = ggplot2::element_blank(),
+        panel.spacing      = ggplot2::unit(0.6, "lines"),
+
+        # Axes
+        axis.ticks         = ggplot2::element_line(colour = "grey40", linewidth = 0.35),
+        axis.ticks.length  = ggplot2::unit(0.2, "cm"),
+        axis.text          = ggplot2::element_text(colour = "grey20", size = ggplot2::rel(0.85)),
+        axis.title         = ggplot2::element_text(colour = "grey10", size = ggplot2::rel(0.95),
+                                                   margin = ggplot2::margin(t = 4, r = 4)),
+
+        # Titles
+        plot.title         = ggplot2::element_text(face = "bold", size = ggplot2::rel(1.1),
+                                                   hjust = 0, margin = ggplot2::margin(b = 6)),
+        plot.subtitle      = ggplot2::element_text(colour = "grey30", size = ggplot2::rel(0.90),
+                                                   hjust = 0, margin = ggplot2::margin(b = 8)),
+        plot.caption       = ggplot2::element_text(colour = "grey50", size = ggplot2::rel(0.75),
+                                                   hjust = 1, margin = ggplot2::margin(t = 8)),
+        plot.title.position   = "plot",
+        plot.caption.position = "plot",
+
+        # Legend
+        legend.background  = ggplot2::element_blank(),
+        legend.key         = ggplot2::element_blank(),
+        legend.key.size    = ggplot2::unit(0.9, "lines"),
+        legend.text        = ggplot2::element_text(size = ggplot2::rel(0.85)),
+        legend.title       = ggplot2::element_text(size = ggplot2::rel(0.85), face = "bold"),
+        legend.position    = "right",
+
+        # Facets
+        strip.background   = ggplot2::element_rect(fill = "grey93", colour = NA),
+        strip.text         = ggplot2::element_text(face = "bold", size = ggplot2::rel(0.85),
+                                                   margin = ggplot2::margin(4, 4, 4, 4)),
+
+        # Plot margins
+        plot.margin        = ggplot2::margin(10, 14, 8, 10)
+      )
+
+    # Selective grid removal
+    if (grid == "x")    base <- base + ggplot2::theme(panel.grid.major.y = ggplot2::element_blank())
+    if (grid == "y")    base <- base + ggplot2::theme(panel.grid.major.x = ggplot2::element_blank())
+    if (grid == "none") base <- base + ggplot2::theme(panel.grid.major   = ggplot2::element_blank())
+
+    base
+  }
+
+  # ── 2. Set as default ───────────────────────────────────────────────────────
+  ggplot2::theme_set(theme_user())
+
+  # ── 3. Colour palettes ──────────────────────────────────────────────────────
+  # A clean qualitative palette (Okabe-Ito: perceptually uniform, CB-safe)
+  .pal_okabeito <- c(
+    "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+    "#0072B2", "#D55E00", "#CC79A7", "#000000"
+  )
+
+  # A perceptually-uniform sequential palette (viridis-adjacent)
+  .pal_seq <- c("#fde725", "#7ad151", "#22a884", "#2a788e", "#414487", "#440154")
+
+  # Override default discrete scale
+  options(
+    ggplot2.discrete.colour = .pal_okabeito,
+    ggplot2.discrete.fill   = .pal_okabeito
+  )
+
+  # ── 4. Convenience scale shortcuts ─────────────────────────────────────────
+  scale_colour_oi <- function(...) ggplot2::scale_colour_manual(values = .pal_okabeito, ...)
+  scale_fill_oi   <- function(...) ggplot2::scale_fill_manual(values = .pal_okabeito, ...)
+
+  # ── 5. Default geom aesthetics ──────────────────────────────────────────────
+  ggplot2::update_geom_defaults("point",    list(size = 2.2, alpha = 0.85))
+  ggplot2::update_geom_defaults("line",     list(linewidth = 0.75))
+  ggplot2::update_geom_defaults("smooth",   list(linewidth = 0.9, alpha = 0.15))
+  ggplot2::update_geom_defaults("bar",      list(fill = "#2a788e", colour = NA))
+  ggplot2::update_geom_defaults("col",      list(fill = "#2a788e", colour = NA))
+  ggplot2::update_geom_defaults("boxplot",  list(fill = "grey85", colour = "grey30",
+                                                 linewidth = 0.45, outlier.size = 1.5))
+  ggplot2::update_geom_defaults("violin",   list(fill = "grey85", colour = "grey30", linewidth = 0.45))
+  ggplot2::update_geom_defaults("errorbar", list(linewidth = 0.5, width = 0.15))
+  ggplot2::update_geom_defaults("hline",    list(linetype = "dashed", colour = "grey50", linewidth = 0.4))
+  ggplot2::update_geom_defaults("vline",    list(linetype = "dashed", colour = "grey50", linewidth = 0.4))
+
+  # ── 6. ggsave defaults (publication-friendly) ───────────────────────────────
+  ggsave2 <- function(filename, plot = ggplot2::last_plot(),
+                      width = 7, height = 5, dpi = 300,
+                      device = NULL, ...) {
+    if (is.null(device)) {
+      device <- tools::file_ext(filename)
+      if (device == "") device <- "pdf"
+    }
+    ggplot2::ggsave(filename, plot = plot, width = width, height = height,
+                    dpi = dpi, device = device, ...)
+  }
+
+}
