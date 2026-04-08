@@ -1,4 +1,4 @@
-{ config, ... }:
+{ config, pkgs, ... }:
 {
   # Enable the X11 windowing system.
   # xserver.enable = true;
@@ -186,6 +186,16 @@
         };
       };
 
+      "cloud.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+      };
+
+      "office.acpuchades.com" = {
+        forceSSL = true;
+        enableACME = true;
+      };
+
       "prefect.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
@@ -197,6 +207,29 @@
 
       };
     };
+  };
+
+  # NextCloud
+  nextcloud = {
+    enable = true;
+    hostName = "cloud.acpuchades.com";
+    package = pkgs.nextcloud33;
+    database.createLocally = true;
+    configureRedis = true;
+    maxUploadSize = "16G";
+    https = true;
+    autoUpdateApps.enable = true;
+    config = {
+      overwriteProtocol = "https";
+      defaultPhoneRegion = "ES";
+      dbtype = "pgsql";
+      adminuser = "admin";
+      adminpassFile = config.sops.secrets."nextcloud/admin-pass".path;
+    };
+    extraApps = with config.services.nextcloud.package.packages.apps; {
+      inherit calendar contacts notes tasks;
+    };
+    extraAppsEnable = true;
   };
 
   # OpenSSH

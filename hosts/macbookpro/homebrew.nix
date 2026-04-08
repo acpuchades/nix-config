@@ -16,10 +16,14 @@
     "affinity"
     "alcove"
     "bartender"
+    "bitwarden"
+    "chromium"
     "claude"
     "cleanshot"
     "clop"
     "ledger-wallet"
+    "libreoffice"
+    "libreoffice-language-pack"
     "logi-options+"
     "macfuse"
     "microsoft-office"
@@ -31,6 +35,7 @@
     "telegram"
     "the-unarchiver"
     "transmission"
+    "utm"
     "veracrypt"
     "whatsapp"
     "zoom"
@@ -43,8 +48,6 @@
     HandMirror = 1502839586;
     Keynote = 361285480;
     Noir = 1592917505;
-    Numbers = 361304891;
-    Pages = 361309726;
     Reeder = 6475002485;
     WireGuard = 1451685025;
   };
