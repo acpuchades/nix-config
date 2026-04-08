@@ -17,6 +17,8 @@
       neededForUsers = true;
     };
 
+    "nextcloud/admin-pass" = { key = "nextcloud/admin-pass"; };
+
     "nginx/htpasswd/adguard" = {
       owner = "nginx";
       group = "nginx";
@@ -52,7 +54,7 @@
         server=dynamicdns.park-your-domain.com
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
-        www,adguard,bitwarden,home,prefect
+        adguard,bitwarden,cloud,home,office,prefect,www
     '';
 
     "postfix/sasl_passwd" = {
