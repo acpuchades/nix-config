@@ -252,8 +252,6 @@
     maxUploadSize = "16G";
     https = true;
     config = {
-      overwriteprotocol = "https";
-      default_phone_region = "ES";
       dbtype = "pgsql";
       adminuser = "admin";
       adminpassFile = config.sops.secrets."nextcloud/admin-pass".path;
@@ -264,6 +262,23 @@
       inherit calendar contacts news notes richdocuments tasks;
     };
     extraAppsEnable = true;
+    settings = {
+      overwriteprotocol = "https";
+      default_phone_region = "ES";
+      enabledPreviewProviders = [
+        "OC\\Preview\\BMP"
+        "OC\\Preview\\GIF"
+        "OC\\Preview\\JPEG"
+        "OC\\Preview\\Krita"
+        "OC\\Preview\\MarkDown"
+        "OC\\Preview\\MP3"
+        "OC\\Preview\\OpenDocument"
+        "OC\\Preview\\PNG"
+        "OC\\Preview\\TXT"
+        "OC\\Preview\\XBitmap"
+        "OC\\Preview\\HEIC"
+      ];
+    };
   };
 
   # OpenSSH
