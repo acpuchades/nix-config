@@ -77,6 +77,35 @@
     '';
   };
 
+  # Collabora Online
+  collabora-online = {
+    enable = true;
+    port = 9980;
+    settings = {
+
+      # Rely on reverse proxy for SSL
+      ssl = {
+        enable = false;
+        termination = true;
+      };
+
+      # Listen on loopback interface only, and accept requests from ::1
+      net = {
+        listen = "loopback";
+        post_allow.host = ["::1"];
+      };
+
+      # Restrict loading documents from WOPI Host nextcloud.example.com
+      storage.wopi = {
+        "@allow" = true;
+        host = ["cloud.acpuchades.com"];
+      };
+
+      # Set FQDN of server
+      server_name = "collabora.acpuchades.com";
+    };
+  };
+
   # DDClient
   ddclient = {
     enable = true;
@@ -191,9 +220,13 @@
         enableACME = true;
       };
 
-      "office.acpuchades.com" = {
+      "collabora.acpuchades.com" = {
         forceSSL = true;
         enableACME = true;
+        locations."/" = {
+          proxyPass = "http://[::1]:${toString config.services.collabora-online.port}";
+          proxyWebsockets = true;
+        };
       };
 
       "prefect.acpuchades.com" = {
@@ -218,16 +251,17 @@
     configureRedis = true;
     maxUploadSize = "16G";
     https = true;
-    autoUpdateApps.enable = true;
     config = {
-      overwriteProtocol = "https";
-      defaultPhoneRegion = "ES";
+      overwriteprotocol = "https";
+      default_phone_region = "ES";
       dbtype = "pgsql";
       adminuser = "admin";
       adminpassFile = config.sops.secrets."nextcloud/admin-pass".path;
     };
+    appstoreEnable = true;
+    autoUpdateApps.enable = true;
     extraApps = with config.services.nextcloud.package.packages.apps; {
-      inherit calendar contacts notes tasks;
+      inherit calendar contacts news notes richdocuments tasks;
     };
     extraAppsEnable = true;
   };
