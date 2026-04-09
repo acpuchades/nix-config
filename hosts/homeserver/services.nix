@@ -245,7 +245,7 @@
     package = pkgs.nextcloud33;
     database.createLocally = true;
     configureRedis = true;
-    maxUploadSize = "16G";
+    maxUploadSize = "2G";
     https = true;
     config = {
       dbtype = "pgsql";
@@ -258,6 +258,15 @@
       inherit calendar contacts news notes richdocuments tasks;
     };
     extraAppsEnable = true;
+    phpOptions = {
+      "opcache.interned_strings_buffer" = "24";
+      "opcache.memory_consumption" = "256";
+      "opcache.max_accelerated_files" = "10000";
+      "opcache.revalidate_freq" = "1";
+      "opcache.save_comments" = "1";
+      "opcache.jit" = "tracing";
+      "opcache.jit_buffer_size" = "128M";
+    };
     settings = {
       overwriteprotocol = "https";
       default_phone_region = "ES";
@@ -274,8 +283,6 @@
         "OC\\Preview\\XBitmap"
         "OC\\Preview\\HEIC"
       ];
-      "richdocuments.wopi_url" = "http://localhost:${toString config.services.collabora-online.port}";
-      "richdocuments.public_wopi_url" = "https://${config.services.collabora-online.settings.server_name}";
     };
   };
 
