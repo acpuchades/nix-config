@@ -82,25 +82,21 @@
     enable = true;
     port = 9980;
     settings = {
-
       # Rely on reverse proxy for SSL
       ssl = {
         enable = false;
         termination = true;
       };
-
       # Listen on loopback interface only, and accept requests from ::1
       net = {
         listen = "loopback";
         post_allow.host = ["::1"];
       };
-
       # Restrict loading documents from WOPI Host nextcloud.example.com
       storage.wopi = {
         "@allow" = true;
         host = ["cloud.acpuchades.com"];
       };
-
       # Set FQDN of server
       server_name = "collabora.acpuchades.com";
     };
@@ -278,6 +274,8 @@
         "OC\\Preview\\XBitmap"
         "OC\\Preview\\HEIC"
       ];
+      "richdocuments.wopi_url" = "http://localhost:${toString config.services.collabora-online.port}";
+      "richdocuments.public_wopi_url" = "https://${config.services.collabora-online.settings.server_name}";
     };
   };
 
