@@ -17,7 +17,11 @@
       neededForUsers = true;
     };
 
-    "nextcloud/admin-pass" = { key = "nextcloud/admin-pass"; };
+    "nextcloud/admin-pass" = {
+      key = "nextcloud/admin-pass";
+      owner = config.users.users.nextcloud.name;
+      group = config.users.users.nextcloud.group;
+    };
 
     "nginx/htpasswd/adguard" = {
       owner = "nginx";
