@@ -85,6 +85,7 @@
     # Core emacs configuration
     home.file.".emacs.d/early-init.el".source = ./early-init.el;
     home.file.".emacs.d/init.el".source = ./init.el;
+    home.file.".emacs.d/share/logo.svg".source = ./share/logo.svg;
     
     # Deploy config files
     home.file.".emacs.d/config/core.el".text = ''
