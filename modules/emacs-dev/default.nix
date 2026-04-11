@@ -1,7 +1,7 @@
 { config, lib, ... }:
 
 {
-  options.my.emacs-devel = {
+  options.my.emacs-dev = {
     extraPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
       default = [];
@@ -26,7 +26,7 @@
         rainbow-mode
         project
 
-      ] ++ config.my.emacs-devel.extraPackages;
+      ] ++ config.my.emacs-dev.extraPackages;
     };
 
     # Development configuration that will be loaded by init.el

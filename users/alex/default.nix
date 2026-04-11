@@ -10,7 +10,7 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-ui
     ../../modules/emacs-org
     ../../modules/emacs-mu4e
-    ../../modules/emacs-devel
+    ../../modules/emacs-dev
     ../../modules/emacs-ess
     ../../modules/emacs-python
     ../../modules/emacs-nix
