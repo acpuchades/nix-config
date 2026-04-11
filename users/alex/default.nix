@@ -18,7 +18,6 @@ inputs@{ config, lib, pkgs, ... }:
 
   programs = import ./programs inputs;
   services = import ./services.nix inputs;
-
   accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
   launchd = lib.mkIf pkgs.stdenv.isDarwin (import ./launchd.nix inputs);
@@ -134,7 +133,6 @@ inputs@{ config, lib, pkgs, ... }:
     nixfmt-rfc-style
     sops
     ssh-to-age
-
   ];
 
   home.sessionVariables = {
@@ -155,13 +153,11 @@ inputs@{ config, lib, pkgs, ... }:
   };
 
   my.r-dev.extraPackages = with pkgs.rPackages; [
-
     gitignore
     tidyverse
   ];
 
   my.python-dev.extraPackages = ps: with ps; [
-
     # Data science and analysis
     datasets
     numpy
