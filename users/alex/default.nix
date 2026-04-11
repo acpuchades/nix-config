@@ -22,17 +22,11 @@ let
     ]
   );
 
-  r-packages = with pkgs.rPackages; [
-    devtools
-    gitignore
-    rix
-  ];
-
-  r-with-packages = pkgs.rWrapper.override { packages = r-packages; };
-  radian-with-packages = pkgs.radianWrapper.override { packages = r-packages; };
-
 in
 {
+  imports = [
+    ../../modules/r-dev
+  ];
   # This value determines the home Manager release that your
   # configuration is compatible with. This helps avoid breakage
   # when a new home Manager release introduces backwards
@@ -76,9 +70,6 @@ in
     auto_activate_base: false
   '';
 
-  home.file.".Rprofile" = {
-    source = ./files/Rprofile;
-  };
 
   home.file.".emacs.d" = {
     source = ./files/emacs.d;
@@ -187,12 +178,6 @@ in
     uv
     virtualenv
 
-    # R
-    air-formatter
-    pandoc
-    r-with-packages
-    radian-with-packages
-    texliveSmall
   ];
 
   home.sessionVariables = {
