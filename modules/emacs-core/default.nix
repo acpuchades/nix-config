@@ -408,8 +408,8 @@
         :after yasnippet)
     '';
     
-    home.file.".emacs.d/config/10-ui.el".source = ./config/ui.el;
-    home.file.".emacs.d/config/20-dev.el".source = ./config/dev.el;
-    home.file.".emacs.d/config/30-productivity.el".source = ./config/productivity.el;
+    home.file.".emacs.d/config/10-ui.el".source = ./config/10-ui.el;
+    home.file.".emacs.d/config/20-dev.el".source = ./config/20-dev.el;
+    home.file.".emacs.d/config/30-productivity.el".source = ./config/30-productivity.el;
   };
 }
