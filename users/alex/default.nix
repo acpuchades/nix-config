@@ -39,8 +39,6 @@ inputs@{ config, lib, pkgs, ... }:
   #     xxx
   # '';
 
-
-
   home.file.".emacs.d" = {
     source = ./files/emacs.d;
     recursive = true;
