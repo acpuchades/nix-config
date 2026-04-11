@@ -7,10 +7,10 @@ keys:
   # User keys
   - &alex age1wjcu9h7rk0m44dzgyfwtyvajm2z6epscva5g0va8d9k8lz4m0fgqyu0rr2
 creation_rules:
-  - path_regex: ^hosts/homeserver/secrets/default.ya?ml$
+  - path_regex: ^machines/homeserver/secrets/default.ya?ml$
     key_groups:
       - age: [*master, *homeserver]
-  - path_regex: ^hosts/macbookpro/secrets/default.ya?ml$
+  - path_regex: ^machines/macbookpro/secrets/default.ya?ml$
     key_groups:
       - age: [*master, *macbookpro]
   - path_regex: ^users/alex/secrets/default.ya?ml$
