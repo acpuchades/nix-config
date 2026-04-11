@@ -3,13 +3,6 @@
   :custom
     (treesit-font-lock-level 4) ; Maximum syntax highlighting
     (treesit-auto-install nil) ; Don't install grammars, use system ones
-  :init
-    ;; Add system grammar path to treesit search paths
-    (when (getenv "TREE_SITTER_GRAMMAR_PATH")
-      (add-to-list 'treesit-extra-load-path (getenv "TREE_SITTER_GRAMMAR_PATH")))
-    ;; Ensure treesit can find the nix grammar
-    (when (file-exists-p (concat (getenv "TREE_SITTER_GRAMMAR_PATH") "/libtree-sitter-nix.so"))
-      (add-to-list 'treesit-load-name-override-list '(nix "libtree-sitter-nix")))
   :config
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode))

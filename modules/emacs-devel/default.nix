@@ -41,5 +41,8 @@
 
     # Development configuration that will be loaded by init.el
     home.file.".emacs.d/config/15-devel.el".source = ./config/15-devel.el;
+    
+    # Nix integration configuration with variable substitution
+    home.file.".emacs.d/config/16-nix-integration.el".text = builtins.readFile ./config/16-nix-integration.el;
   };
 }
