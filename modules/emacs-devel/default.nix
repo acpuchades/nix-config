@@ -14,17 +14,19 @@
     programs.emacs = {
       enable = lib.mkDefault true;
       extraPackages = epkgs: with epkgs; [
+
         # Development tools
         aidermacs
-        blacken
         magit
-        nix-ts-mode
-        
-        # Tree-sitter support
         treesit-auto
-        
-        # Tree-sitter grammars
-        treesit-grammars.tree-sitter-nix
+
+        # Python
+        blacken
+
+        # Nix
+        nix-ts-mode
+        pkgs.tree-sitter-grammars.tree-sitter-nix
+
       ] ++ config.my.emacs-devel.extraPackages;
     };
 
