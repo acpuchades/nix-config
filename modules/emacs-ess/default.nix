@@ -28,7 +28,7 @@
     };
 
     # ESS configuration that will be loaded by init.el
-    home.file.".emacs.d/config/25-ess.el".source = ./config/ess.el;
+    home.file.".emacs.d/config/25-ess.el".source = ./config/25-ess.el;
 
     # R snippets for yasnippet
     home.file.".emacs.d/snippets/ess-r-mode/ggcox".source = ./snippets/ggcox;
