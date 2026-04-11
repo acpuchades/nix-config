@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 
 {
   options.my.emacs-devel = {
@@ -19,6 +19,7 @@
         aidermacs
         magit
         treesit-auto
+        treesit-grammars.with-all-grammars
 
         # Python
         blacken
@@ -29,20 +30,7 @@
       ] ++ config.my.emacs-devel.extraPackages;
     };
 
-    # Install tree-sitter grammars at system level
-    home.packages = with pkgs; [
-      tree-sitter-grammars.tree-sitter-nix
-    ];
-
-    # Set environment variable for tree-sitter grammar location
-    home.sessionVariables = {
-      TREE_SITTER_GRAMMAR_PATH = "${pkgs.tree-sitter-grammars.tree-sitter-nix}/parser";
-    };
-
     # Development configuration that will be loaded by init.el
     home.file.".emacs.d/config/15-devel.el".source = ./config/15-devel.el;
-    
-    # Nix integration configuration with variable substitution
-    home.file.".emacs.d/config/16-nix-integration.el".text = builtins.readFile ./config/16-nix-integration.el;
   };
 }
