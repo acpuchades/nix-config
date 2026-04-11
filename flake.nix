@@ -29,7 +29,7 @@
   {
     # Build darwin flake using:
     # $ sudo darwin-rebuild switch --flake .#MacBook-Pro-de-Alejandro
-    darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./hosts/macbookpro outputs;
-    nixosConfigurations."homeserver" = import ./hosts/homeserver outputs;
+    darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./machines/macbookpro outputs;
+    nixosConfigurations."homeserver" = import ./machines/homeserver outputs;
   };
 }

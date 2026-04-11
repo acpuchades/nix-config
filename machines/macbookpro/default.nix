@@ -41,6 +41,8 @@ let
 in
 nix-darwin.lib.darwinSystem {
   modules = [
+    ../../modules/r-dev/system.nix
+
     configuration
     sops-nix.darwinModules.sops
     home-manager.darwinModules.home-manager
