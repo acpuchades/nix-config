@@ -6,6 +6,12 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/python-dev
   ];
 
+  my.python-dev.extraPackages = ps: with ps; [
+    # Añade aquí paquetes Python adicionales
+    # requests
+    # beautifulsoup4
+  ];
+
   # This value determines the home Manager release that your
   # configuration is compatible with. This helps avoid breakage
   # when a new home Manager release introduces backwards
