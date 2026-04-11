@@ -23,15 +23,6 @@
         # Performance
         gcmh
 
-        # Completion framework
-        vertico
-        consult
-        corfu
-        cape
-        marginalia
-        embark
-        embark-consult
-        orderless
 
         # Snippets
         yasnippet
@@ -56,19 +47,6 @@
         # Project management
         project
 
-        # Additional packages for init.el
-        auto-dark
-        catppuccin-theme
-        dashboard
-        doom-modeline
-        ligature
-        nerd-icons
-        nerd-icons-corfu
-        nerd-icons-dired
-        nerd-icons-ibuffer
-        treemacs
-        treemacs-magit
-        treemacs-nerd-icons
       ] ++ config.my.emacs-core.extraPackages;
     };
 
@@ -86,7 +64,6 @@
       (setq treesit-extra-load-path
         '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
     '';
-    home.file.".emacs.d/config/10-ui.el".source = ./config/10-ui.el;
     home.file.".emacs.d/config/30-productivity.el".source = ./config/30-productivity.el;
   };
 }
