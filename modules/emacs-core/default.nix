@@ -58,11 +58,33 @@
 
         # Project management
         project
+
+        # Additional packages for init.el
+        aidermacs
+        auto-dark
+        blacken
+        catppuccin-theme
+        dashboard
+        doom-modeline
+        ligature
+        magit
+        mu4e
+        nerd-icons
+        nerd-icons-corfu
+        nerd-icons-dired
+        nerd-icons-ibuffer
+        nix-ts-mode
+        org-modern
+        org-roam
+        treemacs
+        treemacs-magit
+        treemacs-nerd-icons
       ] ++ config.my.emacs-core.extraPackages;
     };
 
     # Core emacs configuration
     home.file.".emacs.d/early-init.el".source = ./early-init.el;
+    home.file.".emacs.d/init.el".source = ./init.el;
     home.file.".emacs.d/core-config.el".text = ''
       ;; FUNCTION DEFINITIONS
 
