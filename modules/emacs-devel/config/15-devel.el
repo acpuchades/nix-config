@@ -1,7 +1,7 @@
 ;; Tree-sitter auto mode installation
 (use-package treesit-auto
   :custom
-    (treesit-font-lock-level 3)
+    (treesit-font-lock-level 4) ; Maximum syntax highlighting
     (treesit-auto-install 'prompt) ; Prompt to install missing grammars
   :config
     (treesit-auto-add-to-auto-mode-alist 'all)
@@ -56,6 +56,13 @@
 ;; Nix
 (use-package nix-ts-mode
   :mode ("\\.nix\\'" . nix-ts-mode)
-  :config (treesit-auto-add-to-auto-mode-alist 'nix)
-  :hook (nix-ts-mode . (lambda ()
-    (setq-local indent-tabs-mode nil tab-width 2))))
+  :config 
+  (treesit-auto-add-to-auto-mode-alist 'nix)
+  :hook 
+  (nix-ts-mode . (lambda ()
+    (setq-local indent-tabs-mode nil 
+                tab-width 2
+                treesit-font-lock-level 4) ; Ensure maximum highlighting
+    ;; Force font-lock refresh
+    (when (fboundp 'treesit-font-lock-recompute-features)
+      (treesit-font-lock-recompute-features)))))
