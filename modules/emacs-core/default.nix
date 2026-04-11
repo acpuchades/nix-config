@@ -13,15 +13,6 @@
     # Configure Emacs with core packages
     programs.emacs = {
       enable = lib.mkDefault true;
-      extraConfig = ''
-        ;; Nix-provided coreutils
-        (setq insert-directory-program "${pkgs.coreutils}/bin/ls")
-        ;; Nix-provided grammars
-        (setq treesit-extra-load-path
-          '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
-        ;; Nix-provided mu
-        (setq mu4e-mu-binary "${config.programs.mu.package}/bin/mu")
-      '';
       extraPackages = epkgs: with epkgs; [
         # Package management
         use-package
@@ -91,6 +82,15 @@
 
     # Deploy config files
     home.file.".emacs.d/config/00-core.el".source = ./config/00-core.el;
+    home.file.".emacs.d/config/05-nix-integration.el".text = ''
+      ;; Nix-provided coreutils
+      (setq insert-directory-program "${pkgs.coreutils}/bin/ls")
+      ;; Nix-provided grammars
+      (setq treesit-extra-load-path
+        '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
+      ;; Nix-provided mu
+      (setq mu4e-mu-binary "${config.programs.mu.package}/bin/mu")
+    '';
     home.file.".emacs.d/config/10-ui.el".source = ./config/10-ui.el;
     home.file.".emacs.d/config/30-productivity.el".source = ./config/30-productivity.el;
   };
