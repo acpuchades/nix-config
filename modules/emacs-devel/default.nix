@@ -26,9 +26,6 @@
         rainbow-mode
         project
 
-        # Python
-        blacken
-
         # Nix
         nix-ts-mode
 
