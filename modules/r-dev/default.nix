@@ -21,10 +21,6 @@
 
       (rWrapper.override { packages = r-pkgs; })
       (radianWrapper.override { packages = r-pkgs; })
-
-      air-formatter
-      pandoc
-      texliveSmall
     ];
   };
 }

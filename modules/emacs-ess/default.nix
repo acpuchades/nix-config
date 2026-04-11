@@ -10,6 +10,13 @@
   };
 
   config = {
+    # System packages needed for ESS
+    home.packages = with pkgs; [
+      air-formatter    # LSP formatter for R
+      pandoc          # For R Markdown
+      texliveSmall    # For PDF generation from R Markdown
+    ];
+
     # Configure Emacs with ESS packages
     programs.emacs = {
       enable = lib.mkDefault true;
