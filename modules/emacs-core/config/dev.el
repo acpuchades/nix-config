@@ -52,5 +52,5 @@
     (setq-local indent-tabs-mode nil tab-width 2))))
 
 ;; Load ESS configuration if available
-(when (file-exists-p "~/.emacs.d/ess-config.el")
-  (load-file "~/.emacs.d/ess-config.el"))
+(when (file-exists-p "~/.emacs.d/config/ess.el")
+  (load-file "~/.emacs.d/config/ess.el"))
