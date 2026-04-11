@@ -17,6 +17,13 @@ let
       imports = [
         # Include the results of thpe hardware scan.
         ./hardware-configuration.nix
+        
+        # Custom modules
+        ../../modules/vpn-server
+        ../../modules/dns-filtering
+        ../../modules/web-server
+        ../../modules/cloud-suite
+        ../../modules/mail-relay
       ];
 
       # SOPS-Nix configuration
@@ -51,6 +58,70 @@ let
       systemd.tmpfiles.rules = [
         "d /srv/fugazi 2770 fugazi fugazi -"
       ];
+
+      # Configure custom modules
+      my.vpn-server = {
+        enable = true;
+        interface = "wlp229s0f3u4";
+        ssid = "HomeServerVPN-IN";
+        passwordFile = config.sops.secrets."vpn/in/wifi-password".path;
+        dhcpRange = "192.168.10.2,192.168.10.254,12h";
+        dnsServer = "10.2.0.1";
+        countryCode = "ES";
+      };
+
+      my.dns-filtering = {
+        enable = true;
+        adguardPort = 3000;
+        dnsPort = 53;
+        dnscryptPort = 5300;
+        basicAuthFile = config.sops.secrets."nginx/htpasswd/adguard".path;
+        virtualHost = "adguard.acpuchades.com";
+      };
+
+      my.web-server = {
+        enable = true;
+        adminEmail = "acaravacapuchades@gmail.com";
+        virtualHosts = {
+          "www.acpuchades.com" = {
+            root = "/var/www/acpuchades.com";
+          };
+          "prefect.acpuchades.com" = {
+            proxyPass = "http://127.0.0.1:4200";
+            proxyWebsockets = true;
+            basicAuthFile = config.sops.secrets."nginx/htpasswd/prefect".path;
+          };
+        };
+      };
+
+      my.cloud-suite = {
+        enable = true;
+        nextcloud = {
+          hostName = "cloud.acpuchades.com";
+          adminPasswordFile = config.sops.secrets."nextcloud/admin-pass".path;
+          maxUploadSize = "2G";
+          phoneRegion = "ES";
+        };
+        collabora = {
+          hostName = "collabora.acpuchades.com";
+          port = 9980;
+        };
+        bitwarden = {
+          hostName = "bitwarden.acpuchades.com";
+          signupsAllowed = false;
+          smtpFrom = "noreply@acpuchades.com";
+          smtpFromName = "acpuchades.com Bitwarden Server";
+        };
+      };
+
+      my.mail-relay = {
+        enable = true;
+        origin = "acpuchades.com";
+        hostname = "home.acpuchades.com";
+        relayHost = "[in-v3.mailjet.com]:587";
+        saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
+        destinations = ["localhost" "localhost.localdomain"];
+      };
 
       # List services that you want to enable:
       services = import ./services.nix inputs;

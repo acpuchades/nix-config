@@ -68,10 +68,4 @@ in
 
   security.sudo.wheelNeedsPassword = true;
 
-  # ACME certificates management
-  security.acme = {
-    acceptTerms = true;
-    defaults.email = adminEmail;
-    # no dnsProvider -> uses HTTP-01 on port 80
-  };
 }
