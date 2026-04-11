@@ -23,7 +23,6 @@
         # Performance
         gcmh
 
-
         # Snippets
         yasnippet
         yasnippet-snippets
@@ -57,13 +56,13 @@
 
     # Deploy config files
     home.file.".emacs.d/config/00-core.el".source = ./config/00-core.el;
-    home.file.".emacs.d/config/05-nix-integration.el".text = ''
+    home.file.".emacs.d/config/01-nix-integration.el".text = ''
       ;; Nix-provided coreutils
       (setq insert-directory-program "${pkgs.coreutils}/bin/ls")
       ;; Nix-provided grammars
       (setq treesit-extra-load-path
         '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
     '';
-    home.file.".emacs.d/config/30-productivity.el".source = ./config/30-productivity.el;
+    home.file.".emacs.d/config/30-calendar.el".source = ./config/30-calendar.el;
   };
 }
