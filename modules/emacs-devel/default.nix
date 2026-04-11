@@ -26,9 +26,6 @@
         rainbow-mode
         project
 
-        # Nix
-        nix-ts-mode
-
       ] ++ config.my.emacs-devel.extraPackages;
     };
 

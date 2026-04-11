@@ -26,7 +26,6 @@
   :ensure nil
   :hook
   (ess-r-mode     . eglot-ensure)
-  (nix-ts-mode    . eglot-ensure)
   :custom
   (eglot-sync-connect nil)
   (flymake-no-changes-timeout 0.8)
@@ -34,25 +33,9 @@
   (flymake-start-on-newline nil)
   :config
   (add-to-list 'eglot-server-programs
-               '(nix-ts-mode  . ("nil")))
-  (add-to-list 'eglot-server-programs
                '(ess-r-mode   . ("air" "language-server"))))
 
 ;; Git interface
 (use-package magit
   :commands (magit-status magit-blame)
   :bind (("C-x g" . magit-status)))
-
-;; Nix
-(use-package nix-ts-mode
-  :mode ("\\.nix\\'" . nix-ts-mode)
-  :config 
-  (treesit-auto-add-to-auto-mode-alist 'nix)
-  :hook 
-  (nix-ts-mode . (lambda ()
-    (setq-local indent-tabs-mode nil 
-                tab-width 2
-                treesit-font-lock-level 4) ; Ensure maximum highlighting
-    ;; Force font-lock refresh
-    (when (fboundp 'treesit-font-lock-recompute-features)
-      (treesit-font-lock-recompute-features)))))
