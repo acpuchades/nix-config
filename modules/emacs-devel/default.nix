@@ -25,9 +25,18 @@
 
         # Nix
         nix-ts-mode
-        pkgs.tree-sitter-grammars.tree-sitter-nix
 
       ] ++ config.my.emacs-devel.extraPackages;
+    };
+
+    # Install tree-sitter grammars at system level
+    home.packages = with pkgs; [
+      tree-sitter-grammars.tree-sitter-nix
+    ];
+
+    # Set environment variable for tree-sitter grammar location
+    home.sessionVariables = {
+      TREE_SITTER_GRAMMAR_PATH = "${pkgs.tree-sitter-grammars.tree-sitter-nix}/lib";
     };
 
     # Development configuration that will be loaded by init.el
