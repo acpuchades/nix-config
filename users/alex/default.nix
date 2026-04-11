@@ -39,7 +39,7 @@ inputs@{ config, lib, pkgs, ... }:
   #     xxx
   # '';
 
-  home.file.".emacs.d/config/99-personal.el".source = ./files/emacs.d/config/personal.el;
+  home.file.".emacs.d/config/99-personal.el".source = ./files/emacs.d/config/99-personal.el;
 
   home.file.".config/starship.toml" = {
     source = ./files/starship.toml;
