@@ -85,7 +85,9 @@
     # Core emacs configuration
     home.file.".emacs.d/early-init.el".source = ./early-init.el;
     home.file.".emacs.d/init.el".source = ./init.el;
-    home.file.".emacs.d/core-config.el".text = ''
+    
+    # Deploy config files
+    home.file.".emacs.d/config/core.el".text = ''
       ;; FUNCTION DEFINITIONS
 
       (defun my/set-cursor-type ()
@@ -404,5 +406,9 @@
       (use-package yasnippet-snippets
         :after yasnippet)
     '';
+    
+    home.file.".emacs.d/config/ui.el".source = ./config/ui.el;
+    home.file.".emacs.d/config/dev.el".source = ./config/dev.el;
+    home.file.".emacs.d/config/productivity.el".source = ./config/productivity.el;
   };
 }
