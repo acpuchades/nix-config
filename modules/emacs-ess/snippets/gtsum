@@ -1,0 +1,17 @@
+# contributor: acpuchades <acaravacapuchades@gmail.com>
+# name: gtsummary tbl_summary
+# key: gtsum
+# --
+${1:tab} <- ${2:data} |>
+  dplyr::select(${3:vars}) |>
+  gtsummary::tbl_summary(
+    by = ${4:group},
+    type = ${5:NULL},   # e.g. list(age ~ "continuous", sex ~ "categorical")
+    label = ${6:NULL},  # e.g. list(age ~ "Age, years")
+    statistic = ${7:NULL} # e.g. list(all_continuous() ~ "{mean} ({sd})")
+  ) |>
+  gtsummary::add_p() |>
+  gtsummary::bold_p() |>
+  gtsummary::bold_labels()
+
+${1}
