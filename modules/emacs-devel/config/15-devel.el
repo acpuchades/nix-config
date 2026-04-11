@@ -21,20 +21,12 @@
   :custom
   (aidermacs-default-model "sonnet"))
 
-;; Python auto-formatter
-(use-package blacken
-  :hook
-  (python-mode . blacken-mode)
-  (python-ts-mode . blacken-mode)
-  :custom (blacken-line-length 100))
-
 ;; LSP client (built-in)
 (use-package eglot
   :ensure nil
   :hook
   (ess-r-mode     . eglot-ensure)
   (nix-ts-mode    . eglot-ensure)
-  (python-ts-mode . eglot-ensure)
   :custom
   (eglot-sync-connect nil)
   (flymake-no-changes-timeout 0.8)
@@ -44,9 +36,7 @@
   (add-to-list 'eglot-server-programs
                '(nix-ts-mode  . ("nil")))
   (add-to-list 'eglot-server-programs
-               '(ess-r-mode   . ("air" "language-server")))
-  (add-to-list 'eglot-server-programs
-               '(python-ts-mode python-mode . ("pyright-langserver" "--stdio"))))
+               '(ess-r-mode   . ("air" "language-server"))))
 
 ;; Git interface
 (use-package magit

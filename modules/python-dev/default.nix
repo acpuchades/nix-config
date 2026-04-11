@@ -22,7 +22,7 @@
 
     home.packages = with pkgs; [
       (python3.withPackages python-pkgs)
-      black mamba-cpp pyright ruff uv
+      mamba-cpp ruff uv
     ];
 
     home.file.".condarc".text = ''
