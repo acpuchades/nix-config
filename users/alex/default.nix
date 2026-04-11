@@ -6,12 +6,6 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/python-dev
   ];
 
-  my.python-dev.extraPackages = ps: with ps; [
-    # Añade aquí paquetes Python adicionales
-    # requests
-    # beautifulsoup4
-  ];
-
   # This value determines the home Manager release that your
   # configuration is compatible with. This helps avoid breakage
   # when a new home Manager release introduces backwards
@@ -130,7 +124,6 @@ inputs@{ config, lib, pkgs, ... }:
     # Dev
     docker
     git-crypt
-    mamba-cpp
     ntfy
     prefect
 
@@ -141,7 +134,6 @@ inputs@{ config, lib, pkgs, ... }:
     nixfmt-rfc-style
     sops
     ssh-to-age
-
 
   ];
 
@@ -161,4 +153,30 @@ inputs@{ config, lib, pkgs, ... }:
     ll = "ls -lh";
     lla = "la -lhA";
   };
+
+  my.r-dev.extraPackages = with pkgs.rPackages; [
+
+    gitignore
+    tidyverse
+  ];
+
+  my.python-dev.extraPackages = ps: with ps; [
+
+    # Data science and analysis
+    datasets
+    numpy
+    pandas
+    polars
+    pyarrow
+    scipy
+    scikit-learn
+    statsmodels
+
+    # Visualization
+    matplotlib
+    seaborn
+
+    # Machine learning
+    tensorflow
+  ];
 }
