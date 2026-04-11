@@ -66,8 +66,6 @@
         nerd-icons-corfu
         nerd-icons-dired
         nerd-icons-ibuffer
-        org-modern
-        org-roam
         treemacs
         treemacs-magit
         treemacs-nerd-icons
