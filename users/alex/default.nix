@@ -4,6 +4,7 @@ inputs@{ config, lib, pkgs, ... }:
   imports = [
     ../../modules/r-dev
     ../../modules/python-dev
+    ../../modules/emacs-core
     ../../modules/emacs-ess
   ];
 
