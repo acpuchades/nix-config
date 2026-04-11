@@ -4,8 +4,10 @@ inputs@{ config, lib, pkgs, ... }:
   imports = [
     ../../modules/r-dev
     ../../modules/python-dev
+
     ../../modules/emacs-core
     ../../modules/emacs-ess
+    ../../modules/emacs-devel
   ];
 
   # This value determines the home Manager release that your
@@ -18,7 +20,7 @@ inputs@{ config, lib, pkgs, ... }:
   # changes in each release.
   home.stateVersion = "24.11";
 
-  programs = lib.filterAttrs (n: v: n != "emacs") (import ./programs inputs);
+  programs = import ./programs inputs;
   services = import ./services.nix inputs;
   accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
