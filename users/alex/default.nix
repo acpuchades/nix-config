@@ -1,31 +1,9 @@
 inputs@{ config, lib, pkgs, ... }:
 
-let
-
-  python3-with-packages = pkgs.python3.withPackages (
-    ps: with ps; [
-      datasets
-      ipykernel
-      ipywidgets
-      jupyter
-      jupyterlab-widgets
-      matplotlib
-      numpy
-      pandas
-      polars
-      pyarrow
-      scikit-learn
-      scipy
-      seaborn
-      statsmodels
-      tensorflow
-    ]
-  );
-
-in
 {
   imports = [
     ../../modules/r-dev
+    ../../modules/python-dev
   ];
 
   # This value determines the home Manager release that your
@@ -61,15 +39,6 @@ in
   #     xxx
   # '';
 
-  home.file.".condarc".text = ''
-    channels:
-      - bioconda
-      - conda-forge
-      - defaults
-    changeps1: false
-    channel_priority: strict
-    auto_activate_base: false
-  '';
 
 
   home.file.".emacs.d" = {
@@ -169,15 +138,6 @@ in
     sops
     ssh-to-age
 
-    # Python
-    black
-    pyright
-    python3-with-packages
-    pyenv
-    poetry
-    ruff
-    uv
-    virtualenv
 
   ];
 
