@@ -1,0 +1,24 @@
+# contributor: acpuchades <acaravacapuchades@gmail.com>
+# name: ggsurvfit2 kaplan-meier
+# key: ggkm
+# --
+km_fit <- ggsurvfit::survfit2(
+  Surv(${1:time}, ${2:status}) ~ ${3:group},
+  data = ${4:data}
+)
+
+p <- km_fit |> 
+  ggsurvfit() +
+  scale_x_continuous(limits = c(${5:NA}, ${6:NA})) +
+  scale_y_continuous(labels = scales::percent()) +
+  add_pvalue(location = "annotation") +
+  add_confidence_interval() +
+  add_risktable() +
+  labs(
+    title = "${7:Title}",
+    x = "${8:Time}",
+    y = "${9:Survival probability}"
+  ) +
+  theme_ggsurvfit()
+
+p
