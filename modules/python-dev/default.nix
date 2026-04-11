@@ -12,9 +12,37 @@
   config = {
     home.packages = with pkgs; [
       # Python interpreters and package managers
-      (python3.withPackages config.my.python-dev.extraPackages)
+      (python3.withPackages (ps: with ps; [
+        # Data science and analysis
+        datasets
+        numpy
+        pandas
+        polars
+        pyarrow
+        scipy
+        scikit-learn
+        statsmodels
 
+        # Visualization
+        matplotlib
+        seaborn
+
+        # Jupyter ecosystem
+        ipykernel
+        ipywidgets
+        jupyter
+        jupyterlab-widgets
+
+        # Machine learning
+        tensorflow
+      ] ++ config.my.python-dev.extraPackages ps))
+
+      pyenv
+      poetry
       uv
+      virtualenv
+
+      # Development tools
       black
       pyright
       ruff
