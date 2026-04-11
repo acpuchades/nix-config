@@ -18,7 +18,7 @@ inputs@{ config, lib, pkgs, ... }:
   # changes in each release.
   home.stateVersion = "24.11";
 
-  programs = import ./programs inputs;
+  programs = lib.filterAttrs (n: v: n != "emacs") (import ./programs inputs);
   services = import ./services.nix inputs;
   accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
@@ -40,10 +40,7 @@ inputs@{ config, lib, pkgs, ... }:
   #     xxx
   # '';
 
-  home.file.".emacs.d" = {
-    source = ./files/emacs.d;
-    recursive = true;
-  };
+  home.file.".emacs.d/config/personal.el".source = ./files/emacs.d/config/personal.el;
 
   home.file.".config/starship.toml" = {
     source = ./files/starship.toml;
