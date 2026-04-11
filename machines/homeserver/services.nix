@@ -30,33 +30,6 @@
   # systemd-resolved
   resolved.enable = true;
 
-  # Adguard Home
-  adguardhome = {
-    enable = true;
-    settings = {
-      dns = {
-        bind_host = "0.0.0.0";
-        port = 53;
-        upstream_dns = [ "127.0.0.1:5300" ];
-      };
-      filtering = {
-        protection_enabled = true;
-        filtering_enabled = true;
-        parental_enabled = false;
-        safe_search.enabled = false;
-        filters = map(url: { enabled = true; url = url; }) [
-          # Ads
-          "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
-          "https://easylist.to/easylist/easylist.txt"
-          "https://easylist.to/easylist/easyprivacy.txt"
-
-          # Privacy
-          "https://easylist.to/easylist/fanboy-enhanced-tracking.txt"
-          "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml"
-        ];
-      };
-    };
-  };
 
   # Avahi/mDNS (.local)
   avahi = {
@@ -77,30 +50,6 @@
     '';
   };
 
-  # Collabora Online
-  collabora-online = {
-    enable = true;
-    port = 9980;
-    settings = {
-      # Rely on reverse proxy for SSL
-      ssl = {
-        enable = false;
-        termination = true;
-      };
-      # Listen on loopback interface only, and accept requests from ::1
-      net = {
-        listen = "loopback";
-        post_allow.host = ["::1"];
-      };
-      # Restrict loading documents from WOPI Host nextcloud.example.com
-      storage.wopi = {
-        "@allow" = true;
-        host = ["cloud.acpuchades.com"];
-      };
-      # Set FQDN of server
-      server_name = "collabora.acpuchades.com";
-    };
-  };
 
   # DDClient
   ddclient = {
@@ -108,183 +57,11 @@
     configFile = config.sops.templates."ddclient/config".path;
   };
 
-  # DNSCrypt
-  dnscrypt-proxy = {
-    enable = true;
-    settings = {
-      server_names = [
-        "dns4eu-unfiltered"
-        "quad9-dnscrypt-ip4-nofilter-pri"
-      ];
-      require_dnssec = true;
-      require_nofilter = true;
-      #require_nolog = true;
-      listen_addresses = [
-        "127.0.0.1:5300"
-        "[::1]:5300"
-      ];
-    };
-  };
 
-  # DNSMasq
-  dnsmasq = {
-    enable = true;
-    settings = {
-      interface = "wlp229s0f3u4";
-      bind-dynamic = true;
-      port = 0; # disable DNS
-      dhcp-range = [
-        "192.168.10.2,192.168.10.254,12h"
-      ];
-      dhcp-option = [
-        "option:dns-server,10.2.0.1" # Proton DNS via wg-vpn-in
-      ];
-    };
-  };
 
-  # Hostapd
-  hostapd = {
-    enable = true;
-    radios.wlp229s0f3u4 = {
-      band = "5g";
-      channel = 0;
-      countryCode = "ES";
-      networks = {
-        wlp229s0f3u4 = {
-          ssid = "HomeServerVPN-IN";
-          authentication = {
-            mode = "wpa2-sha256";
-            wpaPasswordFile = config.sops.secrets."vpn/in/wifi-password".path;
-          };
-        };
-      };
-    };
-  };
 
-  # SMTP
-  postfix = {
-    enable = true;
-    settings.main = {
-      myorigin = "acpuchades.com";
-      myhostname = "home.acpuchades.com";
-      inet_interfaces = "loopback-only";
-      mydestination = "localhost, localhost.localdomain, $myhostname, homeserver";
-      relayhost = [ "[in-v3.mailjet.com]:587" ];
-      smtp_address_preference = "ipv4";
-      smtp_tls_security_level = "encrypt";
-      smtp_tls_loglevel = "1";
-      smtp_sasl_auth_enable = "yes";
-      smtp_sasl_password_maps = "texthash:${config.sops.templates."postfix/sasl_passwd".path}";
-      smtp_sasl_security_options = "noanonymous";
-    };
-  };
 
-  # Nginx
-  nginx = {
-    enable = true;
-    recommendedGzipSettings = true;
-    recommendedProxySettings = true;
-    recommendedTlsSettings = true;
 
-    virtualHosts = {
-
-      "www.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-        root = "/var/www/acpuchades.com";
-      };
-
-      "adguard.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-        basicAuthFile = config.sops.secrets."nginx/htpasswd/adguard".path;
-        locations."/" = {
-          proxyPass = "http://127.0.0.1:3000";
-        };
-      };
-
-      "bitwarden.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-        locations."/" = {
-          proxyPass = "http://127.0.0.1:8000";
-        };
-      };
-
-      "cloud.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-      };
-
-      "collabora.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-        locations."/" = {
-          proxyPass = "http://[::1]:${toString config.services.collabora-online.port}";
-          proxyWebsockets = true;
-        };
-      };
-
-      "prefect.acpuchades.com" = {
-        forceSSL = true;
-        enableACME = true;
-        basicAuthFile = config.sops.secrets."nginx/htpasswd/prefect".path;
-        locations."/" = {
-          proxyPass = "http://127.0.0.1:4200";
-          proxyWebsockets = true;
-        };
-
-      };
-    };
-  };
-
-  # NextCloud
-  nextcloud = {
-    enable = true;
-    hostName = "cloud.acpuchades.com";
-    package = pkgs.nextcloud33;
-    database.createLocally = true;
-    configureRedis = true;
-    maxUploadSize = "2G";
-    https = true;
-    config = {
-      dbtype = "pgsql";
-      adminuser = "admin";
-      adminpassFile = config.sops.secrets."nextcloud/admin-pass".path;
-    };
-    appstoreEnable = true;
-    autoUpdateApps.enable = true;
-    extraApps = with config.services.nextcloud.package.packages.apps; {
-      inherit calendar contacts news notes richdocuments tasks;
-    };
-    extraAppsEnable = true;
-    phpOptions = {
-      "opcache.interned_strings_buffer" = "24";
-      "opcache.memory_consumption" = "256";
-      "opcache.max_accelerated_files" = "10000";
-      "opcache.revalidate_freq" = "1";
-      "opcache.save_comments" = "1";
-      "opcache.jit" = "tracing";
-      "opcache.jit_buffer_size" = "128M";
-    };
-    settings = {
-      overwriteprotocol = "https";
-      default_phone_region = "ES";
-      enabledPreviewProviders = [
-        "OC\\Preview\\BMP"
-        "OC\\Preview\\GIF"
-        "OC\\Preview\\JPEG"
-        "OC\\Preview\\Krita"
-        "OC\\Preview\\MarkDown"
-        "OC\\Preview\\MP3"
-        "OC\\Preview\\OpenDocument"
-        "OC\\Preview\\PNG"
-        "OC\\Preview\\TXT"
-        "OC\\Preview\\XBitmap"
-        "OC\\Preview\\HEIC"
-      ];
-    };
-  };
 
   # OpenSSH
   openssh = {
@@ -303,15 +80,10 @@
     enable = true;
     ensureDatabases = [
       "prefect"
-      "vaultwarden"
     ];
     ensureUsers = [
       {
         name = "prefect";
-        ensureDBOwnership = true;
-      }
-      {
-        name = "vaultwarden";
         ensureDBOwnership = true;
       }
     ];
@@ -334,20 +106,5 @@
     };
   };
 
-  # Bitwarden
-  vaultwarden = {
-    enable = true;
-    dbBackend = "postgresql";
-    config = {
-      DOMAIN = "https://bitwarden.acpuchades.com";
-      DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
-      SIGNUPS_ALLOWED = false;
-      SMTP_HOST = "127.0.0.1";
-      SMTP_PORT = 25;
-      SMTP_SSL = false;
-      SMTP_FROM = "noreply@acpuchades.com";
-      SMTP_FROM_NAME = "acpuchades.com Bitwarden Server";
-    };
-  };
 
 }
