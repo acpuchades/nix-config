@@ -45,9 +45,6 @@
         rainbow-mode
         editorconfig
 
-        # Tree-sitter
-        treesit-auto
-
         # Shell integration
         eshell-toggle
         exec-path-from-shell
@@ -60,20 +57,16 @@
         project
 
         # Additional packages for init.el
-        aidermacs
         auto-dark
-        blacken
         catppuccin-theme
         dashboard
         doom-modeline
         ligature
-        magit
         mu4e
         nerd-icons
         nerd-icons-corfu
         nerd-icons-dired
         nerd-icons-ibuffer
-        nix-ts-mode
         org-modern
         org-roam
         treemacs
@@ -340,15 +333,6 @@
         :config
         ;; Make TRAMP also use the remote user's own PATH
         (add-to-list 'tramp-remote-path 'tramp-own-remote-path))
-
-      ;; Tree-sitter auto mode installation
-      (use-package treesit-auto
-        :custom
-          (treesit-font-lock-level 3)
-          (treesit-auto-install  nil)
-        :config
-          (treesit-auto-add-to-auto-mode-alist 'all)
-          (global-treesit-auto-mode))
 
       ;; Minibuffer completion
       (use-package vertico
