@@ -1,7 +1,7 @@
-;; Load all configuration files from config directory
+;; Load all configuration files from config directory in order
 (let ((config-dir (expand-file-name "~/.emacs.d/config/")))
   (when (file-directory-p config-dir)
-    (dolist (config-file (directory-files config-dir t "\\.el$"))
+    (dolist (config-file (sort (directory-files config-dir t "\\.el$") #'string<))
       (load-file config-file))))
 
 

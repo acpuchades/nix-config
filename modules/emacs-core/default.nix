@@ -88,7 +88,7 @@
     home.file.".emacs.d/share/logo.svg".source = ./share/logo.svg;
     
     # Deploy config files
-    home.file.".emacs.d/config/core.el".text = ''
+    home.file.".emacs.d/config/00-core.el".text = ''
       ;; FUNCTION DEFINITIONS
 
       (defun my/set-cursor-type ()
@@ -408,8 +408,8 @@
         :after yasnippet)
     '';
     
-    home.file.".emacs.d/config/ui.el".source = ./config/ui.el;
-    home.file.".emacs.d/config/dev.el".source = ./config/dev.el;
-    home.file.".emacs.d/config/productivity.el".source = ./config/productivity.el;
+    home.file.".emacs.d/config/10-ui.el".source = ./config/ui.el;
+    home.file.".emacs.d/config/20-dev.el".source = ./config/dev.el;
+    home.file.".emacs.d/config/30-productivity.el".source = ./config/productivity.el;
   };
 }
