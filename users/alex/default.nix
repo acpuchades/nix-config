@@ -26,7 +26,6 @@ inputs@{ config, lib, pkgs, ... }:
 
   # link the configuration file in current directory to the specified location in home directory
   # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
-  home.file.".emacs.d/share/logo.svg".source = ./files/emacs.d/share/logo.svg;
 
   # link all files in `./scripts` to `~/.config/i3/scripts`
   # home.file.".config/i3/scripts" = {
