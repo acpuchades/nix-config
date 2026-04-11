@@ -12,6 +12,8 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-mu4e
     ../../modules/emacs-devel
     ../../modules/emacs-ess
+    ../../modules/emacs-python
+    ../../modules/emacs-nix
   ];
 
   # This value determines the home Manager release that your
