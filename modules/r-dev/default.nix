@@ -4,21 +4,23 @@
   options.my.r-dev = {
     extraPackages = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = with pkgs.rPackages; [
-        devtools
-        gitignore
-        rix
-        tidyverse
-      ];
-      description = "Paquetes adicionales de R para instalar junto al conjunto base.";
+      default = [];
+      description = "Additional R packages to install.";
     };
   };
 
-  config = {
+  config = let
+    r-pkgs = with pkgs.rPackages; [
+      devtools
+      renv
+      rix
+    ] ++ config.my.r-dev.extraPackages;
+
+  in {
     home.packages = with pkgs; [
 
-      (rWrapper.override { packages = config.my.r-dev.extraPackages; })
-      (radianWrapper.override { packages = config.my.r-dev.extraPackages; })
+      (rWrapper.override { packages = r-pkgs; })
+      (radianWrapper.override { packages = r-pkgs; })
 
       air-formatter
       pandoc

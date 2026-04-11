@@ -9,43 +9,20 @@
     };
   };
 
-  config = {
+  config = let
+
+    python-pkgs = (ps: with ps; [
+      ipykernel
+      ipywidgets
+      jupyter
+      jupyterlab-widgets
+    ] ++ (config.my.python-dev.extraPackages ps));
+
+  in {
+
     home.packages = with pkgs; [
-      # Python interpreters and package managers
-      (python3.withPackages (ps: with ps; [
-        # Data science and analysis
-        datasets
-        numpy
-        pandas
-        polars
-        pyarrow
-        scipy
-        scikit-learn
-        statsmodels
-
-        # Visualization
-        matplotlib
-        seaborn
-
-        # Jupyter ecosystem
-        ipykernel
-        ipywidgets
-        jupyter
-        jupyterlab-widgets
-
-        # Machine learning
-        tensorflow
-      ] ++ config.my.python-dev.extraPackages ps))
-
-      pyenv
-      poetry
-      uv
-      virtualenv
-
-      # Development tools
-      black
-      pyright
-      ruff
+      (python3.withPackages python-pkgs)
+      black mamba-cpp pyright ruff uv
     ];
 
     home.file.".condarc".text = ''
