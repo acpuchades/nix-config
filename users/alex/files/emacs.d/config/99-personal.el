@@ -68,6 +68,3 @@
           ("m" "Llamadas"        tags-todo "@movil")
           ("r" "Recados"         tags-todo "@recados"))))
 
-;; Personal dashboard logo
-(with-eval-after-load 'dashboard
-  (setq dashboard-startup-banner "~/.emacs.d/share/logo.svg"))
