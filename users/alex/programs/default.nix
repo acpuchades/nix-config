@@ -2,6 +2,7 @@ inputs: {
   # Let home Manager install and manage itself.
   home-manager.enable = true;
 
+  aider-chat = import ./aider-chat.nix inputs;
   emacs = import ./emacs.nix inputs;
   ghostty = import ./ghostty.nix inputs;
   gpg = import ./gpg.nix inputs;

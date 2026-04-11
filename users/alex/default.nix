@@ -163,7 +163,6 @@ in
     pynitrokey
 
     # Dev
-    aider-chat
     docker
     git-crypt
     mamba-cpp
