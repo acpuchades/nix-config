@@ -18,41 +18,6 @@
   (diary-date-forms diary-european-date-forms)
   (diary-mark-entries-hook '(diary-mark-entries)))
 
-;; Mu4e
-(use-package mu4e
-  :commands (mu4e)
-  :bind (("C-c m" . mu4e))
-  :custom
-  (mu4e-maildir "~/Mail")
-  (mu4e-update-interval 300)
-  (mu4e-get-mail-command nil)
-  (mu4e-index-update-error-warning nil)
-  (mu4e-index-update-in-background nil)
-  (mu4e-change-filenames-when-moving t)
-  (mu4e-context-policy 'pick-first)
-  (mu4e-compose-context-policy 'ask-if-none)
-  :config
-  (setq mu4e-contexts
-        (list
-         (make-mu4e-context
-          :name "icloud"
-          :match-func (lambda (msg)
-                        (when msg (string-prefix-p "/iCloud"
-                                                   (mu4e-message-field msg :maildir))))
-          :vars '((user-mail-address  . "acaravacapuchades@icloud.com")
-                  (user-full-name     . "Alejandro Caravaca Puchades")
-                  (mu4e-drafts-folder . "/iCloud/Drafts")
-                  (mu4e-sent-folder   . "/iCloud/Sent Messages")
-                  (mu4e-trash-folder  . "/iCloud/Deleted Messages")
-                  (mu4e-refile-folder . "/iCloud/Archive"))))))
-
-(use-package message
-  :ensure nil
-  :after mu4e
-  :custom
-  (sendmail-program "msmtp")
-  (message-send-mail-function 'message-send-mail-with-sendmail)
-  (message-sendmail-envelope-from 'header))
 
 ;; Org mode tweaks
 (use-package org

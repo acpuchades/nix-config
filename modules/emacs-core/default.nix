@@ -62,7 +62,6 @@
         dashboard
         doom-modeline
         ligature
-        mu4e
         nerd-icons
         nerd-icons-corfu
         nerd-icons-dired
@@ -88,8 +87,6 @@
       ;; Nix-provided grammars
       (setq treesit-extra-load-path
         '("${pkgs.emacsPackages.treesit-grammars.with-all-grammars}/lib"))
-      ;; Nix-provided mu
-      (setq mu4e-mu-binary "${config.programs.mu.package}/bin/mu")
     '';
     home.file.".emacs.d/config/10-ui.el".source = ./config/10-ui.el;
     home.file.".emacs.d/config/30-productivity.el".source = ./config/30-productivity.el;

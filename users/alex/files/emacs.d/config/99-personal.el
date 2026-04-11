@@ -1,7 +1,7 @@
 ;; Alex's personal Emacs configuration
 ;; This file contains user-specific settings that override or extend the core configuration
 
-;; Personal email configuration for mu4e
+;; Configuración personal de mu4e
 (with-eval-after-load 'mu4e
   (setq mu4e-contexts
         (list
