@@ -2,7 +2,7 @@
 (use-package treesit-auto
   :custom
     (treesit-font-lock-level 4) ; Maximum syntax highlighting
-    (treesit-auto-install 'prompt) ; Prompt to install missing grammars
+    (treesit-auto-install nil) ; Don't install grammars, use system ones
   :config
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode))
