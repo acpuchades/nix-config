@@ -22,6 +22,9 @@
         
         # Tree-sitter support
         treesit-auto
+        
+        # Tree-sitter grammars
+        treesit-grammars.tree-sitter-nix
       ] ++ config.my.emacs-devel.extraPackages;
     };
 
