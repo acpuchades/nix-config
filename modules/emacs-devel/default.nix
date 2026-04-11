@@ -36,7 +36,7 @@
 
     # Set environment variable for tree-sitter grammar location
     home.sessionVariables = {
-      TREE_SITTER_GRAMMAR_PATH = "${pkgs.tree-sitter-grammars.tree-sitter-nix}/lib";
+      TREE_SITTER_GRAMMAR_PATH = "${pkgs.tree-sitter-grammars.tree-sitter-nix}/parser";
     };
 
     # Development configuration that will be loaded by init.el
