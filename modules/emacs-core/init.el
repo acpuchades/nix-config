@@ -61,14 +61,6 @@
 (setq confirm-kill-emacs 'y-or-n-p)
 (setq delete-by-moving-to-trash t)
 
-;; Programming tweaks
-(add-hook 'prog-mode-hook #'hl-line-mode)  ;; highlight line
-(add-hook 'prog-mode-hook #'column-number-mode)  ;; column numbers
-(add-hook 'prog-mode-hook #'display-line-numbers-mode)  ;; line numbers
-
-(setq display-fill-column-indicator-column 100)
-(add-hook 'prog-mode-hook #'display-fill-column-indicator-mode)  ;; fill column
-
 ;; Text editing tweaks
 (add-hook 'text-mode-hook #'visual-line-mode)
 

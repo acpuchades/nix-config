@@ -20,6 +20,11 @@
         magit
         treesit-auto
         treesit-grammars.with-all-grammars
+        which-key
+        multiple-cursors
+        rainbow-delimiters
+        rainbow-mode
+        project
 
         # Python
         blacken
@@ -32,5 +37,6 @@
 
     # Development configuration that will be loaded by init.el
     home.file.".emacs.d/config/15-devel.el".source = ./config/15-devel.el;
+    home.file.".emacs.d/config/16-prog-mode.el".source = ./config/16-prog-mode.el;
   };
 }

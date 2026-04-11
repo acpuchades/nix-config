@@ -141,27 +141,6 @@
   (minibuffer-exit  . my/gc-minibuffer-exit))
 
 
-;; Multiple cursors
-(use-package multiple-cursors
-  :bind
-  (("C->"     . mc/mark-next-like-this)
-   ("C-<"     . mc/mark-previous-like-this)
-   ("C-c C-<" . mc/mark-all-like-this)))
-
-
-;; Project management
-(use-package project
-  :ensure nil
-  :config (project-remember-projects-under "~/GitHub"))
-
-;; Rainbow delimiters
-(use-package rainbow-delimiters
-  :hook ((prog-mode conf-mode) . rainbow-delimiters-mode))
-
-;; Rainbow mode
-(use-package rainbow-mode
-  :hook ((css-mode html-mode conf-mode prog-mode) . rainbow-mode)
-  :custom (rainbow-x-colors nil)) ; avoid huge X11 name list in completions
 
 ;; Auto-save files when idle
 (use-package super-save
@@ -176,29 +155,11 @@
   (add-to-list 'tramp-remote-path 'tramp-own-remote-path))
 
 
-;; Which-key help
-(use-package which-key
-  :init (which-key-mode))
-
 ;; Indentation & whitespace
 (use-package whitespace
   :ensure nil
-  :hook
-  (prog-mode . (lambda ()
-                 (whitespace-mode 1)
-                 (add-hook 'before-save-hook 'whitespace-cleanup nil t)))
   :custom
-  (require-final-newline t)
-  (whitespace-style '(
-                      empty
-                      face
-                      spaces
-                      space-before-tab
-                      space-after-tab
-                      tabs
-                      tab-mark
-                      trailing
-                      )))
+  (require-final-newline t))
 
 (use-package yasnippet
   :preface

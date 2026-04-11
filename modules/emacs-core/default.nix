@@ -27,12 +27,8 @@
         yasnippet
         yasnippet-snippets
 
-        # Development tools
-        which-key
+        # Core tools
         super-save
-        multiple-cursors
-        rainbow-delimiters
-        rainbow-mode
         editorconfig
 
         # Shell integration
@@ -42,9 +38,6 @@
         # Environment
         direnv
         envrc
-
-        # Project management
-        project
 
       ] ++ config.my.emacs-core.extraPackages;
     };
