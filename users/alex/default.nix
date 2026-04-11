@@ -6,8 +6,12 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/python-dev
 
     ../../modules/emacs-core
-    ../../modules/emacs-ess
+    ../../modules/emacs-completion
+    ../../modules/emacs-ui
+    ../../modules/emacs-org
+    ../../modules/emacs-mu4e
     ../../modules/emacs-devel
+    ../../modules/emacs-ess
   ];
 
   # This value determines the home Manager release that your
