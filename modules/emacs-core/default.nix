@@ -16,13 +16,13 @@
       extraPackages = epkgs: with epkgs; [
         # Package management
         use-package
-        
+
         # File organization
         no-littering
-        
+
         # Performance
         gcmh
-        
+
         # Completion framework
         vertico
         consult
@@ -32,31 +32,30 @@
         embark
         embark-consult
         orderless
-        
+
         # Snippets
         yasnippet
         yasnippet-snippets
-        
+
         # Development tools
         which-key
         super-save
         multiple-cursors
         rainbow-delimiters
         rainbow-mode
-        whitespace
         editorconfig
-        
+
         # Tree-sitter
         treesit-auto
-        
+
         # Shell integration
         eshell-toggle
         exec-path-from-shell
-        
+
         # Environment
         direnv
         envrc
-        
+
         # Project management
         project
       ] ++ config.my.emacs-core.extraPackages;
