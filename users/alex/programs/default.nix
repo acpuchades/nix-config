@@ -2,7 +2,6 @@ inputs: {
   # Let home Manager install and manage itself.
   home-manager.enable = true;
 
-  aider-chat = import ./aider-chat.nix inputs;
   ghostty = import ./ghostty.nix inputs;
   gpg = import ./gpg.nix inputs;
   git = import ./git.nix inputs;
@@ -10,6 +9,7 @@ inputs: {
   tmux = import ./tmux.nix inputs;
   zsh = import ./zsh.nix inputs;
 
+  claude-code.enable = true;
   direnv.enable = true;
   direnv.nix-direnv.enable = true;
   gh.enable = true;

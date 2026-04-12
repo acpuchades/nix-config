@@ -7,20 +7,6 @@
     (treesit-auto-add-to-auto-mode-alist 'all)
     (global-treesit-auto-mode))
 
-;; Aider integration
-(use-package aidermacs
-  :bind (("C-c A" . aidermacs-transient-menu))
-  :init
-  (add-to-list 'display-buffer-alist
-               '("\\*Aider\\*"
-                 (display-buffer-in-side-window)
-                 (side              . right)
-                 (window-width      .   0.4)
-                 (window-parameters . ((no-other-window . t)
-                                       (no-delete-other-windows . t)))))
-  :custom
-  (aidermacs-default-model "sonnet"))
-
 ;; LSP client (built-in)
 (use-package eglot
   :ensure nil
