@@ -3,61 +3,61 @@
 {
   options.my.cloud-suite = {
     enable = lib.mkEnableOption "Personal cloud suite (NextCloud + Collabora + Bitwarden)";
-    
+
     nextcloud = {
       hostName = lib.mkOption {
         type = lib.types.str;
         description = "NextCloud hostname";
       };
-      
+
       adminPasswordFile = lib.mkOption {
         type = lib.types.path;
         description = "Path to admin password file";
       };
-      
+
       maxUploadSize = lib.mkOption {
         type = lib.types.str;
         default = "2G";
         description = "Maximum upload size";
       };
-      
+
       phoneRegion = lib.mkOption {
         type = lib.types.str;
         default = "ES";
         description = "Default phone region";
       };
     };
-    
+
     collabora = {
       hostName = lib.mkOption {
         type = lib.types.str;
         description = "Collabora hostname";
       };
-      
+
       port = lib.mkOption {
         type = lib.types.port;
         default = 9980;
         description = "Collabora port";
       };
     };
-    
+
     bitwarden = {
       hostName = lib.mkOption {
         type = lib.types.str;
         description = "Bitwarden hostname";
       };
-      
+
       signupsAllowed = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = "Allow new user signups";
       };
-      
+
       smtpFrom = lib.mkOption {
         type = lib.types.str;
         description = "SMTP from address";
       };
-      
+
       smtpFromName = lib.mkOption {
         type = lib.types.str;
         description = "SMTP from name";
@@ -66,6 +66,12 @@
   };
 
   config = lib.mkIf config.my.cloud-suite.enable {
+
+    environment.systemPackages = with pkgs; [
+      exiftool
+      ffmpeg
+    ];
+
     # Postgres for shared database
     services.postgresql = {
       enable = true;
@@ -97,7 +103,8 @@
       appstoreEnable = true;
       autoUpdateApps.enable = true;
       extraApps = with config.services.nextcloud.package.packages.apps; {
-        inherit calendar contacts news notes richdocuments tasks;
+        inherit calendar contacts groupfolders news notes
+                previewgenerator richdocuments tasks;
       };
       extraAppsEnable = true;
       phpOptions = {
@@ -166,6 +173,28 @@
         SMTP_SSL = false;
         SMTP_FROM = config.my.cloud-suite.bitwarden.smtpFrom;
         SMTP_FROM_NAME = config.my.cloud-suite.bitwarden.smtpFromName;
+      };
+    };
+
+    # Periodically generate photo previews
+    systemd.services.nextcloud-preview-generate = {
+      description = "Nextcloud preview generator";
+      after = [ "phpfpm-nextcloud.service" ];
+      requires = [ "phpfpm-nextcloud.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "nextcloud";
+        ExecStart = "${config.services.nextcloud.occ}/bin/nextcloud-occ preview:pre-generate";
+      };
+    };
+
+    systemd.timers.nextcloud-preview-generate = {
+      description = "Nextcloud preview generator timer";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "10min";
+        OnUnitActiveSec = "10min";
+        Unit = "nextcloud-preview-generate.service";
       };
     };
   };
