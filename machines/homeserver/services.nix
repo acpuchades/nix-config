@@ -30,7 +30,6 @@
   # systemd-resolved
   resolved.enable = true;
 
-
   # Avahi/mDNS (.local)
   avahi = {
     enable = true;
@@ -50,18 +49,30 @@
     '';
   };
 
-
   # DDClient
   ddclient = {
     enable = true;
     configFile = config.sops.templates."ddclient/config".path;
   };
 
-
-
-
-
-
+  # Fail2ban
+  fail2ban = {
+    enable = true;
+    maxretry = 3;
+    bantime = "1h";
+    bantime-increment = {
+      enable = true;
+      maxtime = "168h";
+      factor = "4";
+    };
+    jails = {
+      sshd.settings = {
+        enabled = true;
+        maxretry = 3;
+        findtime = "10m";
+      };
+    };
+  };
 
   # OpenSSH
   openssh = {
@@ -70,8 +81,11 @@
     settings = {
       PermitRootLogin = "no";
       PasswordAuthentication = false;
-      AllowTcpForwarding = "yes";
       X11Forwarding = false;
+      MaxAuthTries = 3;
+      LoginGraceTime = 20;
+      AllowAgentForwarding = false;
+      AllowTcpForwarding = "no";
     };
   };
 
