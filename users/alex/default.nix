@@ -79,6 +79,10 @@ inputs@{ config, lib, pkgs, ... }:
 
   fonts.fontconfig.enable = true;
 
+  home.sessionPath = [
+    "$HOME/.local/bin"
+  ];
+
   # Packages that should be installed to the user profile.
   home.packages = with pkgs; [
 
