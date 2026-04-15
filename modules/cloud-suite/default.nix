@@ -160,6 +160,28 @@
       };
     };
 
+    services.nginx.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}" = {
+      forceSSL = true;
+      enableACME = true;
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:8000";
+      };
+    };
+
+    services.nginx.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}" = {
+      forceSSL = true;
+      enableACME = true;
+    };
+
+    services.nginx.virtualHosts."${config.my.cloud-suite.collabora.hostName}" = {
+      forceSSL = true;
+      enableACME = true;
+      locations."/" = {
+        proxyPass = "http://[::1]:${toString config.my.cloud-suite.collabora.port}";
+        proxyWebsockets = true;
+      };
+    };
+
     # Bitwarden (Vaultwarden)
     services.vaultwarden = {
       enable = true;
