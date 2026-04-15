@@ -3,12 +3,12 @@
 {
   options.my.web-server = {
     enable = lib.mkEnableOption "Web server with SSL and reverse proxy";
-    
+
     adminEmail = lib.mkOption {
       type = lib.types.str;
       description = "Admin email for ACME certificates";
     };
-    
+
     virtualHosts = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule {
         options = {
@@ -17,19 +17,19 @@
             default = null;
             description = "Document root for static content";
           };
-          
+
           proxyPass = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
             description = "Proxy pass URL";
           };
-          
+
           proxyWebsockets = lib.mkOption {
             type = lib.types.bool;
             default = false;
             description = "Enable websocket proxying";
           };
-          
+
           basicAuthFile = lib.mkOption {
             type = lib.types.nullOr lib.types.path;
             default = null;

@@ -17,7 +17,7 @@ let
       imports = [
         # Include the results of thpe hardware scan.
         ./hardware-configuration.nix
-        
+
         # Custom modules
         ../../modules/vpn-server
         ../../modules/dns-filtering
@@ -83,13 +83,13 @@ let
         enable = true;
         adminEmail = "acaravacapuchades@gmail.com";
         virtualHosts = {
-          "www.acpuchades.com" = {
-            root = "/var/www/acpuchades.com";
-          };
           "prefect.acpuchades.com" = {
             proxyPass = "http://127.0.0.1:4200";
             proxyWebsockets = true;
             basicAuthFile = config.sops.secrets."nginx/htpasswd/prefect".path;
+          };
+          "www.acpuchades.com" = {
+            root = "/var/www/acpuchades.com";
           };
         };
       };
