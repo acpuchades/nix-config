@@ -72,6 +72,12 @@
   ;; Redirect Eshell history
   (setq eshell-history-file-name (no-littering-expand-var-file-name  "eshell/history")))
 
+;; Autorevert
+(use-package autorevert
+  :ensure nil
+  :config
+  (global-auto-revert-mode 1)
+  (setq auto-revert-verbose nil))
 
 ;; Direnv
 (use-package direnv
@@ -82,7 +88,6 @@
 ;; EditorConfig support
 (use-package editorconfig
   :config (editorconfig-mode 1))
-
 
 ;; Envrc support
 (use-package envrc
