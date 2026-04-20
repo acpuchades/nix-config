@@ -65,6 +65,9 @@ let
 
       systemd.tmpfiles.rules = [
         "d /srv/fugazi 2770 fugazi fugazi -"
+        "d /srv/encrypted/postgresql 0700 postgres postgres -"
+        "d /srv/encrypted/vaultwarden 0700 vaultwarden vaultwarden -"
+        "d /srv/encrypted/nextcloud 0750 nextcloud nextcloud -"
       ];
 
       # Configure custom modules
@@ -109,6 +112,7 @@ let
           adminPasswordFile = config.sops.secrets."nextcloud/admin-pass".path;
           maxUploadSize = "2G";
           phoneRegion = "ES";
+          dataDir = "/srv/encrypted/nextcloud";
         };
         collabora = {
           hostName = "collabora.acpuchades.com";
@@ -119,6 +123,7 @@ let
           signupsAllowed = false;
           smtpFrom = "noreply@acpuchades.com";
           smtpFromName = "acpuchades.com Bitwarden Server";
+          dataDir = "/srv/encrypted/vaultwarden";
         };
       };
 

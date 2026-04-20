@@ -92,6 +92,7 @@
   # Postgres
   postgresql = {
     enable = true;
+    dataDir = "/srv/encrypted/postgresql";
     ensureDatabases = [
       "prefect"
     ];
