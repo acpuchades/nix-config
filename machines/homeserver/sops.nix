@@ -12,11 +12,6 @@
     "mailjet/token" = { key = "mailjet/token"; };
     "mailjet/secret" = { key = "mailjet/secret"; };
 
-    "passwd/alex" = {
-      key = "passwd/alex";
-      neededForUsers = true;
-    };
-
     "nextcloud/admin-pass" = {
       key = "nextcloud/admin-pass";
       owner = config.users.users.nextcloud.name;
@@ -33,6 +28,11 @@
       owner = "nginx";
       group = "nginx";
       mode = "0400";
+    };
+
+    "passwd/alex" = {
+      key = "passwd/alex";
+      neededForUsers = true;
     };
 
     "vpn/in/wg-private-key" = { key = "vpn/in/wg-private-key"; };

@@ -42,6 +42,14 @@ let
         };
       };
 
+      security.tpm2.enable = true;
+      security.tpm2.pkcs11.enable = true;
+      security.tpm2.tctiEnvironment.enable = true;
+
+      environment.etc."crypttab".text = ''
+        srv-encrypted /dev/disk/by-uuid/c5e7c042-5625-493f-9b8a-487ecdac277a - /tpm2-device=auto,discard
+      '';
+
       # List packages installed in system profile.
       # You can use https://search.nixos.org/ to find more packages (and options).
       environment.systemPackages = import ./packages.nix inputs;

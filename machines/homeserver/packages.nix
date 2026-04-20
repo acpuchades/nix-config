@@ -3,6 +3,7 @@
 with pkgs;
 [
   btrfs-progs
+  cryptsetup
   curl
   ghostty.terminfo
   glibcLocalesUtf8
@@ -10,6 +11,7 @@ with pkgs;
   iw
   mailutils
   prefect
+  tpm2-tools
   unzip
   vim
   wget
