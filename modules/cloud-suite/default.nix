@@ -26,6 +26,12 @@
         default = "ES";
         description = "Default phone region";
       };
+
+      dataDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/nextcloud";
+        description = "NextCloud data directory (user files and config.php)";
+      };
     };
 
     collabora = {
@@ -62,6 +68,12 @@
         type = lib.types.str;
         description = "SMTP from name";
       };
+
+      dataDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/vaultwarden";
+        description = "Vaultwarden DATA_FOLDER (attachments, icons, sends)";
+      };
     };
   };
 
@@ -90,6 +102,7 @@
     services.nextcloud = {
       enable = true;
       hostName = config.my.cloud-suite.nextcloud.hostName;
+      datadir = config.my.cloud-suite.nextcloud.dataDir;
       package = pkgs.nextcloud33;
       database.createLocally = true;
       configureRedis = true;
@@ -190,6 +203,7 @@
         DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
         DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
         SIGNUPS_ALLOWED = config.my.cloud-suite.bitwarden.signupsAllowed;
+        DATA_FOLDER = config.my.cloud-suite.bitwarden.dataDir;
         SMTP_HOST = "127.0.0.1";
         SMTP_PORT = 25;
         SMTP_SSL = false;
@@ -197,6 +211,10 @@
         SMTP_FROM_NAME = config.my.cloud-suite.bitwarden.smtpFromName;
       };
     };
+
+    # vaultwarden runs with ProtectSystem=strict; allow writes to a custom DATA_FOLDER
+    systemd.services.vaultwarden.serviceConfig.ReadWritePaths =
+      [ config.my.cloud-suite.bitwarden.dataDir ];
 
     # Periodically generate photo previews
     systemd.services.nextcloud-preview-generate = {
