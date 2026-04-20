@@ -82,6 +82,8 @@
     environment.systemPackages = with pkgs; [
       exiftool
       ffmpeg
+      imagemagick
+      libheif
     ];
 
     # Postgres for shared database
@@ -129,6 +131,7 @@
         "opcache.jit" = "tracing";
         "opcache.jit_buffer_size" = "128M";
       };
+      phpExtraExtensions = all: [ all.imagick ];
       settings = {
         overwriteprotocol = "https";
         default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
@@ -136,9 +139,11 @@
           "OC\\Preview\\BMP"
           "OC\\Preview\\GIF"
           "OC\\Preview\\JPEG"
+          "OC\\Preview\\JPEG2000"
           "OC\\Preview\\Krita"
           "OC\\Preview\\MarkDown"
           "OC\\Preview\\MP3"
+          "OC\\Preview\\MP4"
           "OC\\Preview\\OpenDocument"
           "OC\\Preview\\PNG"
           "OC\\Preview\\TXT"
