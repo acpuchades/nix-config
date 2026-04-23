@@ -9,7 +9,6 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-completion
     ../../modules/emacs-ui
     ../../modules/emacs-org
-    ../../modules/emacs-mu4e
     ../../modules/emacs-dev
     ../../modules/emacs-ess
     ../../modules/emacs-python
