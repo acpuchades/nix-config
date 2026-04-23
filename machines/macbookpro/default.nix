@@ -39,24 +39,34 @@ let
   };
 
 in
-nix-darwin.lib.darwinSystem {
-  modules = [
-    ../../modules/r-dev/system.nix
+  nix-darwin.lib.darwinSystem {
 
-    configuration
-    sops-nix.darwinModules.sops
-    home-manager.darwinModules.home-manager
-    {
-      home-manager.useGlobalPkgs = true;
-      home-manager.useUserPackages = true;
-      home-manager.users.alex = import ../../users/alex;
-      home-manager.extraSpecialArgs = { host = "macbookpro"; };
-      home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+    modules = [
+      ../../modules/r-dev/system.nix
 
-      users.users.alex.home = "/Users/alex";
-      users.users.alex.openssh.authorizedKeys.keys = [
-        "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIOsBCI8pMjSqQFPxJsyFWBrKxo2scz9zLhCyJKKiBJZFAAAABHNzaDo= acpuchades-nitrokey-20260225"
-      ];
-    }
+      {
+        # WORKAROUND: disable direnv failing test suite on macos
+        nixpkgs.overlays = [
+          (final: prev: {
+            direnv = prev.direnv.overrideAttrs (_: { doCheck = false; });
+          })
+        ];
+      }
+
+      configuration
+      sops-nix.darwinModules.sops
+      home-manager.darwinModules.home-manager
+      {
+        home-manager.useGlobalPkgs = true;
+        home-manager.useUserPackages = true;
+        home-manager.users.alex = import ../../users/alex;
+        home-manager.extraSpecialArgs = { host = "macbookpro"; };
+        home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+
+        users.users.alex.home = "/Users/alex";
+        users.users.alex.openssh.authorizedKeys.keys = [
+          "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIOsBCI8pMjSqQFPxJsyFWBrKxo2scz9zLhCyJKKiBJZFAAAABHNzaDo= acpuchades-nitrokey-20260225"
+        ];
+      }
   ];
 }
