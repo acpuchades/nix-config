@@ -16,7 +16,6 @@
       extraPackages = epkgs: with epkgs; [
 
         # Development tools
-        aidermacs
         magit
         treesit-auto
         treesit-grammars.with-all-grammars
