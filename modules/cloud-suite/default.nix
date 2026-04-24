@@ -2,7 +2,7 @@
 
 {
   options.my.cloud-suite = {
-    enable = lib.mkEnableOption "Personal cloud suite (NextCloud + Collabora + Bitwarden)";
+    enable = lib.mkEnableOption "Personal cloud suite (NextCloud + Collabora + Bitwarden + Immich)";
 
     nextcloud = {
       hostName = lib.mkOption {
@@ -47,6 +47,25 @@
       };
     };
 
+    immich = {
+      hostName = lib.mkOption {
+        type = lib.types.str;
+        description = "Immich hostname";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 2283;
+        description = "Immich listen port";
+      };
+
+      mediaLocation = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/immich";
+        description = "Immich media storage directory";
+      };
+    };
+
     bitwarden = {
       hostName = lib.mkOption {
         type = lib.types.str;
@@ -78,13 +97,6 @@
   };
 
   config = lib.mkIf config.my.cloud-suite.enable {
-
-    environment.systemPackages = with pkgs; [
-      exiftool
-      ffmpeg
-      imagemagick
-      libheif
-    ];
 
     # Postgres for shared database
     services.postgresql = {
@@ -118,8 +130,8 @@
       appstoreEnable = true;
       autoUpdateApps.enable = true;
       extraApps = with config.services.nextcloud.package.packages.apps; {
-        inherit bookmarks calendar contacts gpoddersync groupfolders memories
-                news nextpod notes previewgenerator richdocuments tasks;
+        inherit bookmarks calendar contacts gpoddersync groupfolders
+                news nextpod notes richdocuments tasks;
       };
       extraAppsEnable = true;
       phpOptions = {
@@ -131,25 +143,9 @@
         "opcache.jit" = "tracing";
         "opcache.jit_buffer_size" = "128M";
       };
-      phpExtraExtensions = all: [ all.imagick ];
       settings = {
         overwriteprotocol = "https";
         default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
-        enabledPreviewProviders = [
-          "OC\\Preview\\BMP"
-          "OC\\Preview\\GIF"
-          "OC\\Preview\\JPEG"
-          "OC\\Preview\\JPEG2000"
-          "OC\\Preview\\Krita"
-          "OC\\Preview\\MarkDown"
-          "OC\\Preview\\MP3"
-          "OC\\Preview\\MP4"
-          "OC\\Preview\\OpenDocument"
-          "OC\\Preview\\PNG"
-          "OC\\Preview\\TXT"
-          "OC\\Preview\\XBitmap"
-          "OC\\Preview\\HEIC"
-        ];
       };
     };
 
@@ -175,6 +171,26 @@
         };
         # Set FQDN of server
         server_name = config.my.cloud-suite.collabora.hostName;
+      };
+    };
+
+    # Immich
+    services.immich = {
+      enable = true;
+      host = "127.0.0.1";
+      port = config.my.cloud-suite.immich.port;
+      mediaLocation = config.my.cloud-suite.immich.mediaLocation;
+      database.enable = true;
+      machine-learning.enable = true;
+      openFirewall = false;
+    };
+
+    services.nginx.virtualHosts."${config.my.cloud-suite.immich.hostName}" = {
+      forceSSL = true;
+      enableACME = true;
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString config.my.cloud-suite.immich.port}";
+        proxyWebsockets = true;
       };
     };
 
@@ -221,26 +237,5 @@
     systemd.services.vaultwarden.serviceConfig.ReadWritePaths =
       [ config.my.cloud-suite.bitwarden.dataDir ];
 
-    # Periodically generate photo previews
-    systemd.services.nextcloud-preview-generate = {
-      description = "Nextcloud preview generator";
-      after = [ "phpfpm-nextcloud.service" ];
-      requires = [ "phpfpm-nextcloud.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        User = "nextcloud";
-        ExecStart = "${config.services.nextcloud.occ}/bin/nextcloud-occ preview:pre-generate";
-      };
-    };
-
-    systemd.timers.nextcloud-preview-generate = {
-      description = "Nextcloud preview generator timer";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnBootSec = "10min";
-        OnUnitActiveSec = "10min";
-        Unit = "nextcloud-preview-generate.service";
-      };
-    };
   };
 }
