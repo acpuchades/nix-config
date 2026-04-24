@@ -68,6 +68,7 @@ let
         "d /srv/encrypted/postgresql 0700 postgres postgres -"
         "d /srv/encrypted/vaultwarden 0700 vaultwarden vaultwarden -"
         "d /srv/encrypted/nextcloud 0750 nextcloud nextcloud -"
+        "d /srv/encrypted/immich 0750 immich immich -"
       ];
 
       # Configure custom modules
@@ -107,6 +108,10 @@ let
 
       my.cloud-suite = {
         enable = true;
+        immich = {
+          hostName = "photos.acpuchades.com";
+          mediaLocation = "/srv/encrypted/immich";
+        };
         nextcloud = {
           hostName = "cloud.acpuchades.com";
           adminPasswordFile = config.sops.secrets."nextcloud/admin-pass".path;
