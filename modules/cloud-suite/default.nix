@@ -78,20 +78,35 @@
         description = "Allow new user signups";
       };
 
-      smtpFrom = lib.mkOption {
-        type = lib.types.str;
-        description = "SMTP from address";
-      };
-
-      smtpFromName = lib.mkOption {
-        type = lib.types.str;
-        description = "SMTP from name";
-      };
-
       dataDir = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/vaultwarden";
         description = "Vaultwarden DATA_FOLDER (attachments, icons, sends)";
+      };
+    };
+
+    email = {
+      from = lib.mkOption {
+        type = lib.types.str;
+        description = "Sender email address for all cloud-suite services";
+      };
+
+      host = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1";
+        description = "SMTP server hostname";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 25;
+        description = "SMTP server port";
+      };
+
+      ssl = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Enable SMTP SSL/TLS";
       };
     };
   };
@@ -183,6 +198,19 @@
       database.enable = true;
       machine-learning.enable = true;
       openFirewall = false;
+      settings = {
+        notifications.smtp = {
+          enabled = true;
+          from = config.my.cloud-suite.email.from;
+          transport = {
+            host = config.my.cloud-suite.email.host;
+            port = config.my.cloud-suite.email.port;
+            ignoreCert = !config.my.cloud-suite.email.ssl;
+            username = "";
+            password = "";
+          };
+        };
+      };
     };
 
     services.nginx.virtualHosts."${config.my.cloud-suite.immich.hostName}" = {
@@ -225,11 +253,10 @@
         DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
         SIGNUPS_ALLOWED = config.my.cloud-suite.bitwarden.signupsAllowed;
         DATA_FOLDER = config.my.cloud-suite.bitwarden.dataDir;
-        SMTP_HOST = "127.0.0.1";
-        SMTP_PORT = 25;
-        SMTP_SSL = false;
-        SMTP_FROM = config.my.cloud-suite.bitwarden.smtpFrom;
-        SMTP_FROM_NAME = config.my.cloud-suite.bitwarden.smtpFromName;
+        SMTP_HOST = config.my.cloud-suite.email.host;
+        SMTP_PORT = config.my.cloud-suite.email.port;
+        SMTP_SSL = config.my.cloud-suite.email.ssl;
+        SMTP_FROM = config.my.cloud-suite.email.from;
       };
     };
 
