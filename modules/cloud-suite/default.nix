@@ -113,12 +113,9 @@
 
   config = lib.mkIf config.my.cloud-suite.enable {
 
-    # Postgres for shared database
+    # Postgres databases/users for cloud-suite services
     services.postgresql = {
-      enable = true;
-      ensureDatabases = [
-        "vaultwarden"
-      ];
+      ensureDatabases = [ "vaultwarden" ];
       ensureUsers = [
         {
           name = "vaultwarden";
@@ -126,6 +123,12 @@
         }
       ];
     };
+
+    systemd.tmpfiles.rules = [
+      "d ${config.my.cloud-suite.nextcloud.dataDir} 0750 nextcloud nextcloud -"
+      "d ${config.my.cloud-suite.bitwarden.dataDir} 0700 vaultwarden vaultwarden -"
+      "d ${config.my.cloud-suite.immich.mediaLocation} 0750 immich immich -"
+    ];
 
     # NextCloud
     services.nextcloud = {
