@@ -24,6 +24,7 @@ let
         ../../modules/web-server
         ../../modules/cloud-suite
         ../../modules/mail-relay
+        ../../modules/prefect-server
       ];
 
       # SOPS-Nix configuration
@@ -54,17 +55,7 @@ let
       # You can use https://search.nixos.org/ to find more packages (and options).
       environment.systemPackages = import ./packages.nix inputs;
 
-      # List configuration files to be stored under /etc.
-      environment.etc."fugazi/config.toml" = {
-        source = ./files/fugazi/config.toml;
-        mode = "0440";
-        user = "fugazi";
-        group = "fugazi";
-
-      };
-
       systemd.tmpfiles.rules = [
-        "d /srv/fugazi 2770 fugazi fugazi -"
         "d /srv/encrypted/postgresql 0700 postgres postgres -"
         "d /srv/encrypted/vaultwarden 0700 vaultwarden vaultwarden -"
         "d /srv/encrypted/nextcloud 0750 nextcloud nextcloud -"
@@ -139,6 +130,15 @@ let
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
         destinations = ["localhost" "localhost.localdomain"];
+      };
+
+      my.prefect-server = {
+        enable = true;
+        host = "0.0.0.0";
+        port = 4200;
+        dataDir = "/srv/prefect";
+        baseUrl = "https://prefect.acpuchades.com";
+        workerPools.default.installPolicy = "if-not-present";
       };
 
       # List services that you want to enable:
