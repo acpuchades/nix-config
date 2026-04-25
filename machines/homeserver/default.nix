@@ -22,6 +22,7 @@ let
         ../../modules/vpn-server
         ../../modules/dns-filtering
         ../../modules/web-server
+        ../../modules/postgresql-server
         ../../modules/cloud-suite
         ../../modules/mail-relay
         ../../modules/prefect-server
@@ -55,12 +56,6 @@ let
       # You can use https://search.nixos.org/ to find more packages (and options).
       environment.systemPackages = import ./packages.nix inputs;
 
-      systemd.tmpfiles.rules = [
-        "d /srv/encrypted/postgresql 0700 postgres postgres -"
-        "d /srv/encrypted/vaultwarden 0700 vaultwarden vaultwarden -"
-        "d /srv/encrypted/nextcloud 0750 nextcloud nextcloud -"
-        "d /srv/encrypted/immich 0750 immich immich -"
-      ];
 
       # Configure custom modules
       my.vpn-server = {
@@ -95,6 +90,11 @@ let
             root = "/var/www/acpuchades.com";
           };
         };
+      };
+
+      my.postgresql-server = {
+        enable = true;
+        dataDir = "/srv/encrypted/postgresql";
       };
 
       my.cloud-suite = {
