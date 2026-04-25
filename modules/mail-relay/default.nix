@@ -40,7 +40,7 @@
         myhostname = config.my.mail-relay.hostname;
         inet_interfaces = "loopback-only";
         mydestination = lib.concatStringsSep ", " (
-          config.my.mail-relay.destinations ++ ["$myhostname" "homeserver"]
+          config.my.mail-relay.destinations ++ ["$myhostname" config.networking.hostName]
         );
         relayhost = [ config.my.mail-relay.relayHost ];
         smtp_address_preference = "ipv4";

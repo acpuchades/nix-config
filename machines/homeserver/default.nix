@@ -117,9 +117,10 @@ let
         bitwarden = {
           hostName = "bitwarden.acpuchades.com";
           signupsAllowed = false;
-          smtpFrom = "noreply@acpuchades.com";
-          smtpFromName = "acpuchades.com Bitwarden Server";
           dataDir = "/srv/encrypted/vaultwarden";
+        };
+        email = {
+          from = "noreply@acpuchades.com";
         };
       };
 
