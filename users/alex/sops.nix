@@ -36,11 +36,6 @@ inputs@{ config, host, ...}:
       key = "prefect/password";
     };
 
-    "ssh/nitrokey-stub" = {
-      sopsFile = ./secrets/default.yml;
-      mode = "0600";
-    };
-
   };
 
   templates = {
