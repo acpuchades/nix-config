@@ -11,19 +11,10 @@ in {
   mutableUsers = false;
 
   # Groups
-  groups.fugazi = {};
   groups.prefect = {};
 
   # Disable root login
   users.root.hashedPassword = "!";
-
-  # System accounts
-  users.fugazi = {
-    group = "fugazi";
-    createHome = false;
-    isSystemUser = true;
-    home = "/srv/fugazi";
-  };
 
   # User accounts
   users.alex = {
@@ -32,7 +23,6 @@ in {
     extraGroups = [
       "wheel"
       "networkmanager"
-      "fugazi"
     ];
 
     hashedPasswordFile = config.sops.secrets."passwd/alex".path;

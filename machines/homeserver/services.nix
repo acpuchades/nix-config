@@ -104,22 +104,4 @@
     ];
   };
 
-  # Prefect {
-  prefect = {
-    enable = true;
-    host = "0.0.0.0";
-    port = 4200;
-    database = "postgres";
-    databaseHost = "";
-    databasePort = 0;
-    databaseUser = "prefect";
-    databaseName = "prefect";
-    dataDir = "/var/lib/prefect-server";
-    baseUrl = "https://prefect.acpuchades.com";
-    workerPools = {
-      default.installPolicy = "if-not-present";
-    };
-  };
-
-
 }
