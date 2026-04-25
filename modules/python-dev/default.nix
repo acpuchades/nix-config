@@ -16,13 +16,17 @@
       ipywidgets
       jupyter
       jupyterlab-widgets
+      debugpy
     ] ++ (config.my.python-dev.extraPackages ps));
 
   in {
 
     home.packages = with pkgs; [
       (python3.withPackages python-pkgs)
-      mamba-cpp ruff uv
+      mamba-cpp
+      pyright
+      ruff
+      uv
     ];
 
     home.file.".condarc".text = ''
