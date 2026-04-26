@@ -72,7 +72,7 @@
         server=dynamicdns.park-your-domain.com
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
-        adguard,bitwarden,cloud,collabora,home,photos,prefect,www
+        home,www
     '';
 
     "postfix/sasl_passwd" = {
