@@ -137,7 +137,9 @@ let
       my.home-assistant = {
         enable = true;
         hostName = "home.acpuchades.com";
+        extraComponents = [ "alexa_devices" "conversation" "hue" "met" "smartthings" "spotify" "stream" ];
         email.from = "noreply@acpuchades.com";
+        email.recipient = "admin@acpuchades.com";
       };
 
       my.prefect-server = {
