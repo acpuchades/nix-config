@@ -35,10 +35,27 @@
       };
     };
 
+    extraComponents = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Extra built-in components to include";
+    };
+
+    customComponents = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = [];
+      description = "Extra custom components to install";
+    };
+
     email = {
       from = lib.mkOption {
         type = lib.types.str;
         description = "Sender email address";
+      };
+
+      recipient = lib.mkOption {
+        type = lib.types.str;
+        description = "Recipient email address for notifications";
       };
 
       host = lib.mkOption {
@@ -64,6 +81,10 @@
   config = lib.mkIf config.my.home-assistant.enable {
     environment.systemPackages = [ pkgs.home-assistant-cli ];
 
+    systemd.tmpfiles.rules = [
+      "d ${config.my.home-assistant.configDir} 0750 hass hass -"
+    ];
+
     services.postgresql = {
       ensureDatabases = [ config.my.home-assistant.database.name ];
       ensureUsers = [
@@ -78,8 +99,11 @@
       enable = true;
       openFirewall = false;
       configDir = config.my.home-assistant.configDir;
-      extraPackages = python3Packages: [ python3Packages.psycopg2 ];
+      extraPackages = python3Packages: [ python3Packages.psycopg2 python3Packages.isal ];
+      extraComponents = config.my.home-assistant.extraComponents;
+      customComponents = config.my.home-assistant.customComponents;
       config = {
+        default_config = {};
         http = {
           server_host = "127.0.0.1";
           server_port = config.my.home-assistant.port;
@@ -95,6 +119,7 @@
             server = config.my.home-assistant.email.host;
             port = config.my.home-assistant.email.port;
             sender = config.my.home-assistant.email.from;
+            recipient = config.my.home-assistant.email.recipient;
             encryption = if config.my.home-assistant.email.ssl then "starttls" else "none";
           }
         ];
