@@ -26,6 +26,7 @@ let
         ../../modules/cloud-suite
         ../../modules/mail-relay
         ../../modules/prefect-server
+        ../../modules/home-assistant
       ];
 
       # SOPS-Nix configuration
@@ -131,6 +132,12 @@ let
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
         destinations = ["localhost" "localhost.localdomain"];
+      };
+
+      my.home-assistant = {
+        enable = true;
+        hostName = "home.acpuchades.com";
+        email.from = "noreply@acpuchades.com";
       };
 
       my.prefect-server = {
