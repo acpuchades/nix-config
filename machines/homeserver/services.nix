@@ -27,8 +27,11 @@
   # Timestamps & logs
   timesyncd.enable = true;
 
-  # systemd-resolved
-  resolved.enable = true;
+  # systemd-resolved → AdGuard Home → dnscrypt-proxy
+  resolved = {
+    enable = true;
+    extraConfig = "DNSStubListener=no";
+  };
 
   # Avahi/mDNS (.local)
   avahi = {

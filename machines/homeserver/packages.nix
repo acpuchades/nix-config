@@ -3,6 +3,7 @@
 with pkgs;
 [
   btrfs-progs
+  caddy
   cryptsetup
   curl
   ghostty.terminfo

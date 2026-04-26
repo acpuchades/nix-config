@@ -6,7 +6,7 @@
 
     hostName = lib.mkOption {
       type = lib.types.str;
-      description = "Hostname for nginx reverse proxy";
+      description = "Hostname for reverse proxy";
     };
 
     port = lib.mkOption {
@@ -126,13 +126,9 @@
       };
     };
 
-    services.nginx.virtualHosts."${config.my.home-assistant.hostName}" = {
-      forceSSL = true;
-      enableACME = true;
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString config.my.home-assistant.port}";
-        proxyWebsockets = true;
-      };
-    };
+    services.caddy.virtualHosts."${config.my.home-assistant.hostName}".extraConfig = ''
+      reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}
+      encode gzip
+    '';
   };
 }

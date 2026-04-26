@@ -43,30 +43,19 @@
   };
 
   config = lib.mkIf config.my.web-server.enable {
-    # ACME certificates management
-    security.acme = {
-      acceptTerms = true;
-      defaults.email = config.my.web-server.adminEmail;
-    };
-
-    # Nginx
-    services.nginx = {
+    services.caddy = {
       enable = true;
-      recommendedGzipSettings = true;
-      recommendedProxySettings = true;
-      recommendedTlsSettings = true;
-
-      virtualHosts = lib.mapAttrs (name: hostConfig: {
-        forceSSL = true;
-        enableACME = true;
-        root = hostConfig.root;
-        basicAuthFile = hostConfig.basicAuthFile;
-        locations = lib.mkIf (hostConfig.proxyPass != null) {
-          "/" = {
-            proxyPass = hostConfig.proxyPass;
-            proxyWebsockets = hostConfig.proxyWebsockets;
-          };
-        };
+      email = config.my.web-server.adminEmail;
+      virtualHosts = lib.mapAttrs (_name: hostConfig: {
+        extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+          (lib.optionalString (hostConfig.basicAuthFile != null)
+            "import ${hostConfig.basicAuthFile}")
+          (lib.optionalString (hostConfig.root != null)
+            "root * ${hostConfig.root}\nfile_server")
+          (lib.optionalString (hostConfig.proxyPass != null)
+            "reverse_proxy ${hostConfig.proxyPass}")
+          "encode gzip"
+        ]);
       }) config.my.web-server.virtualHosts;
     };
   };
