@@ -43,9 +43,26 @@
     enable = true;
     dataDir = "/srv/bitcoind";
     extraConfig = ''
-      server=1
+      # Parallelism
+      par=0                   # 0 = auto-detect cores; explicit value caps it
+
+      # Mempool — bigger = more fee-rate visibility, more RAM
+      maxmempool=1000         # MiB; default 300
+
+      # Connection limits
+      maxconnections=64       # default 125; lower = less bandwidth/CPU
+      maxuploadtarget=5000    # MiB/day cap on upload to peers; 0 = unlimited
+
+      # Indexes you may want for analysis work
       txindex=1
-      rpcallowip=127.0.0.1
+      coinstatsindex=1        # UTXO set statistics; useful for chain analysis
+      # blockfilterindex=1    # BIP157/158 compact filters; enable if you query them
+
+      # Persist mempool across restarts
+      persistmempool=1
+
+      # Disable wallet entirely (not in use)
+      disablewallet=1
     '';
   };
 
