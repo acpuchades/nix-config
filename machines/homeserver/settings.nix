@@ -28,12 +28,6 @@ in
   boot.loader.systemd-boot.configurationLimit = 5;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # Forwarding + NAT (replace external iface as needed)
-  boot.kernel.sysctl = {
-    "net.ipv4.ip_forward" = 1;
-    "net.ipv6.conf.all.forwarding" = 1;
-  };
-
   # Set your time zone.
   time.timeZone = "Europe/Madrid";
 

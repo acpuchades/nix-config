@@ -57,16 +57,14 @@ let
       # You can use https://search.nixos.org/ to find more packages (and options).
       environment.systemPackages = import ./packages.nix inputs;
 
-
       # Configure custom modules
       my.vpn-server = {
         enable = true;
-        interface = "wlp229s0f3u4";
-        ssid = "HomeServerVPN-IN";
-        passwordFile = config.sops.secrets."vpn/in/wifi-password".path;
-        dhcpRange = "192.168.10.2,192.168.10.254,12h";
-        dnsServer = "10.2.0.1";
-        countryCode = "ES";
+        privateKeyFile = config.sops.secrets."wireguard/private-key".path;
+        serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
+        serverEndpoint = "home.acpuchades.com:51820";
+        clientDns = "10.0.0.1";
+        upstreamInterface = "wlp3s0";
       };
 
       my.dns-filtering = {
@@ -74,7 +72,7 @@ let
         adguardPort = 3000;
         dnsPort = 53;
         dnscryptPort = 5300;
-        basicAuthFile = config.sops.secrets."nginx/htpasswd/adguard".path;
+        basicAuthFile = config.sops.secrets."htpasswd/adguard".path;
         virtualHost = "adguard.acpuchades.com";
       };
 
@@ -85,7 +83,7 @@ let
           "prefect.acpuchades.com" = {
             proxyPass = "http://127.0.0.1:4200";
             proxyWebsockets = true;
-            basicAuthFile = config.sops.secrets."nginx/htpasswd/prefect".path;
+            basicAuthFile = config.sops.secrets."htpasswd/prefect".path;
           };
           "www.acpuchades.com" = {
             root = "/var/www/acpuchades.com";
@@ -100,6 +98,18 @@ let
 
       my.cloud-suite = {
         enable = true;
+        bitwarden = {
+          hostName = "bitwarden.acpuchades.com";
+          signupsAllowed = false;
+          dataDir = "/srv/encrypted/vaultwarden";
+        };
+        collabora = {
+          hostName = "collabora.acpuchades.com";
+          port = 9980;
+        };
+        email = {
+          from = "noreply@acpuchades.com";
+        };
         immich = {
           hostName = "photos.acpuchades.com";
           mediaLocation = "/srv/encrypted/immich";
@@ -110,18 +120,6 @@ let
           maxUploadSize = "2G";
           phoneRegion = "ES";
           dataDir = "/srv/encrypted/nextcloud";
-        };
-        collabora = {
-          hostName = "collabora.acpuchades.com";
-          port = 9980;
-        };
-        bitwarden = {
-          hostName = "bitwarden.acpuchades.com";
-          signupsAllowed = false;
-          dataDir = "/srv/encrypted/vaultwarden";
-        };
-        email = {
-          from = "noreply@acpuchades.com";
         };
       };
 
@@ -137,7 +135,15 @@ let
       my.home-assistant = {
         enable = true;
         hostName = "home.acpuchades.com";
-        extraComponents = [ "alexa_devices" "conversation" "hue" "met" "smartthings" "spotify" "stream" ];
+        extraComponents = [
+          "alexa_devices"
+          "conversation"
+          "hue"
+          "met"
+          "smartthings"
+          "spotify"
+          "stream"
+        ];
         email.from = "noreply@acpuchades.com";
         email.recipient = "admin@acpuchades.com";
       };

@@ -18,13 +18,13 @@
       group = config.users.users.nextcloud.group;
     };
 
-    "nginx/htpasswd/adguard" = {
+    "htpasswd/adguard" = {
       owner = "nginx";
       group = "nginx";
       mode = "0400";
     };
 
-    "nginx/htpasswd/prefect" = {
+    "htpasswd/prefect" = {
       owner = "nginx";
       group = "nginx";
       mode = "0400";
@@ -35,15 +35,7 @@
       neededForUsers = true;
     };
 
-    "vpn/in/wg-private-key" = { key = "vpn/in/wg-private-key"; };
-    "vpn/in/wifi-password" = { key = "vpn/in/wifi-password"; };
-
-    "wg/server/private-key" = { key = "wireguard/server/privatekey"; };
-    "wg/peers/alex-iphone/psk" = { key = "wireguard/peers/alex-iphone/psk"; };
-    "wg/peers/alex-ipad/psk" = { key = "wireguard/peers/alex-ipad/psk"; };
-    "wg/peers/alex-macbookpro/psk" = { key = "wireguard/peers/alex-macbookpro/psk"; };
-    "wg/peers/mubin-phone/psk" = { key = "wireguard/peers/mubin-phone/psk"; };
-    "wg/peers/mubin-laptop/psk" = { key = "wireguard/peers/mubin-laptop/psk"; };
+    "wireguard/private-key" = { key = "wireguard/privatekey"; };
 
     "wifi/network" = { key = "wifi/network"; };
     "wifi/password" = { key = "wifi/password"; };
