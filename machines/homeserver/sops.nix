@@ -18,15 +18,15 @@
       group = config.users.users.nextcloud.group;
     };
 
-    "htpasswd/adguard" = {
-      owner = "nginx";
-      group = "nginx";
+    "caddy/adguard-hash" = {
+      owner = "caddy";
+      group = "caddy";
       mode = "0400";
     };
 
-    "htpasswd/prefect" = {
-      owner = "nginx";
-      group = "nginx";
+    "caddy/prefect-hash" = {
+      owner = "caddy";
+      group = "caddy";
       mode = "0400";
     };
 
@@ -43,6 +43,28 @@
   };
 
   templates = {
+
+    "caddy/adguard-auth" = {
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+      content = ''
+        basic_auth {
+          admin ${config.sops.placeholder."caddy/adguard-hash"}
+        }
+      '';
+    };
+
+    "caddy/prefect-auth" = {
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+      content = ''
+        basic_auth {
+          admin ${config.sops.placeholder."caddy/prefect-hash"}
+        }
+      '';
+    };
 
     "ddclient/config".content = ''
         use=web, web=checkip.amazonaws.com

@@ -11,6 +11,9 @@
 
 let
 
+  homeServerLocalAddress = "192.168.2.2";
+  adminEmailAddress = "admin@acpuchades.com";
+
   configuration =
     inputs@{ config, lib, pkgs, ... }:
     import ./settings.nix inputs // {
@@ -71,19 +74,28 @@ let
         enable = true;
         adguardPort = 3000;
         dnsPort = 53;
-        dnscryptPort = 5300;
-        basicAuthFile = config.sops.secrets."htpasswd/adguard".path;
+        dnsResolverPort = 5300;
+        basicAuthFile = config.sops.templates."caddy/adguard-auth".path;
         virtualHost = "adguard.acpuchades.com";
+        dnsRewrites = [
+          { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
+          { domain = "adguard.acpuchades.com";   answer = homeServerLocalAddress; }
+          { domain = "bitwarden.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "photos.acpuchades.com";    answer = homeServerLocalAddress; }
+          { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
+          { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
+        ];
       };
 
       my.web-server = {
         enable = true;
-        adminEmail = "acaravacapuchades@gmail.com";
+        adminEmail = adminEmailAddress;
         virtualHosts = {
           "prefect.acpuchades.com" = {
             proxyPass = "http://127.0.0.1:4200";
             proxyWebsockets = true;
-            basicAuthFile = config.sops.secrets."htpasswd/prefect".path;
+            basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
           };
           "www.acpuchades.com" = {
             root = "/var/www/acpuchades.com";
@@ -145,7 +157,7 @@ let
           "stream"
         ];
         email.from = "noreply@acpuchades.com";
-        email.recipient = "admin@acpuchades.com";
+        email.recipient = adminEmailAddress;
       };
 
       my.prefect-server = {

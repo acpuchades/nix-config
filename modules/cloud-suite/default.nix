@@ -164,6 +164,7 @@
       settings = {
         overwriteprotocol = "https";
         default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
+        trusted_proxies = [ "127.0.0.1" "::1" ];
       };
     };
 
@@ -216,36 +217,35 @@
       };
     };
 
-    services.nginx.virtualHosts."${config.my.cloud-suite.immich.hostName}" = {
-      forceSSL = true;
-      enableACME = true;
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:${toString config.my.cloud-suite.immich.port}";
-        proxyWebsockets = true;
-      };
-    };
+    services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
+      reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port}
+      encode gzip
+    '';
 
-    services.nginx.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}" = {
-      forceSSL = true;
-      enableACME = true;
-      locations."/" = {
-        proxyPass = "http://127.0.0.1:8000";
-      };
-    };
+    services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig = ''
+      reverse_proxy http://127.0.0.1:8000
+      encode gzip
+    '';
 
+    services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig = ''
+      reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}
+      encode gzip
+    '';
+
+    # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
+    services.nginx = {
+      enable = true;
+      recommendedProxySettings = true;
+    };
     services.nginx.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}" = {
-      forceSSL = true;
-      enableACME = true;
+      listen = [{ addr = "127.0.0.1"; port = 8080; ssl = false; }];
+      forceSSL = lib.mkForce false;
+      enableACME = lib.mkForce false;
     };
-
-    services.nginx.virtualHosts."${config.my.cloud-suite.collabora.hostName}" = {
-      forceSSL = true;
-      enableACME = true;
-      locations."/" = {
-        proxyPass = "http://[::1]:${toString config.my.cloud-suite.collabora.port}";
-        proxyWebsockets = true;
-      };
-    };
+    services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig = ''
+      reverse_proxy http://127.0.0.1:8080
+      encode gzip
+    '';
 
     # Bitwarden (Vaultwarden)
     services.vaultwarden = {
