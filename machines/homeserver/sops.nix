@@ -18,6 +18,18 @@
       group = config.users.users.nextcloud.group;
     };
 
+    "cloudflare/account" = {
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+    };
+
+    "cloudflare/token" = {
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+    };
+
     "caddy/adguard-hash" = {
       owner = "caddy";
       group = "caddy";
@@ -43,6 +55,15 @@
   };
 
   templates = {
+
+    "caddy/cloudflare-env" = {
+      owner = "caddy";
+      group = "caddy";
+      mode = "0400";
+      content = ''
+        CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/token"}
+      '';
+    };
 
     "caddy/adguard-auth" = {
       owner = "caddy";
