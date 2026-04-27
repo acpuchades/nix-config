@@ -1,18 +1,18 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 
 {
   options.my.server-stats = {
-    enable = lib.mkEnableOption "Netdata system monitoring dashboard";
+    enable = lib.mkEnableOption "Prometheus + Grafana system monitoring dashboard";
 
     hostName = lib.mkOption {
       type = lib.types.str;
-      description = "Hostname for the monitoring dashboard reverse proxy";
+      description = "Hostname for the Grafana dashboard reverse proxy";
     };
 
     port = lib.mkOption {
       type = lib.types.port;
-      default = 19999;
-      description = "Netdata listen port";
+      default = 3000;
+      description = "Grafana listen port";
     };
 
     allowedNetworks = lib.mkOption {
@@ -23,25 +23,61 @@
   };
 
   config = lib.mkIf config.my.server-stats.enable {
-    nixpkgs.config.allowUnfreePredicate = pkg:
-      lib.getName pkg == "netdata";
-
-    services.netdata = {
+    services.prometheus = {
       enable = true;
-      package = pkgs.netdata.override { withCloudUi = true; };
-      config = {
-        global = {
-          "bind to" = "127.0.0.1:${toString config.my.server-stats.port}";
+      listenAddress = "127.0.0.1";
+      port = 9090;
+      exporters.node = {
+        enable = true;
+        listenAddress = "127.0.0.1";
+        port = 9100;
+      };
+      scrapeConfigs = [
+        {
+          job_name = "node";
+          static_configs = [{ targets = [ "127.0.0.1:9100" ]; }];
+        }
+      ];
+    };
+
+    services.grafana = {
+      enable = true;
+      settings = {
+        server = {
+          http_addr = "127.0.0.1";
+          http_port = config.my.server-stats.port;
+          domain = config.my.server-stats.hostName;
+          root_url = "https://${config.my.server-stats.hostName}";
         };
+        "auth.anonymous" = {
+          enabled = true;
+          org_role = "Viewer";
+        };
+      };
+      provision = {
+        enable = true;
+        datasources.settings.datasources = [
+          {
+            name = "Prometheus";
+            type = "prometheus";
+            url = "http://127.0.0.1:9090";
+            isDefault = true;
+          }
+        ];
       };
     };
 
     services.caddy.virtualHosts."${config.my.server-stats.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.server-stats.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.server-stats.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:${toString config.my.server-stats.port}"
-        "encode gzip"
-      ]);
+      if config.my.server-stats.allowedNetworks != [] then ''
+        @allowed remote_ip ${lib.concatStringsSep " " config.my.server-stats.allowedNetworks}
+        handle @allowed {
+          reverse_proxy http://127.0.0.1:${toString config.my.server-stats.port}
+          encode gzip
+        }
+        respond 403
+      '' else ''
+        reverse_proxy http://127.0.0.1:${toString config.my.server-stats.port}
+        encode gzip
+      '';
   };
 }
