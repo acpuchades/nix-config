@@ -32,6 +32,12 @@
         default = "/var/lib/nextcloud";
         description = "NextCloud data directory (user files and config.php)";
       };
+
+      allowedNetworks = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+      };
     };
 
     collabora = {
@@ -82,6 +88,12 @@
         type = lib.types.str;
         default = "/var/lib/vaultwarden";
         description = "Vaultwarden DATA_FOLDER (attachments, icons, sends)";
+      };
+
+      allowedNetworks = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
     };
 
@@ -222,10 +234,13 @@
       encode gzip
     '';
 
-    services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig = ''
-      reverse_proxy http://127.0.0.1:8000
-      encode gzip
-    '';
+    services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
+      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (config.my.cloud-suite.bitwarden.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.bitwarden.allowedNetworks}\nabort @denied")
+        "reverse_proxy http://127.0.0.1:8000"
+        "encode gzip"
+      ]);
 
     services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig = ''
       reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}
@@ -242,14 +257,18 @@
       forceSSL = lib.mkForce false;
       enableACME = lib.mkForce false;
     };
-    services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig = ''
-      reverse_proxy http://127.0.0.1:8080 {
-        transport http {
-          versions 1.1
-        }
-      }
-      encode gzip
-    '';
+    services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig =
+      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (config.my.cloud-suite.nextcloud.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.nextcloud.allowedNetworks}\nabort @denied")
+        ''
+          reverse_proxy http://127.0.0.1:8080 {
+            transport http {
+              versions 1.1
+            }
+          }
+          encode gzip''
+      ]);
 
     # Bitwarden (Vaultwarden)
     services.vaultwarden = {
