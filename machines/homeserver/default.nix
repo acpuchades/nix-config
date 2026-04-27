@@ -171,6 +171,7 @@ let
       my.server-stats = {
         enable = true;
         hostName = "status.acpuchades.com";
+        port = 3001;
         allowedNetworks = privateNetworks;
       };
 
