@@ -25,6 +25,7 @@
     "libreoffice"
     "libreoffice-language-pack"
     "little-snitch"
+    "localsend"
     "logi-options+"
     "macfuse"
     "micro-snitch"
