@@ -31,6 +31,7 @@ let
         ../../modules/mail-relay
         ../../modules/prefect-server
         ../../modules/home-assistant
+        ../../modules/server-stats
       ];
 
       # SOPS-Nix configuration
@@ -87,6 +88,7 @@ let
           { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
+          { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
         ];
       };
 
@@ -158,6 +160,12 @@ let
         ];
         email.from = "noreply@acpuchades.com";
         email.recipient = adminEmailAddress;
+      };
+
+      my.server-stats = {
+        enable = true;
+        hostName = "status.acpuchades.com";
+        allowedNetworks = privateNetworks;
       };
 
       my.prefect-server = {
