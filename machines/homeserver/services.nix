@@ -100,7 +100,7 @@
     openFirewall = true;
     settings = {
       PermitRootLogin = "no";
-      PasswordAuthentication = false;
+      PasswordAuthentication = true;
       X11Forwarding = false;
       MaxAuthTries = 3;
       LoginGraceTime = 20;
