@@ -74,10 +74,38 @@
       default = [];
       description = "DNS rewrites for AdGuard Home (domain → IP)";
     };
+
+    tls = {
+      enable = lib.mkEnableOption "DNS-over-TLS";
+
+      serverName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        description = "Server name for TLS certificate (SNI)";
+      };
+
+      certFile = lib.mkOption {
+        type = lib.types.path;
+        description = "Path to TLS certificate chain (fullchain PEM)";
+      };
+
+      keyFile = lib.mkOption {
+        type = lib.types.path;
+        description = "Path to TLS private key (PEM)";
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 853;
+        description = "DNS-over-TLS listen port";
+      };
+    };
   };
 
   config = lib.mkIf config.my.dns-filtering.enable {
-    networking.firewall.allowedTCPPorts = [ config.my.dns-filtering.dnsPort ];
+    networking.firewall.allowedTCPPorts =
+      [ config.my.dns-filtering.dnsPort ] ++
+      lib.optionals config.my.dns-filtering.tls.enable [ config.my.dns-filtering.tls.port ];
     networking.firewall.allowedUDPPorts = [ config.my.dns-filtering.dnsPort ];
 
     # DNSCrypt proxy
@@ -112,6 +140,17 @@
           safe_search.enabled = false;
           filters = map(url: { enabled = true; url = url; }) config.my.dns-filtering.filterLists;
           rewrites = config.my.dns-filtering.dnsRewrites;
+        };
+      } // lib.optionalAttrs config.my.dns-filtering.tls.enable {
+        tls = {
+          enabled = true;
+          server_name = config.my.dns-filtering.tls.serverName;
+          force_https = false;
+          port_https = 0;
+          port_dns_over_tls = config.my.dns-filtering.tls.port;
+          port_dns_over_quic = 0;
+          certificate_path = config.my.dns-filtering.tls.certFile;
+          private_key_path = config.my.dns-filtering.tls.keyFile;
         };
       };
     };
