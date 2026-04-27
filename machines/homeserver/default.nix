@@ -32,6 +32,7 @@ let
         ../../modules/prefect-server
         ../../modules/home-assistant
         ../../modules/server-stats
+        ../../modules/acme-cloudflare
       ];
 
       # SOPS-Nix configuration
@@ -63,6 +64,11 @@ let
       environment.systemPackages = import ./packages.nix inputs;
 
       # Configure custom modules
+      my.acme-cloudflare = {
+        enable = true;
+        credentialsFile = config.sops.templates."caddy/cloudflare-env".path;
+      };
+
       my.vpn-server = {
         enable = true;
         privateKeyFile = config.sops.secrets."wireguard/private-key".path;
