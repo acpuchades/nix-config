@@ -65,7 +65,7 @@ let
         enable = true;
         privateKeyFile = config.sops.secrets."wireguard/private-key".path;
         serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
-        serverEndpoint = "home.acpuchades.com:51820";
+        serverEndpoint = "vpn.acpuchades.com:51820";
         clientDns = "10.0.0.1";
         upstreamInterface = "wlp3s0";
       };
