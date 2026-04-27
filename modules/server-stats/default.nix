@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 
 {
   options.my.server-stats = {
@@ -40,6 +40,23 @@
       ];
     };
 
+    systemd.services.grafana-image-renderer = {
+      description = "Grafana Image Renderer";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "network.target" ];
+      path = [ pkgs.chromium ];
+      serviceConfig = {
+        ExecStart = "${pkgs.grafana-image-renderer}/bin/grafana-image-renderer server";
+        User = "grafana";
+        Restart = "on-failure";
+        Environment = [
+          "HTTP_HOST=127.0.0.1"
+          "HTTP_PORT=8081"
+          "ENABLE_METRICS=true"
+        ];
+      };
+    };
+
     services.grafana = {
       enable = true;
       settings = {
@@ -52,6 +69,10 @@
         "auth.anonymous" = {
           enabled = true;
           org_role = "Viewer";
+        };
+        rendering = {
+          server_url = "http://127.0.0.1:8081/render";
+          callback_url = "http://127.0.0.1:${toString config.my.server-stats.port}/";
         };
       };
       provision = {
