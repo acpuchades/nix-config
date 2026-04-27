@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 
 {
   options.my.web-server = {
@@ -35,6 +35,12 @@
             default = null;
             description = "Basic auth file";
           };
+
+          allowedNetworks = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [];
+            description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+          };
         };
       });
       default = {};
@@ -50,6 +56,8 @@
       email = config.my.web-server.adminEmail;
       virtualHosts = lib.mapAttrs (_name: hostConfig: {
         extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+          (lib.optionalString (hostConfig.allowedNetworks != [])
+            "@denied not remote_ip ${lib.concatStringsSep " " hostConfig.allowedNetworks}\nabort @denied")
           (lib.optionalString (hostConfig.basicAuthFile != null)
             "import ${hostConfig.basicAuthFile}")
           (lib.optionalString (hostConfig.root != null)

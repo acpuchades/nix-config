@@ -47,6 +47,12 @@
       description = "Extra custom components to install";
     };
 
+    allowedNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+    };
+
     email = {
       from = lib.mkOption {
         type = lib.types.str;
@@ -126,9 +132,12 @@
       };
     };
 
-    services.caddy.virtualHosts."${config.my.home-assistant.hostName}".extraConfig = ''
-      reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}
-      encode gzip
-    '';
+    services.caddy.virtualHosts."${config.my.home-assistant.hostName}".extraConfig =
+      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (config.my.home-assistant.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " config.my.home-assistant.allowedNetworks}\nabort @denied")
+        "reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}"
+        "encode gzip"
+      ]);
   };
 }

@@ -57,6 +57,12 @@
       description = "Virtual host for reverse proxy";
     };
 
+    allowedNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+    };
+
     dnsRewrites = lib.mkOption {
       type = lib.types.listOf (lib.types.submodule {
         options = {
@@ -112,6 +118,8 @@
 
     services.caddy.virtualHosts = lib.mkIf (config.my.dns-filtering.virtualHost != null) {
       ${config.my.dns-filtering.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (config.my.dns-filtering.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " config.my.dns-filtering.allowedNetworks}\nabort @denied")
         (lib.optionalString (config.my.dns-filtering.basicAuthFile != null)
           "import ${config.my.dns-filtering.basicAuthFile}")
         "reverse_proxy http://127.0.0.1:${toString config.my.dns-filtering.adguardPort}"

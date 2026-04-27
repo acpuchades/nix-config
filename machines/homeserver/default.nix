@@ -13,6 +13,7 @@ let
 
   homeServerLocalAddress = "192.168.2.2";
   adminEmailAddress = "admin@acpuchades.com";
+  privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
 
   configuration =
     inputs@{ config, lib, pkgs, ... }:
@@ -77,6 +78,7 @@ let
         dnsResolverPort = 5300;
         basicAuthFile = config.sops.templates."caddy/adguard-auth".path;
         virtualHost = "adguard.acpuchades.com";
+        allowedNetworks = privateNetworks;
         dnsRewrites = [
           { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "adguard.acpuchades.com";   answer = homeServerLocalAddress; }
@@ -114,6 +116,7 @@ let
           hostName = "bitwarden.acpuchades.com";
           signupsAllowed = false;
           dataDir = "/srv/encrypted/vaultwarden";
+          allowedNetworks = privateNetworks;
         };
         collabora = {
           hostName = "collabora.acpuchades.com";
@@ -132,6 +135,7 @@ let
           maxUploadSize = "2G";
           phoneRegion = "ES";
           dataDir = "/srv/encrypted/nextcloud";
+          allowedNetworks = privateNetworks;
         };
       };
 
@@ -147,6 +151,7 @@ let
       my.home-assistant = {
         enable = true;
         hostName = "home.acpuchades.com";
+        allowedNetworks = privateNetworks;
         extraComponents = [
           "alexa_devices"
           "conversation"
