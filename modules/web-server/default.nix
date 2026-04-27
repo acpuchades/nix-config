@@ -43,6 +43,8 @@
   };
 
   config = lib.mkIf config.my.web-server.enable {
+    networking.firewall.allowedTCPPorts = [ 80 443 ];
+
     services.caddy = {
       enable = true;
       email = config.my.web-server.adminEmail;

@@ -94,6 +94,12 @@ in
       description = "WireGuard server tunnel IP in CIDR notation";
     };
 
+    tunnelSubnet = lib.mkOption {
+      type = lib.types.str;
+      default = "10.0.0.0/24";
+      description = "WireGuard tunnel subnet used for hairpin NAT (must match serverIp prefix)";
+    };
+
     listenPort = lib.mkOption {
       type = lib.types.port;
       default = 51820;
@@ -165,6 +171,17 @@ in
       enable = true;
       externalInterface = cfg.upstreamInterface;
       internalInterfaces = [ cfg.interface ];
+      # Hairpin NAT: allow wg0→wg0 forwarding and masquerade so that VPN peers
+      # can reach each other and server services via the tunnel IP, with
+      # responses routed back through WireGuard instead of bypassing it.
+      extraCommands = ''
+        iptables -A FORWARD -i ${cfg.interface} -o ${cfg.interface} -j ACCEPT
+        iptables -t nat -A POSTROUTING -s ${cfg.tunnelSubnet} -o ${cfg.interface} -j MASQUERADE
+      '';
+      extraStopCommands = ''
+        iptables -D FORWARD -i ${cfg.interface} -o ${cfg.interface} -j ACCEPT || true
+        iptables -t nat -D POSTROUTING -s ${cfg.tunnelSubnet} -o ${cfg.interface} -j MASQUERADE || true
+      '';
     };
 
     networking.firewall.allowedUDPPorts = [ cfg.listenPort ];
