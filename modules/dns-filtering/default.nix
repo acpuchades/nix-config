@@ -71,6 +71,9 @@
   };
 
   config = lib.mkIf config.my.dns-filtering.enable {
+    networking.firewall.allowedTCPPorts = [ config.my.dns-filtering.dnsPort ];
+    networking.firewall.allowedUDPPorts = [ config.my.dns-filtering.dnsPort ];
+
     # DNSCrypt proxy
     services.dnscrypt-proxy = {
       enable = true;

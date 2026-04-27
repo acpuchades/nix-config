@@ -25,13 +25,7 @@
   firewall = {
     enable = true;
     allowedTCPPorts = [
-      53    # dns
-      80    # http
-      443   # https
       8333  # bitcoin
-    ];
-    allowedUDPPorts = [
-      53    # dns
     ];
   };
 }
