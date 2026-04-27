@@ -94,11 +94,6 @@ let
         enable = true;
         adminEmail = adminEmailAddress;
         virtualHosts = {
-          "prefect.acpuchades.com" = {
-            proxyPass = "http://127.0.0.1:4200";
-            proxyWebsockets = true;
-            basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
-          };
           "www.acpuchades.com" = {
             root = "/var/www/acpuchades.com";
           };
@@ -171,6 +166,8 @@ let
         port = 4200;
         dataDir = "/srv/prefect";
         baseUrl = "https://prefect.acpuchades.com";
+        virtualHost = "prefect.acpuchades.com";
+        basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
         workerPools.default.installPolicy = "if-not-present";
       };
 

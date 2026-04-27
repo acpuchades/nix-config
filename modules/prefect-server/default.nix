@@ -1,5 +1,8 @@
 { config, lib, ... }:
 
+let
+  cfg = config.my.prefect-server;
+in
 {
   options.my.prefect-server = {
     enable = lib.mkEnableOption "Prefect workflow server";
@@ -39,6 +42,18 @@
       description = "PostgreSQL database name";
     };
 
+    virtualHost = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Virtual host for reverse proxy";
+    };
+
+    basicAuthFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Basic auth file for web interface";
+    };
+
     workerPools = lib.mkOption {
       type = lib.types.attrs;
       default = {};
@@ -46,7 +61,7 @@
     };
   };
 
-  config = lib.mkIf config.my.prefect-server.enable {
+  config = lib.mkIf cfg.enable {
     users.users.prefect = {
       isSystemUser = true;
       group = "prefect";
@@ -54,28 +69,36 @@
     users.groups.prefect = {};
 
     systemd.tmpfiles.rules = [
-      "d ${config.my.prefect-server.dataDir} 0750 prefect prefect -"
+      "d ${cfg.dataDir} 0750 prefect prefect -"
     ];
 
     services.prefect = {
       enable = true;
-      host = config.my.prefect-server.host;
-      port = config.my.prefect-server.port;
+      host = cfg.host;
+      port = cfg.port;
       database = "postgres";
       databaseHost = "";
       databasePort = 0;
-      databaseUser = config.my.prefect-server.databaseUser;
-      databaseName = config.my.prefect-server.databaseName;
-      dataDir = config.my.prefect-server.dataDir;
-      baseUrl = config.my.prefect-server.baseUrl;
-      workerPools = config.my.prefect-server.workerPools;
+      databaseUser = cfg.databaseUser;
+      databaseName = cfg.databaseName;
+      dataDir = cfg.dataDir;
+      baseUrl = cfg.baseUrl;
+      workerPools = cfg.workerPools;
     };
 
     systemd.services.prefect-server.serviceConfig = {
       DynamicUser = lib.mkForce false;
       User = "prefect";
       Group = "prefect";
-      ReadWritePaths = [ config.my.prefect-server.dataDir ];
+      ReadWritePaths = [ cfg.dataDir ];
+    };
+
+    services.caddy.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
+      ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
+        "reverse_proxy http://127.0.0.1:${toString cfg.port}"
+        "encode gzip"
+      ]);
     };
   };
 }
