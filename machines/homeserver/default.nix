@@ -131,6 +131,7 @@ let
         immich = {
           hostName = "photos.acpuchades.com";
           mediaLocation = "/srv/encrypted/immich";
+          accelerationDevices = [ "/dev/dri/renderD128" ];
         };
         nextcloud = {
           hostName = "cloud.acpuchades.com";
