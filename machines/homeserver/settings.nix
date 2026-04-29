@@ -47,4 +47,7 @@
 
   security.sudo.wheelNeedsPassword = true;
 
+  # Enable Mesa userspace drivers (VAAPI) for hardware-accelerated transcoding
+  hardware.graphics.enable = true;
+
 }

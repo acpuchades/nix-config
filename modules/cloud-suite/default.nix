@@ -70,6 +70,12 @@
         default = "/var/lib/immich";
         description = "Immich media storage directory";
       };
+
+      accelerationDevices = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "GPU/render devices for hardware acceleration (e.g. [ \"/dev/dri/renderD128\" ])";
+      };
     };
 
     bitwarden = {
@@ -211,6 +217,7 @@
       host = "127.0.0.1";
       port = config.my.cloud-suite.immich.port;
       mediaLocation = config.my.cloud-suite.immich.mediaLocation;
+      accelerationDevices = config.my.cloud-suite.immich.accelerationDevices;
       database.enable = true;
       machine-learning.enable = true;
       openFirewall = false;
@@ -225,6 +232,11 @@
             username = "";
             password = "";
           };
+        };
+      } // lib.optionalAttrs (config.my.cloud-suite.immich.accelerationDevices != []) {
+        ffmpeg = {
+          accel = "vaapi";
+          accelDecode = true;
         };
       };
     };
