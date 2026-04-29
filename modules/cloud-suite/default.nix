@@ -222,6 +222,7 @@
       machine-learning.enable = true;
       openFirewall = false;
       settings = {
+        server.externalDomain = "https://${config.my.cloud-suite.immich.hostName}";
         notifications.smtp = {
           enabled = true;
           from = config.my.cloud-suite.email.from;
@@ -233,6 +234,11 @@
             password = "";
           };
         };
+        backup.database = {
+          enabled = true;
+          cronExpression = "0 2 * * *";
+          keepLastAmount = 14;
+        };
       } // lib.optionalAttrs (config.my.cloud-suite.immich.accelerationDevices != []) {
         ffmpeg = {
           accel = "vaapi";
@@ -243,7 +249,7 @@
 
     services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
       reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port}
-      encode gzip
+      encode zstd gzip
     '';
 
     services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
