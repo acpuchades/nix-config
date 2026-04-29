@@ -152,7 +152,6 @@ inputs@{ config, lib, pkgs, ... }:
     LC_ALL = "es_ES.UTF-8";
     LC_TIME = "en_DK.UTF-8";
     LC_NUMERIC = "en_US.UTF-8";
-    SSH_AUTH_SOCK = "~/.bitwarden-ssh-agent.sock";
   };
 
   home.shellAliases = {

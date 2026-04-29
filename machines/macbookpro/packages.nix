@@ -3,6 +3,7 @@
 with pkgs;
 [
   android-tools
+  claude-code
   ext4fuse
   ffmpeg-full
   immich-cli

@@ -8,7 +8,6 @@ inputs: {
   tmux = import ./tmux.nix inputs;
   zsh = import ./zsh.nix inputs;
 
-  claude-code.enable = true;
   direnv.enable = true;
   direnv.nix-direnv.enable = true;
   gh.enable = true;
