@@ -1,13 +1,6 @@
 { lib, ... }:
 
-let
-
-  adminEmail = "acaravacapuchades@gmail.com";
-
-in
 {
-  nixpkgs.config.allowUnfree = true;
-
   nix.settings = {
     experimental-features = [
       "nix-command"
@@ -41,14 +34,6 @@ in
     font = "Lat2-Terminus16";
     keyMap = lib.mkForce "es";
     useXkbConfig = true; # use xkb.options in tty.
-  };
-
-  # Automatic security updates (reboots allowed)
-  system.autoUpgrade = {
-    enable = true;
-    dates = "daily";
-    allowReboot = false;
-    randomizedDelaySec = "1h";
   };
 
   # Some programs need SUID wrappers, can be configured further or are
