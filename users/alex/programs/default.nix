@@ -5,6 +5,7 @@ inputs: {
   ghostty = import ./ghostty.nix inputs;
   gpg = import ./gpg.nix inputs;
   git = import ./git.nix inputs;
+  ssh = import ./ssh.nix inputs;
   tmux = import ./tmux.nix inputs;
   zsh = import ./zsh.nix inputs;
 
@@ -14,6 +15,5 @@ inputs: {
   mbsync.enable = true;
   msmtp.enable = true;
   mu.enable = true;
-  ssh.enable = true;
   starship.enable = true;
 }
