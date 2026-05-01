@@ -65,6 +65,18 @@
         description = "Immich listen port";
       };
 
+      maxUploadSize = lib.mkOption {
+        type = lib.types.str;
+        default = "50G";
+        description = "Maximum upload size";
+      };
+
+      uploadTimeout = lib.mkOption {
+        type = lib.types.str;
+        default = "30m";
+        description = "Read/write timeout for Immich uploads through Caddy";
+      };
+
       mediaLocation = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/immich";
@@ -248,8 +260,16 @@
     };
 
     services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
-      reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port}
-      encode zstd gzip
+      request_body {
+        max_size ${config.my.cloud-suite.immich.maxUploadSize}
+      }
+      reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port} {
+        transport http {
+          read_timeout ${config.my.cloud-suite.immich.uploadTimeout}
+          write_timeout ${config.my.cloud-suite.immich.uploadTimeout}
+        }
+        flush_interval -1
+      }
     '';
 
     services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
