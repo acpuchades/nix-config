@@ -267,6 +267,8 @@
         transport http {
           read_timeout ${config.my.cloud-suite.immich.uploadTimeout}
           write_timeout ${config.my.cloud-suite.immich.uploadTimeout}
+          versions 1.1
+          keepalive off
         }
         flush_interval -1
       }
