@@ -77,6 +77,12 @@
         description = "Read/write timeout for Immich uploads through Caddy";
       };
 
+      cacheLocation = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/cache/immich";
+        description = "Immich cache storage directory";
+      };
+
       mediaLocation = lib.mkOption {
         type = lib.types.str;
         default = "/var/lib/immich";
@@ -154,9 +160,14 @@
       ];
     };
 
+    systemd.services.immich-server.environment = {
+      XDG_CACHE_HOME = "/var/cache/immich";
+    };
+
     systemd.tmpfiles.rules = [
       "d ${config.my.cloud-suite.nextcloud.dataDir} 0750 nextcloud nextcloud -"
       "d ${config.my.cloud-suite.bitwarden.dataDir} 0700 vaultwarden vaultwarden -"
+      "d ${config.my.cloud-suite.immich.cacheLocation} 0750 immich immich -"
       "d ${config.my.cloud-suite.immich.mediaLocation} 0750 immich immich -"
     ];
 
