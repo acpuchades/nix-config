@@ -38,6 +38,25 @@
         default = [];
         description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
+
+      extraApps = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "calendar" "contacts" "notes" "richdocuments" "tasks"
+        ];
+        description = "Extra NextCloud apps to install from the appstore";
+      };
+
+      maintenanceWindowStart = lib.mkOption {
+        type = lib.types.nullOr (lib.types.ints.between 0 23);
+        default = 1;
+        description = ''
+          Hour (UTC, 0-23) at which the 4-hour maintenance window starts.
+          Heavy background jobs (e.g. preview pre-generation, database
+          optimization) only run during this window. Set to null to disable
+          (every cron run will then attempt these jobs).
+        '';
+      };
     };
 
     collabora = {
@@ -144,10 +163,28 @@
         default = false;
         description = "Enable SMTP SSL/TLS";
       };
+
+      username = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "SMTP authentication username (null disables auth)";
+      };
+
+      passwordFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Path to file containing SMTP authentication password";
+      };
     };
   };
 
-  config = lib.mkIf config.my.cloud-suite.enable {
+  config = lib.mkIf config.my.cloud-suite.enable (let
+    emailParts = lib.splitString "@" config.my.cloud-suite.email.from;
+    emailLocalPart = lib.elemAt emailParts 0;
+    emailDomain = lib.elemAt emailParts 1;
+    smtpAuth = config.my.cloud-suite.email.username != null
+      && config.my.cloud-suite.email.passwordFile != null;
+  in {
 
     # Postgres databases/users for cloud-suite services
     services.postgresql = {
@@ -188,13 +225,11 @@
       };
       appstoreEnable = true;
       autoUpdateApps.enable = true;
-      extraApps = with config.services.nextcloud.package.packages.apps; {
-        inherit bookmarks calendar contacts gpoddersync groupfolders
-                news nextpod notes richdocuments tables tasks;
-      };
+      extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps
+        (name: config.services.nextcloud.package.packages.apps.${name});
       extraAppsEnable = true;
       phpOptions = {
-        "opcache.interned_strings_buffer" = "24";
+        "opcache.interned_strings_buffer" = "32";
         "opcache.memory_consumption" = "256";
         "opcache.max_accelerated_files" = "10000";
         "opcache.revalidate_freq" = "1";
@@ -202,10 +237,26 @@
         "opcache.jit" = "tracing";
         "opcache.jit_buffer_size" = "128M";
       };
+      secrets = lib.optionalAttrs smtpAuth {
+        mail_smtppassword = config.my.cloud-suite.email.passwordFile;
+      };
       settings = {
         overwriteprotocol = "https";
         default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
         trusted_proxies = [ "127.0.0.1" "::1" ];
+        "integrity.check.disabled" = lib.mkForce false;
+        mail_smtpmode = "smtp";
+        mail_sendmailmode = "smtp";
+        mail_from_address = emailLocalPart;
+        mail_domain = emailDomain;
+        mail_smtphost = config.my.cloud-suite.email.host;
+        mail_smtpport = config.my.cloud-suite.email.port;
+        mail_smtpsecure = if config.my.cloud-suite.email.ssl then "ssl" else "";
+        mail_smtpauth = smtpAuth;
+      } // lib.optionalAttrs smtpAuth {
+        mail_smtpname = config.my.cloud-suite.email.username;
+      } // lib.optionalAttrs (config.my.cloud-suite.nextcloud.maintenanceWindowStart != null) {
+        maintenance_window_start = config.my.cloud-suite.nextcloud.maintenanceWindowStart;
       };
     };
 
@@ -341,5 +392,5 @@
     systemd.services.vaultwarden.serviceConfig.ReadWritePaths =
       [ config.my.cloud-suite.bitwarden.dataDir ];
 
-  };
+  });
 }

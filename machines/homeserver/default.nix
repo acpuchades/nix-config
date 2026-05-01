@@ -140,6 +140,10 @@ let
           phoneRegion = "ES";
           dataDir = "/srv/encrypted/nextcloud";
           allowedNetworks = privateNetworks;
+          extraApps = [
+            "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
+            "news" "nextpod" "notes" "richdocuments" "tasks"
+          ];
         };
       };
 
