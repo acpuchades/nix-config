@@ -179,7 +179,7 @@
       autoUpdateApps.enable = true;
       extraApps = with config.services.nextcloud.package.packages.apps; {
         inherit bookmarks calendar contacts gpoddersync groupfolders
-                news nextpod notes richdocuments tasks;
+                news nextpod notes richdocuments tables tasks;
       };
       extraAppsEnable = true;
       phpOptions = {
