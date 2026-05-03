@@ -106,6 +106,9 @@ let
           "www.acpuchades.com" = {
             root = "/var/www/acpuchades.com";
           };
+          "blog.acpuchades.com" = {
+            redirect = "https://www.acpuchades.com/blog";
+          };
         };
       };
 
