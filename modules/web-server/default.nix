@@ -30,6 +30,12 @@
             description = "Enable websocket proxying";
           };
 
+          redirect = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = "Permanent redirect target URL (request path and query are appended)";
+          };
+
           basicAuthFile = lib.mkOption {
             type = lib.types.nullOr lib.types.path;
             default = null;
@@ -64,6 +70,8 @@
             "root * ${hostConfig.root}\nfile_server")
           (lib.optionalString (hostConfig.proxyPass != null)
             "reverse_proxy ${hostConfig.proxyPass}")
+          (lib.optionalString (hostConfig.redirect != null)
+            "redir ${hostConfig.redirect}{uri} permanent")
           "encode gzip"
         ]);
       }) config.my.web-server.virtualHosts;
