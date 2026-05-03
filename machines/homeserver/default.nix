@@ -32,6 +32,7 @@ let
         ../../modules/prefect-server
         ../../modules/home-assistant
         ../../modules/server-stats
+        ../../modules/web-analytics
         ../../modules/acme-cloudflare
       ];
 
@@ -178,6 +179,12 @@ let
         hostName = "status.acpuchades.com";
         port = 3001;
         allowedNetworks = privateNetworks;
+      };
+
+      my.web-analytics = {
+        enable = true;
+        hostName = "analytics.acpuchades.com";
+        appSecretFile = config.sops.secrets."umami/app-secret".path;
       };
 
       my.prefect-server = {
