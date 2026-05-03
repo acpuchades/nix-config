@@ -42,6 +42,11 @@
       mode = "0400";
     };
 
+    "umami/app-secret" = {
+      key = "umami/app-secret";
+      mode = "0400";
+    };
+
     "passwd/alex" = {
       key = "passwd/alex";
       neededForUsers = true;
@@ -93,7 +98,7 @@
         server=dynamicdns.park-your-domain.com
         login=${config.sops.placeholder."ddclient/domain"}
         password=${config.sops.placeholder."ddclient/password"}
-        vpn,www
+        analytics,vpn,www
     '';
 
     "postfix/sasl_passwd" = {
