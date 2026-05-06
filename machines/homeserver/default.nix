@@ -19,7 +19,7 @@ let
     inputs@{ config, lib, pkgs, ... }:
     import ./settings.nix inputs // {
       imports = [
-        # Include the results of thpe hardware scan.
+        # Include the results of the hardware scan.
         ./hardware-configuration.nix
 
         # Custom modules
