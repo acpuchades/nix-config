@@ -19,8 +19,9 @@
 ;; Prevent package.el from loading packages before init.el
 (setq package-enable-at-startup nil)
 
-;; Enable package quickstart and native compilation
-(setq package-quickstart t)
+;; Disable package-quickstart: with Nix-managed packages the store paths
+;; change on each rebuild, leaving the cache pointing at deleted paths.
+(setq package-quickstart nil)
 (setq native-comp-deferred-compilation t)
 
 ;;Lower gc during startup and restore thereafter
