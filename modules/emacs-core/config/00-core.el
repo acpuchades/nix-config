@@ -48,7 +48,8 @@
 
 ;; Keep Emacs directories clean
 (use-package no-littering
-  :init
+  :demand t
+  :config
   ;; Store customization settings separately
   (setq custom-file
         (no-littering-expand-etc-file-name "custom.el"))
