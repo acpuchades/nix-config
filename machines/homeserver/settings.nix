@@ -15,6 +15,14 @@
     options = "--delete-older-than 14d";
   };
 
+  # Weekly TRIM for the NVMe.
+  services.fstrim.enable = true;
+
+  # Cap journald growth so a chatty service can't fill /.
+  services.journald.extraConfig = ''
+    SystemMaxUse=2G
+  '';
+
   # Boot (UEFI)
   boot.loader.timeout = 3;
   boot.loader.systemd-boot.enable = true;
