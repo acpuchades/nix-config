@@ -26,7 +26,17 @@ let
             elif type == "object" and (.datasource | type) == "object" and .datasource.type == "prometheus"
               then .datasource = "Prometheus"
             else . end
-          ) | del(.__inputs, .__elements, .__requires)' \
+          )
+          | walk(
+              # Strip hardcoded reduceOptions.fields regexes that pin stat panels
+              # to specific series from the dashboard authors environment
+              # (e.g. /^pg_database_size{instance="db01vp-...", server="1.2.3.4:5432"}$/).
+              # Clearing to "" lets the panel use whichever series the query returns.
+              if type == "object" and ((.reduceOptions.fields // "") | startswith("/^"))
+                then .reduceOptions.fields = ""
+              else . end
+            )
+          | del(.__inputs, .__elements, .__requires)' \
         ${raw} > $out
     '';
 
@@ -147,6 +157,9 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 9090;
+      # Admin API enables /api/v1/admin/tsdb/delete_series for cleaning up
+      # stale series after scrape-config changes. Localhost-bound, low risk.
+      extraFlags = [ "--web.enable-admin-api" ];
       exporters.node = {
         enable = true;
         listenAddress = "127.0.0.1";
