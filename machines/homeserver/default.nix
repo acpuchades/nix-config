@@ -182,15 +182,6 @@ let
         hostName = "status.acpuchades.com";
         port = 3001;
         allowedNetworks = privateNetworks;
-        postgresDatabases = [
-          "postgres"
-          "hass"
-          "immich"
-          "nextcloud"
-          "prefect"
-          "umami"
-          "vaultwarden"
-        ];
       };
 
       my.web-analytics = {

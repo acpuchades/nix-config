@@ -26,17 +26,7 @@ let
             elif type == "object" and (.datasource | type) == "object" and .datasource.type == "prometheus"
               then .datasource = "Prometheus"
             else . end
-          )
-          | walk(
-              # Strip hardcoded reduceOptions.fields regexes that pin stat panels
-              # to specific series from the dashboard authors environment
-              # (e.g. /^pg_database_size{instance="db01vp-...", server="1.2.3.4:5432"}$/).
-              # Clearing to "" lets the panel use whichever series the query returns.
-              if type == "object" and ((.reduceOptions.fields // "") | startswith("/^"))
-                then .reduceOptions.fields = ""
-              else . end
-            )
-          | del(.__inputs, .__elements, .__requires)' \
+          ) | del(.__inputs, .__elements, .__requires)' \
         ${raw} > $out
     '';
 
@@ -138,18 +128,6 @@ in
       default = "monthly";
       description = "systemd OnCalendar expression for btrfs auto-scrub (only takes effect when btrfs filesystems are present).";
     };
-
-    postgresDatabases = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = lib.optionals config.services.postgresql.enable
-        ([ "postgres" ] ++ config.services.postgresql.ensureDatabases);
-      defaultText = lib.literalExpression ''[ "postgres" ] ++ config.services.postgresql.ensureDatabases'';
-      description = ''
-        Databases in which to CREATE EXTENSION pg_stat_statements. Only takes
-        effect when services.postgresql.enable is true. Defaults to every
-        managed database plus "postgres".
-      '';
-    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [ {
@@ -157,9 +135,6 @@ in
       enable = true;
       listenAddress = "127.0.0.1";
       port = 9090;
-      # Admin API enables /api/v1/admin/tsdb/delete_series for cleaning up
-      # stale series after scrape-config changes. Localhost-bound, low risk.
-      extraFlags = [ "--web.enable-admin-api" ];
       exporters.node = {
         enable = true;
         listenAddress = "127.0.0.1";
@@ -265,48 +240,6 @@ in
     services.grafana.provision.dashboards.settings.providers = [
       (mkProvider "btrfs" btrfsDashboard)
     ];
-  })
-
-  (lib.mkIf config.services.postgresql.enable {
-    services.prometheus.exporters.postgres = {
-      enable = true;
-      runAsLocalSuperUser = true;
-      listenAddress = "127.0.0.1";
-      port = 9187;
-      extraFlags = [
-        "--auto-discover-databases"
-        "--extend.query-path=${./queries.yaml}"
-      ];
-    };
-    services.prometheus.scrapeConfigs = [{
-      # Dashboard 12485 templates `$Instance` from label_values({job="postgres-exporter"}, instance);
-      # the job label must match or the dashboard's instance dropdown stays empty.
-      job_name = "postgres-exporter";
-      static_configs = [{ targets = [ "127.0.0.1:9187" ]; }];
-    }];
-    services.grafana.provision.dashboards.settings.providers = [
-      # PostgreSQL Exporter
-      (mkProvider "postgres" (fetchDashboard {
-        id = 12485; revision = 1; hash = "sha256-IUTfM+Jm80QFqbaWJme6l7Ov52anVeN62nsS0zZXQVQ=";
-      }))
-    ];
-
-    # pg_stat_statements feeds the dashboard's query-rate / runtime panels.
-    # Loaded as a shared library here (not in postgresql-server) to keep
-    # observability concerns inside the module that needs them.
-    services.postgresql.settings.shared_preload_libraries = "pg_stat_statements";
-    services.postgresql.settings."pg_stat_statements.track" = "all";
-
-    # Auto-create the extension in every database listed in cfg.postgresDatabases.
-    # `|| true` keeps postgres healthy if a database doesn't exist (e.g. when a
-    # service isn't actually using the system postgres).
-    systemd.services.postgresql.postStart =
-      let psql = "${config.services.postgresql.package}/bin/psql";
-      in lib.mkAfter (
-        lib.concatMapStringsSep "\n"
-          (db: "${psql} -tAc 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements' ${db} || true")
-          cfg.postgresDatabases
-      );
   })
 
   (lib.mkIf config.services.caddy.enable {
