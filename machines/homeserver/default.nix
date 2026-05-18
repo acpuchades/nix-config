@@ -34,6 +34,7 @@ let
         ../../modules/server-stats
         ../../modules/web-analytics
         ../../modules/acme-cloudflare
+        ../../modules/host-security
       ];
 
       # SOPS-Nix configuration
@@ -189,6 +190,12 @@ let
         hostName = "analytics.acpuchades.com";
         appSecretFile = config.sops.secrets."umami/app-secret".path;
       };
+
+      my.host-security = {
+        enable = true;
+        fail2ban.enable = true;
+      };
+
 
       my.prefect-server = {
         enable = true;
