@@ -75,25 +75,6 @@
     configFile = config.sops.templates."ddclient/config".path;
   };
 
-  # Fail2ban
-  fail2ban = {
-    enable = true;
-    maxretry = 3;
-    bantime = "1h";
-    bantime-increment = {
-      enable = true;
-      maxtime = "168h";
-      factor = "4";
-    };
-    jails = {
-      sshd.settings = {
-        enabled = true;
-        maxretry = 3;
-        findtime = "10m";
-      };
-    };
-  };
-
   # OpenSSH
   openssh = {
     enable = true;
