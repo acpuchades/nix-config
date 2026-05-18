@@ -34,7 +34,6 @@ let
         ../../modules/server-stats
         ../../modules/web-analytics
         ../../modules/acme-cloudflare
-        ../../modules/network-security
       ];
 
       # SOPS-Nix configuration
@@ -189,15 +188,6 @@ let
         enable = true;
         hostName = "analytics.acpuchades.com";
         appSecretFile = config.sops.secrets."umami/app-secret".path;
-      };
-
-      my.network-security = {
-        enable = true;
-        arpwatch = {
-          enable = true;
-          interfaces = [ "wlp3s0" ];
-          emailTo = adminEmailAddress;
-        };
       };
 
       my.prefect-server = {
