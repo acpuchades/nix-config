@@ -16,6 +16,9 @@
     # Sops-Nix
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
+
+    # Impermanence (ephemeral root, persisted state)
+    impermanence.url = "github:nix-community/impermanence";
   };
 
   outputs =
@@ -24,7 +27,8 @@
       nix-darwin,
       nixpkgs,
       home-manager,
-      sops-nix
+      sops-nix,
+      impermanence
     }:
   {
     # Build darwin flake using:
