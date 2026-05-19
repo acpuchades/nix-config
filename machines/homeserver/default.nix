@@ -6,6 +6,7 @@
   nixpkgs,
   home-manager,
   sops-nix,
+  impermanence,
   ...
 }:
 
@@ -21,6 +22,10 @@ let
       imports = [
         # Include the results of the hardware scan.
         ./hardware-configuration.nix
+
+        # Ephemeral root + persisted state (see impermanence.nix for migration notes)
+        ./impermanence.nix
+        impermanence.nixosModules.impermanence
 
         # Custom modules
         ../../modules/vpn-server
