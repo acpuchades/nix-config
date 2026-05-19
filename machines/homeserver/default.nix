@@ -198,7 +198,10 @@ let
 
       my.host-security = {
         enable = true;
-        fail2ban.enable = true;
+        fail2ban = {
+          enable = true;
+          ignoreIP = privateNetworks;
+        };
       };
 
 
