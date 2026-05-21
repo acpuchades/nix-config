@@ -106,6 +106,8 @@ let
         virtualHost = "adguard.acpuchades.com";
         allowedNetworks = privateNetworks;
         dnsRewrites = [
+          { domain = "www.acpuchades.com";       answer = homeServerLocalAddress; }
+          { domain = "blog.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "adguard.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "bitwarden.acpuchades.com"; answer = homeServerLocalAddress; }
@@ -114,6 +116,7 @@ let
           { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
+          { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
         ];
       };
 
