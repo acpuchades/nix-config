@@ -6,9 +6,6 @@
 
   secrets = {
 
-    "ddclient/domain" = { key = "ddclient/domain"; };
-    "ddclient/password" = { key = "ddclient/password"; };
-
     "mailjet/token" = { key = "mailjet/token"; };
     "mailjet/secret" = { key = "mailjet/secret"; };
 
@@ -94,11 +91,12 @@
 
     "ddclient/config".content = ''
         use=web, web=checkip.amazonaws.com
-        protocol=namecheap
-        server=dynamicdns.park-your-domain.com
-        login=${config.sops.placeholder."ddclient/domain"}
-        password=${config.sops.placeholder."ddclient/password"}
-        analytics,blog,vpn,www
+        protocol=cloudflare
+        zone=acpuchades.com
+        ttl=120
+        login=token
+        password=${config.sops.placeholder."cloudflare/token"}
+        analytics.acpuchades.com,blog.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
     '';
 
     "postfix/sasl_passwd" = {
