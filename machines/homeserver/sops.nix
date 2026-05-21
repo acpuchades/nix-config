@@ -90,7 +90,7 @@
     };
 
     "ddclient/config".content = ''
-        use=web, web=checkip.amazonaws.com
+        usev4=webv4, webv4=checkip.amazonaws.com
         protocol=cloudflare
         zone=acpuchades.com
         ttl=120
