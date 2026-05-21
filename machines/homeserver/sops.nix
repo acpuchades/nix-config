@@ -90,6 +90,7 @@
     };
 
     "ddclient/config".content = ''
+        cache=/var/cache/ddclient/ddclient.cache
         usev4=webv4, webv4=checkip.amazonaws.com
         protocol=cloudflare
         zone=acpuchades.com
