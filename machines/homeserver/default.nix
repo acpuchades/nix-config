@@ -64,6 +64,12 @@ let
         };
       };
 
+      # ddclient is driven by a sops configFile, which bypasses the NixOS
+      # module's auto-injected cache= path — without this it falls back to a
+      # directory inside the read-only Nix store. CacheDirectory provisions
+      # /var/cache/ddclient (cache= in sops.nix points there).
+      systemd.services.ddclient.serviceConfig.CacheDirectory = "ddclient";
+
       security.tpm2.enable = true;
       security.tpm2.pkcs11.enable = true;
       security.tpm2.tctiEnvironment.enable = true;
