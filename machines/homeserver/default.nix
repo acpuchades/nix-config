@@ -39,6 +39,7 @@ let
         ../../modules/web-server
         ../../modules/postgresql-server
         ../../modules/cloud-suite
+        ../../modules/gps-backend
         ../../modules/mail-relay
         ../../modules/prefect-server
         ../../modules/home-assistant
@@ -114,6 +115,7 @@ let
           { domain = "photos.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "gps.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
@@ -167,9 +169,15 @@ let
           allowedNetworks = privateNetworks;
           extraApps = [
             "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
-            "news" "nextpod" "notes" "phonetrack" "richdocuments" "tasks"
+            "news" "nextpod" "notes" "richdocuments" "tasks"
           ];
         };
+      };
+
+      my.gps-backend = {
+        enable = true;
+        hostName = "gps.acpuchades.com";
+        email.from = "noreply@acpuchades.com";
       };
 
       my.mail-relay = {
