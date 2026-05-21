@@ -167,7 +167,7 @@ let
           allowedNetworks = privateNetworks;
           extraApps = [
             "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
-            "news" "nextpod" "notes" "richdocuments" "tasks"
+            "news" "nextpod" "notes" "phonetrack" "richdocuments" "tasks"
           ];
         };
       };
