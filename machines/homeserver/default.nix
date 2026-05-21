@@ -23,9 +23,15 @@ let
         # Include the results of the hardware scan.
         ./hardware-configuration.nix
 
-        # Ephemeral root + persisted state (see impermanence.nix for migration notes)
-        ./impermanence.nix
-        impermanence.nixosModules.impermanence
+        # Ephemeral root + persisted state — DISABLED.
+        # The btrfs @/@root-blank/@persist layout described in MIGRATION.md has
+        # not been built yet (root is still ext4 — see hardware-configuration.nix).
+        # Enabling these before the migration would bind empty dirs over
+        # /etc/ssh, /var/lib/nixos and /home/alex on rebuild (breaking sops
+        # decryption) and install a btrfs rollback unit that fails on the ext4
+        # root. Re-enable both lines only after completing the live-USB migration.
+        # ./impermanence.nix
+        # impermanence.nixosModules.impermanence
 
         # Custom modules
         ../../modules/vpn-server
