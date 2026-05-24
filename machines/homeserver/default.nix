@@ -47,6 +47,7 @@ let
         ../../modules/web-analytics
         ../../modules/acme-cloudflare
         ../../modules/host-security
+        ../../modules/ups-monitor
       ];
 
       # SOPS-Nix configuration
@@ -198,6 +199,7 @@ let
           "conversation"
           "hue"
           "met"
+          "nut"
           "smartthings"
           "spotify"
           "stream"
@@ -225,6 +227,12 @@ let
           enable = true;
           ignoreIP = privateNetworks;
         };
+      };
+
+      my.ups-monitor = {
+        enable = true;
+        monitorPasswordFile = config.sops.secrets."nut/monitor-password".path;
+        network.enable = true;
       };
 
 

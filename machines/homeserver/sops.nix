@@ -51,6 +51,11 @@
 
     "wireguard/private-key" = { key = "wireguard/privatekey"; };
 
+    "nut/monitor-password" = {
+      key = "nut/monitor-password";
+      mode = "0400";
+    };
+
     "wifi/network" = { key = "wifi/network"; };
     "wifi/password" = { key = "wifi/password"; };
 
