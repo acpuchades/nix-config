@@ -8,9 +8,7 @@
 
 let
 
-  configuration = inputs@{ config, pkgs, ... }:
-
-    import ./settings.nix inputs // {
+  configuration = inputs@{ config, pkgs, ... }: {
 
     # Necessary for using flakes on this system.
     nix.settings.experimental-features = "nix-command flakes";
@@ -42,6 +40,8 @@ in
   nix-darwin.lib.darwinSystem {
 
     modules = [
+      ./settings.nix
+
       ../../modules/r-dev/system.nix
 
       {
