@@ -1,22 +1,6 @@
 ;; Alex's personal Emacs configuration
 ;; This file contains user-specific settings that override or extend the core configuration
 
-;; Configuración personal de mu4e
-(with-eval-after-load 'mu4e
-  (setq mu4e-contexts
-        (list
-         (make-mu4e-context
-          :name "icloud"
-          :match-func (lambda (msg)
-                        (when msg (string-prefix-p "/iCloud"
-                                                   (mu4e-message-field msg :maildir))))
-          :vars '((user-mail-address  . "acaravacapuchades@icloud.com")
-                  (user-full-name     . "Alejandro Caravaca Puchades")
-                  (mu4e-drafts-folder . "/iCloud/Drafts")
-                  (mu4e-sent-folder   . "/iCloud/Sent Messages")
-                  (mu4e-trash-folder  . "/iCloud/Deleted Messages")
-                  (mu4e-refile-folder . "/iCloud/Archive"))))))
-
 ;; Personal language and locale settings
 (set-language-environment "Spanish")
 

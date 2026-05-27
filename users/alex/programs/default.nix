@@ -12,8 +12,5 @@ inputs: {
   direnv.enable = true;
   direnv.nix-direnv.enable = true;
   gh.enable = true;
-  mbsync.enable = true;
-  msmtp.enable = true;
-  mu.enable = true;
   starship.enable = true;
 }

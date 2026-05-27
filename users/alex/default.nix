@@ -8,8 +8,8 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-core
     ../../modules/emacs-completion
     ../../modules/emacs-ui
-    ../../modules/emacs-org
     ../../modules/emacs-dev
+    ../../modules/emacs-org
     ../../modules/emacs-ess
     ../../modules/emacs-python
     ../../modules/emacs-nix
@@ -27,7 +27,6 @@ inputs@{ config, lib, pkgs, ... }:
 
   programs = import ./programs inputs;
   services = import ./services.nix inputs;
-  accounts = import ./accounts.nix inputs;
   sops = import ./sops.nix inputs;
   launchd = lib.mkIf pkgs.stdenv.isDarwin (import ./launchd.nix inputs);
 
@@ -112,11 +111,10 @@ inputs@{ config, lib, pkgs, ... }:
     ripgrep
     tree
     zoxide
+    zstd
 
     # Network
     curl
-    msmtp
-    mu
     nmap
     netcat
     openssh
@@ -130,6 +128,7 @@ inputs@{ config, lib, pkgs, ... }:
     pynitrokey
 
     # Dev
+    cffconvert
     docker
     git-crypt
     ntfy
