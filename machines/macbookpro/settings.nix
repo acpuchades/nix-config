@@ -15,6 +15,14 @@
     /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
   '';
 
+  # LibreOffice's main cask overwrites translation files on every upgrade, so
+  # re-run the language pack installer after homebrew activation.
+  system.activationScripts.postActivation.text = ''
+    for script in /opt/homebrew/Caskroom/libreoffice-language-pack/*/SilentInstall.sh; do
+      [ -x "$script" ] && /bin/bash "$script" || true
+    done
+  '';
+
   system.defaults.dock = {
     autohide = true;
     autohide-delay = 0.0;
