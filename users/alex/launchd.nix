@@ -1,26 +1,7 @@
-{ config, pkgs, ... }:
-
-let
-
-  mailSyncScript = pkgs.writeShellScript "mbsync-mu-sync" ''
-    set -euo pipefail
-    "${config.programs.mbsync.package}/bin/mbsync" -a
-    "${config.programs.mu.package}/bin/mu" index
-  '';
-
-in
+{ pkgs, ... }:
 
 {
   agents = {
-    mbsync-mu = {
-      enable = true;
-      config = {
-        ProgramArguments = [ "${mailSyncScript}" ];
-        StartInterval = 600;
-        RunAtLoad = true;
-      };
-    };
-
     ntfy = {
       enable = true;
       config = {
