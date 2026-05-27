@@ -97,20 +97,16 @@ inputs@{ config, lib, pkgs, ... }:
 
     # System
     apg
-    bat
     coreutils
     direnv
     delta
     duckdb
-    eza
     fd
-    fzf
     fastfetch
     jq
     lnav
     ripgrep
     tree
-    zoxide
     zstd
 
     # Network
@@ -155,9 +151,6 @@ inputs@{ config, lib, pkgs, ... }:
 
   home.shellAliases = {
     l = "ls";
-    la = "ls -A";
-    ll = "ls -lh";
-    lla = "la -lhA";
   };
 
   my.r-dev.extraPackages = with pkgs.rPackages; [
