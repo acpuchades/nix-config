@@ -83,11 +83,49 @@
     TrackpadRightClick = true;
   };
 
+  system.defaults.loginwindow = {
+    GuestEnabled = false;
+  };
+
+  system.defaults.NSGlobalDomain = {
+    AppleShowAllExtensions = true;
+    KeyRepeat = 2;
+    InitialKeyRepeat = 15;
+    NSAutomaticCapitalizationEnabled = false;
+    NSAutomaticDashSubstitutionEnabled = false;
+    NSAutomaticPeriodSubstitutionEnabled = false;
+    NSAutomaticQuoteSubstitutionEnabled = false;
+    NSAutomaticSpellingCorrectionEnabled = false;
+    # Two-finger swipe between pages.
+    AppleEnableSwipeNavigateWithScrolls = true;
+  };
+
   # Additional custom settings for macOS
   system.defaults.CustomUserPreferences = {
     NSGlobalDomain = {
       # Add a context menu item for showing the Web Inspector in web views
       WebKitDeveloperExtras = true;
+      # Natural scrolling direction.
+      "com.apple.swipescrolldirection" = true;
+      # Disable Force Click; keep regular click+drag behavior.
+      "com.apple.trackpad.forceClick" = false;
+    };
+    # Mission Control (3-finger swipe up) and App Exposé (3-finger swipe down);
+    # plus the two-finger gestures (smart zoom, Notification Center edge swipe).
+    # NB: enabling TrackpadThreeFingerDrag would disable the swipes above.
+    "com.apple.AppleMultitouchTrackpad" = {
+      TrackpadThreeFingerVertSwipeGesture = 2;
+      TrackpadTwoFingerDoubleTapGesture = 1;
+      TrackpadTwoFingerFromRightEdgeSwipeGesture = 3;
+    };
+    "com.apple.driver.AppleBluetoothMultitouch.trackpad" = {
+      TrackpadThreeFingerVertSwipeGesture = 2;
+      TrackpadTwoFingerDoubleTapGesture = 1;
+      TrackpadTwoFingerFromRightEdgeSwipeGesture = 3;
+    };
+    "com.apple.dock" = {
+      showAppExposeGestureEnabled = true;
+      showMissionControlGestureEnabled = true;
     };
     "com.apple.desktopservices" = {
       # Avoid creating .DS_Store files on network or USB volumes
