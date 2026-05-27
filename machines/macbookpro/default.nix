@@ -41,6 +41,7 @@ in
 
     modules = [
       ./settings.nix
+      ./librewolf.nix
 
       ../../modules/r-dev/system.nix
 

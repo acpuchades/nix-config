@@ -35,7 +35,7 @@
     wvous-br-corner = 13;
 
     persistent-apps = [
-      { app = "/Applications/Firefox.app"; }
+      { app = "/Applications/LibreWolf.app"; }
       { app = "/Applications/Proton Mail.app"; }
       { app = "/System/Applications/Mail.app"; }
       { app = "/Applications/WhatsApp.app"; }
