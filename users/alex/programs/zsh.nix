@@ -27,11 +27,9 @@
       "colored-man-pages"
       "common-aliases"
       "extract"
-      "fzf"
       "git"
       "history-substring-search"
       "sudo"
-      "z"
     ];
   };
   plugins = [{
