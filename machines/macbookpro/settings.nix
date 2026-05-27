@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ config, pkgs, ... }:
 {
   # The platform the configuration will be used on.
   nixpkgs.hostPlatform = "aarch64-darwin";
@@ -9,15 +9,13 @@
   # Enable the touch ID authentication for sudo.
   security.pam.services.sudo_local.touchIdAuth = true;
 
-  # Load settings without requiring a logout/login cycle.
-  system.activationScripts.postUserActivation.text = ''
-    # Following line should allow us to avoid a logout/login cycle
-    /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
-  '';
-
-  # LibreOffice's main cask overwrites translation files on every upgrade, so
-  # re-run the language pack installer after homebrew activation.
   system.activationScripts.postActivation.text = ''
+    # Reload macOS settings and restart Dock so defaults take effect without a logout cycle.
+    sudo -u ${config.system.primaryUser} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
+    sudo -u ${config.system.primaryUser} /usr/bin/killall Dock || true
+
+    # LibreOffice's main cask overwrites translation files on every upgrade, so
+    # re-run the language pack installer after homebrew activation.
     for script in /opt/homebrew/Caskroom/libreoffice-language-pack/*/SilentInstall.sh; do
       [ -x "$script" ] && /bin/bash "$script" || true
     done
@@ -37,20 +35,17 @@
     wvous-br-corner = 13;
 
     persistent-apps = [
-      { app = "/System/Applications/Safari.app"; }
-      { app = "/System/Applications/Messages.app"; }
+      { app = "/Applications/Firefox.app"; }
+      { app = "/Applications/Proton Mail.app"; }
       { app = "/System/Applications/Mail.app"; }
       { app = "/Applications/WhatsApp.app"; }
-      { app = "${pkgs.chatgpt}/Applications/ChatGPT.app"; }
       { app = "/System/Applications/Photos.app"; }
+      { app = "/Applications/Claude.app"; }
+      { app = "/System/Applications/Reminders.app"; }
       { app = "/System/Applications/Calendar.app"; }
-      { app = "/Applications/Things3.app"; }
       { app = "/System/Applications/Notes.app"; }
-      { app = "/System/Applications/Music.app"; }
-      { app = "/Applications/Keynote.app"; }
-      { app = "/Applications/Numbers.app"; }
-      { app = "/Applications/Pages.app"; }
-      { app = "${pkgs.zed-editor}/Applications/Zed.app"; }
+      { app = "/Applications/Spotify.app"; }
+      { app = "/Applications/Keynote Creator Studio.app"; }
       { app = "/System/Applications/App Store.app"; }
       { app = "/System/Applications/System Settings.app"; }
     ];
