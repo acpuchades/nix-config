@@ -12,7 +12,7 @@
   workspaces = {
     "1"  = { name = "design";       apps = [ "affinity" ]; };
     "2"  = { name = "vms-remote";   apps = [ "utm" ]; };
-    "3"  = { name = "transfers";    apps = [ "localsend" "transmission" "nextcloud" ]; };
+    "3"  = { name = "transfers";    apps = [ "localsend" "transmission" ]; };
     "4"  = { name = "reading-docs"; apps = [
       "obsidian" "reeder" "pdf-expert" "acrobat-pro" "zotero"
       "libreoffice" "ms-word" "ms-excel" "ms-powerpoint" "ms-outlook"
@@ -33,6 +33,7 @@
     "raycast" "bartender" "cleanshot" "clop" "little-snitch"
     "micro-snitch" "dropover" "hand-mirror" "alcove" "text-edit"
     "ui-agent" "user-notification-center" "kaspersky-agent" "bitwarden"
+    "nextcloud"
   ];
 
   shortcuts = {
