@@ -33,7 +33,6 @@
     "microsoft-teams"
     "nextcloud"
     "obsidian"
-    "omnissa-horizon-client"
     "pdf-expert"
     "proton-mail"
     "raycast"

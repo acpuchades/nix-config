@@ -11,7 +11,7 @@
 {
   workspaces = {
     "1"  = { name = "design";       apps = [ "affinity" ]; };
-    "2"  = { name = "vms-remote";   apps = [ "utm" "horizon-client" ]; };
+    "2"  = { name = "vms-remote";   apps = [ "utm" ]; };
     "3"  = { name = "transfers";    apps = [ "localsend" "transmission" "nextcloud" ]; };
     "4"  = { name = "reading-docs"; apps = [
       "obsidian" "reeder" "pdf-expert" "acrobat-pro" "zotero"
@@ -33,7 +33,6 @@
     "raycast" "bartender" "cleanshot" "clop" "little-snitch"
     "micro-snitch" "dropover" "hand-mirror" "alcove" "text-edit"
     "ui-agent" "user-notification-center" "kaspersky-agent" "bitwarden"
-    "horizon-client"
   ];
 
   shortcuts = {
