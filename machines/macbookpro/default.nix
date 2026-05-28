@@ -23,7 +23,7 @@ let
     # Set the primary user for the system.
     system.primaryUser = "alex";
 
-    my.tiling-wm-macos.enable = true;
+    my.tiling-wm.enable = true;
 
     sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
     sops.defaultSopsFile = ./secrets/default.yml;
@@ -45,7 +45,7 @@ in
       ./settings.nix
       ./zen-browser.nix
 
-      ../../modules/tiling-wm-macos
+      ../../modules/tiling-wm
       ../../modules/r-dev/system.nix
 
       {
