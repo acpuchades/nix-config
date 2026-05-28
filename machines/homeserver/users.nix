@@ -6,6 +6,7 @@
 
   # Groups
   groups.prefect = {};
+  groups.share = {}; # members get read/write on the Samba file share
 
   # Disable root login
   users.root.hashedPassword = "!";
@@ -17,6 +18,7 @@
     extraGroups = [
       "wheel"
       "networkmanager"
+      "share"
     ];
 
     hashedPasswordFile = config.sops.secrets."passwd/alex".path;

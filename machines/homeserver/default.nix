@@ -39,6 +39,7 @@ let
         ../../modules/web-server
         ../../modules/postgresql-server
         ../../modules/cloud-suite
+        ../../modules/samba-server
         ../../modules/gps-backend
         ../../modules/mail-relay
         ../../modules/prefect-server
@@ -163,7 +164,7 @@ let
         };
         nextcloud = {
           hostName = "cloud.acpuchades.com";
-          adminPasswordFile = config.sops.secrets."nextcloud/admin-pass".path;
+          adminPasswordFile = config.sops.secrets."nextcloud/admin".path;
           maxUploadSize = "2G";
           phoneRegion = "ES";
           dataDir = "/srv/encrypted/nextcloud";
@@ -172,6 +173,31 @@ let
             "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
             "news" "nextpod" "notes" "richdocuments" "tasks"
           ];
+        };
+      };
+
+      my.samba-server = {
+        enable = true;
+        group = "share";
+        users = {
+          alex = config.sops.secrets."samba/alex".path;
+        };
+        allowedNetworks = privateNetworks;
+        shares = {
+          shared = {
+            path = "/srv/shared";
+            comment = "Home server files";
+            "read only" = false;
+            # Anyone in the `share` group may read/write; new files land in the
+            # group group-writable so other members can edit them too.
+            "valid users" = "@share";
+            "write list" = "@share";
+            "force group" = "share";
+            "create mask" = "0664";
+            "force create mode" = "0660";
+            "directory mask" = "2770";
+            "force directory mode" = "2770";
+          };
         };
       };
 
@@ -231,7 +257,7 @@ let
 
       my.ups-monitor = {
         enable = true;
-        monitorPasswordFile = config.sops.secrets."nut/monitor-password".path;
+        monitorPasswordFile = config.sops.secrets."nut/monitor".path;
         network.enable = true;
       };
 
