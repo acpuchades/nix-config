@@ -24,7 +24,6 @@
     "ledger-wallet"
     "libreoffice"
     "libreoffice-language-pack"
-    "librewolf"
     "little-snitch"
     "localsend"
     "logi-options+"

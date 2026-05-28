@@ -43,7 +43,7 @@ in
 
     modules = [
       ./settings.nix
-      ./librewolf.nix
+      ./zen-browser.nix
 
       ../../modules/tiling-wm-macos
       ../../modules/r-dev/system.nix

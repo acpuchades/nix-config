@@ -1,7 +1,7 @@
 { pkgs, lib, ... }:
 
 let
-  extensionsOverlay = pkgs.writeText "librewolf-extensions-overlay.json" (builtins.toJSON {
+  extensionsOverlay = pkgs.writeText "zen-browser-extensions-overlay.json" (builtins.toJSON {
     policies = {
       ExtensionSettings = {
         "{446900e4-71c2-419f-a6a7-df9c091e268b}" = {
@@ -25,8 +25,10 @@ let
   });
 in
 {
+  homebrew.casks = [ "zen-browser" ];
+
   system.activationScripts.postActivation.text = lib.mkAfter ''
-    app="/Applications/LibreWolf.app"
+    app="/Applications/Zen.app"
     if [ ! -d "$app" ]; then
       exit 0
     fi
@@ -37,15 +39,19 @@ in
     policies="$distDir/policies.json"
     upstream="$distDir/policies.upstream.json"
 
+    /bin/mkdir -p "$distDir"
+
     # Refresh the upstream backup if the live file looks like a fresh cask
     # install (i.e. doesn't carry our overlay's marker extension).
     if [ -f "$policies" ] && ! /usr/bin/grep -q '446900e4-71c2-419f-a6a7-df9c091e268b' "$policies"; then
       /bin/cp "$policies" "$upstream"
     fi
 
-    if [ -f "$upstream" ]; then
-      ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$upstream" ${extensionsOverlay} > "$policies.tmp"
-      /bin/mv "$policies.tmp" "$policies"
+    if [ ! -f "$upstream" ]; then
+      echo '{}' > "$upstream"
     fi
+
+    ${pkgs.jq}/bin/jq -s '.[0] * .[1]' "$upstream" ${extensionsOverlay} > "$policies.tmp"
+    /bin/mv "$policies.tmp" "$policies"
   '';
 }
