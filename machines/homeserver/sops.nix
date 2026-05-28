@@ -9,8 +9,7 @@
     "mailjet/token" = { key = "mailjet/token"; };
     "mailjet/secret" = { key = "mailjet/secret"; };
 
-    "nextcloud/admin-pass" = {
-      key = "nextcloud/admin-pass";
+    "nextcloud/admin" = {
       owner = config.users.users.nextcloud.name;
       group = config.users.users.nextcloud.group;
     };
@@ -27,13 +26,13 @@
       mode = "0400";
     };
 
-    "caddy/adguard-hash" = {
+    "caddy/adguard" = {
       owner = "caddy";
       group = "caddy";
       mode = "0400";
     };
 
-    "caddy/prefect-hash" = {
+    "caddy/prefect" = {
       owner = "caddy";
       group = "caddy";
       mode = "0400";
@@ -49,15 +48,19 @@
       neededForUsers = true;
     };
 
-    "wireguard/private-key" = { key = "wireguard/privatekey"; };
+    "wireguard/private-key" = { key = "wireguard/private-key"; };
 
-    "nut/monitor-password" = {
-      key = "nut/monitor-password";
+    "nut/monitor" = {
       mode = "0400";
     };
 
     "wifi/network" = { key = "wifi/network"; };
     "wifi/password" = { key = "wifi/password"; };
+
+    # One SMB password per user (nested samba/<user> branch). Add a line here
+    # for each additional user, then store the value with:
+    #   sops machines/homeserver/secrets/default.yml
+    "samba/alex" = { mode = "0400"; };
 
   };
 
@@ -78,7 +81,7 @@
       mode = "0400";
       content = ''
         basic_auth {
-          admin ${config.sops.placeholder."caddy/adguard-hash"}
+          admin ${config.sops.placeholder."caddy/adguard"}
         }
       '';
     };
@@ -89,7 +92,7 @@
       mode = "0400";
       content = ''
         basic_auth {
-          admin ${config.sops.placeholder."caddy/prefect-hash"}
+          admin ${config.sops.placeholder."caddy/prefect"}
         }
       '';
     };
