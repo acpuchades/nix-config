@@ -27,6 +27,10 @@
     autohide-time-modifier = 0.5;
     expose-animation-duration = 0.5;
 
+    # Required by AeroSpace: keep Spaces in a fixed order so workspace bindings
+    # don't break when macOS reorders them by recent use.
+    mru-spaces = false;
+
     show-recents = false;
     magnification = false;
     tilesize = 64;
