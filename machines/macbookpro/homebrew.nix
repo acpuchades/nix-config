@@ -44,6 +44,7 @@
     "utm"
     "veracrypt"
     "whatsapp"
+    "zen"
     "zoom"
     "zotero"
   ];
