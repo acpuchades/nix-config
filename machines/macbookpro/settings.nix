@@ -35,7 +35,8 @@
     magnification = false;
     tilesize = 64;
 
-    wvous-bl-corner = null;
+    # Hot corners: 1 = Disabled (no action), 13 = Lock Screen.
+    wvous-bl-corner = 1;
     wvous-br-corner = 13;
 
     persistent-apps = [
@@ -66,7 +67,7 @@
     NewWindowTarget = "Home";
     ShowHardDrivesOnDesktop = false;
     ShowExternalHardDrivesOnDesktop = true;
-    ShowMountedServersOnDesktop = true;
+    ShowMountedServersOnDesktop = false;
     ShowPathbar = true;
     ShowRemovableMediaOnDesktop = true;
     ShowStatusBar = false;
@@ -130,6 +131,11 @@
     "com.apple.dock" = {
       showAppExposeGestureEnabled = true;
       showMissionControlGestureEnabled = true;
+    };
+    "com.apple.finder" = {
+      # Open folders in tabs instead of new windows (not exposed as a typed
+      # system.defaults.finder option in this nix-darwin version).
+      FinderSpawnTab = true;
     };
     "com.apple.desktopservices" = {
       # Avoid creating .DS_Store files on network or USB volumes
