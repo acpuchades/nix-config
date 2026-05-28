@@ -35,7 +35,7 @@
     magnification = false;
     tilesize = 64;
 
-    wvous-bl-corner = 11;
+    wvous-bl-corner = null;
     wvous-br-corner = 13;
 
     persistent-apps = [
