@@ -136,6 +136,13 @@
       DSDontWriteNetworkStores = true;
       DSDontWriteUSBStores = true;
     };
+    "com.apple.loginwindow" = {
+      # Don't reopen apps/windows after login. macOS saves the absolute
+      # /nix/store path of running apps; every darwin-rebuild changes that
+      # path, so resume relaunches a stale Emacs bundle whose packages no
+      # longer load.
+      TALLogoutSavesState = false;
+    };
     "com.apple.Safari" = {
       # Privacy: don’t send search queries to Apple
       UniversalSearchEnabled = false;
