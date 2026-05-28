@@ -121,6 +121,18 @@ let
       run = [ "move-node-to-workspace ${wsNum}" ];
     }) ws.apps)
     shared.workspaces);
+
+  # Horizon spawns each remote Windows app with a dynamic bundle ID
+  # (com.omnissa.proxyApp.<uuid>...), so they can't be matched by app-id like
+  # the floatRules above. Match by displayed app name instead, and float them —
+  # tiling these remote windows makes them unusable. Keep them on workspace 2
+  # alongside the Horizon client.
+  horizonProxyRules = map (name: {
+    "if".app-name-regex-substring = name;
+    run = [ "layout floating" "move-node-to-workspace 2" ];
+  }) [
+    "SAP Logon for Windows"
+  ];
 in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
@@ -155,6 +167,15 @@ in
 
       active_color = "0xff89b4fa";   # soft blue
       inactive_color = "0x00000000"; # transparent
+
+      # Omnissa Horizon draws its client and remote-app proxy windows through
+      # private window-server paths that JankyBorders' overlay breaks outright —
+      # bordered Horizon windows fail to render at all. Exclude them. borders
+      # matches the BSD process (executable) name, not the bundle id or display
+      # name, so these are executable names: "horizon-client" is the client,
+      # and "horizon-docker" is the shared executable behind every published-app
+      # proxy (com.omnissa.proxyApp.<uuid>), so one entry covers them all.
+      blacklist = [ "horizon-client" "horizon-docker" ];
     };
 
     services.aerospace = {
@@ -197,7 +218,7 @@ in
           cmd-alt-shift-l = [ "join-with right" "mode main" ];
         };
 
-        on-window-detected = floatRules ++ workspaceRules;
+        on-window-detected = floatRules ++ workspaceRules ++ horizonProxyRules;
       };
     };
   };
