@@ -40,6 +40,7 @@ let
         ../../modules/postgresql-server
         ../../modules/cloud-suite
         ../../modules/samba-server
+        ../../modules/print-server
         ../../modules/gps-backend
         ../../modules/mail-relay
         ../../modules/prefect-server
@@ -199,6 +200,13 @@ let
             "force directory mode" = "2770";
           };
         };
+      };
+
+      my.print-server = {
+        enable = true;
+        allowedNetworks = privateNetworks;
+        # Driverless printers (IPP Everywhere / AirPrint) need no driver package.
+        drivers = [];
       };
 
       my.gps-backend = {

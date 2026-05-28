@@ -18,8 +18,8 @@
     pulse.enable = true;
   };
 
-  # Enable CUPS to print documents
-  printing.enable = true;
+  # CUPS network print server (IPP/AirPrint) is configured by the
+  # my.print-server module, which owns services.printing.
 
   # Enable fstrim
   fstrim.enable = true;
