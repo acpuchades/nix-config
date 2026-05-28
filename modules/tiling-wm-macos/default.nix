@@ -193,7 +193,7 @@
           { "if".app-id = "com.apple.Preview";         run = [ "move-node-to-workspace 4" ]; }
 
           # --- workspace 6: browsers ---
-          { "if".app-id = "net.librewolf.librewolf.librewolf"; run = [ "move-node-to-workspace 6" ]; }
+          { "if".app-id = "app.zen-browser.zen"; run = [ "move-node-to-workspace 6" ]; }
           { "if".app-id = "org.chromium.Chromium";             run = [ "move-node-to-workspace 6" ]; }
           { "if".app-id = "com.apple.Safari";                  run = [ "move-node-to-workspace 6" ]; }
 
