@@ -11,4 +11,5 @@ with pkgs;
   immich-cli
   immich-go
   ntfs3g
+  sshfs
 ]

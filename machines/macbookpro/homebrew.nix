@@ -5,11 +5,10 @@
   onActivation.cleanup = "uninstall";
   onActivation.upgrade = true;
 
-  taps = [ "gromgit/fuse" ];
+  taps = [ ];
 
   brews = [
     "mas"
-    "sshfs-mac"
   ];
 
   casks = [
