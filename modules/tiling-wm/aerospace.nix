@@ -24,7 +24,7 @@ let
     keynote             = "com.apple.Keynote";
     notes               = "com.apple.Notes";
     preview             = "com.apple.Preview";
-    zen-browser         = "app.zen-browser.zen";
+    zen                 = "app.zen-browser.zen";
     chromium            = "org.chromium.Chromium";
     safari              = "com.apple.Safari";
     ghostty             = "com.mitchellh.ghostty";

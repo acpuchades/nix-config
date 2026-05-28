@@ -19,7 +19,7 @@
       "keynote" "notes" "preview"
     ]; };
     # workspace 5 intentionally unassigned — free for ad-hoc work
-    "6"  = { name = "browsers";     apps = [ "zen-browser" "chromium" "safari" ]; };
+    "6"  = { name = "browsers";     apps = [ "zen" "chromium" "safari" ]; };
     "7"  = { name = "terminal";     apps = [ "ghostty" ]; };
     "8"  = { name = "dev";          apps = [ "emacs" "claude-desktop" ]; };
     "9"  = { name = "comms";        apps = [
@@ -33,6 +33,7 @@
     "raycast" "bartender" "cleanshot" "clop" "little-snitch"
     "micro-snitch" "dropover" "hand-mirror" "alcove" "text-edit"
     "ui-agent" "user-notification-center" "kaspersky-agent" "bitwarden"
+    "horizon-client"
   ];
 
   shortcuts = {

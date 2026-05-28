@@ -43,7 +43,6 @@ in
 
     modules = [
       ./settings.nix
-      ./zen-browser.nix
 
       ../../modules/tiling-wm
       ../../modules/r-dev/system.nix
