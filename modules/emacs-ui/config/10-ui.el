@@ -1,6 +1,3 @@
-;; Start maximized
-(add-to-list 'initial-frame-alist '(fullscreen . maximized))
-
 ;; FUNCTION DEFINITIONS
 
 (defun my/enable-dark-mode ()
