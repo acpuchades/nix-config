@@ -33,7 +33,7 @@ in
       exit 0
     fi
 
-    /usr/bin/xattr -dr com.apple.quarantine "$app" 2>/dev/null || true
+    /usr/bin/xattr -cr "$app" 2>/dev/null || true
 
     distDir="$app/Contents/Resources/distribution"
     policies="$distDir/policies.json"
