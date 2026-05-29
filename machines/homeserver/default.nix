@@ -47,6 +47,7 @@ let
         ../../modules/home-assistant
         ../../modules/server-stats
         ../../modules/web-analytics
+        ../../modules/service-dashboard
         ../../modules/acme-cloudflare
         ../../modules/host-security
         ../../modules/ups-monitor
@@ -122,6 +123,7 @@ let
           { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
         ];
       };
 
@@ -253,6 +255,51 @@ let
         enable = true;
         hostName = "analytics.acpuchades.com";
         appSecretFile = config.sops.secrets."umami/app-secret".path;
+      };
+
+      my.service-dashboard = {
+        enable = true;
+        hostName = "dashboard.acpuchades.com";
+        allowedNetworks = privateNetworks;
+        # Tiles reference each service's own hostName option, so they track
+        # renames automatically — no second copy of the addresses to drift.
+        groups = [
+          {
+            name = "Cloud";
+            services = [
+              { name = "Nextcloud";   icon = "nextcloud.png";        description = "Files, calendar, contacts & notes"; href = "https://${config.my.cloud-suite.nextcloud.hostName}"; }
+              { name = "Immich";      icon = "immich.png";           description = "Photo & video backup";              href = "https://${config.my.cloud-suite.immich.hostName}"; }
+              { name = "Vaultwarden"; icon = "vaultwarden.png";      description = "Password manager";                  href = "https://${config.my.cloud-suite.bitwarden.hostName}"; }
+              { name = "Collabora";   icon = "collabora-online.png"; description = "Online office suite";               href = "https://${config.my.cloud-suite.collabora.hostName}"; }
+            ];
+          }
+          {
+            name = "Smart Home";
+            services = [
+              { name = "Home Assistant"; icon = "home-assistant.png"; description = "Home automation"; href = "https://${config.my.home-assistant.hostName}"; }
+            ];
+          }
+          {
+            name = "Network";
+            services = [
+              { name = "AdGuard Home"; icon = "adguard-home.png"; description = "DNS filtering"; href = "https://${config.my.dns-filtering.virtualHost}"; }
+            ];
+          }
+          {
+            name = "Workflows & Analytics";
+            services = [
+              { name = "Prefect";     icon = "prefect.png";    description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
+              { name = "Umami";       icon = "umami.png";      description = "Web analytics";          href = "https://${config.my.web-analytics.hostName}"; }
+              { name = "GPS Backend"; icon = "mdi-map-marker"; description = "Location tracking backend"; href = "https://${config.my.gps-backend.hostName}"; }
+            ];
+          }
+          {
+            name = "Monitoring";
+            services = [
+              { name = "Grafana"; icon = "grafana.png"; description = "Metrics & dashboards"; href = "https://${config.my.server-stats.hostName}"; }
+            ];
+          }
+        ];
       };
 
       my.host-security = {
