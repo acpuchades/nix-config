@@ -191,8 +191,8 @@ let
           table = "43";
           mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
           peer = {
-            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
-            endpoint = "130.195.250.66:51820";
+            publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";  # ES#124
+            endpoint = "130.195.250.98:51820";
             allowedIPs = [ "0.0.0.0/0" ];
           };
         };

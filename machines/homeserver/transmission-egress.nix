@@ -15,7 +15,6 @@
 let
   iface = "wgproton-bt";                                # ProtonVPN P2P tunnel
   uid = config.ids.uids.transmission;                  # static uid 70 — owner match
-  fwmark = "0x2";
   table = "43";                                         # wgproton-bt's dedicated table
   localNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];  # LAN + wg0 subnet stay on main route
   gw = "10.2.0.1";                                      # tunnel gateway (Proton NAT-PMP)
@@ -25,13 +24,19 @@ let
   ksChain = "transmission-ks";   # IPv4 kill-switch chain
   ksChain6 = "transmission-ks6"; # IPv6 kill-switch chain
 
-  # `ip rule` lines, parameterised by verb ("add"/"del"). Local networks are
-  # looked up in main (normal routing) ahead of the fwmark rule, so marked
-  # traffic to the LAN/VPN never gets shoved into the tunnel. Priorities 1100/1101
-  # sit clear of vpn-egress's 1000/1001.
+  # `ip rule` lines, parameterised by verb ("add"/"del"). Steer by the daemon's
+  # owner uid at the FIRST route lookup (the kernel feeds the originating
+  # socket's uid into the FIB rule match), so the packet picks table ${table} —
+  # and thus the tunnel source — from the outset. We deliberately do NOT use the
+  # mangle-OUTPUT MARK + reroute trick that vpn-egress can rely on for FORWARDed
+  # traffic: for locally-generated packets the post-mark reroute doesn't fire
+  # under this kernel/firewall, so marked traffic kept its LAN route and the kill
+  # switch dropped all of it. Local networks are looked up in main ahead of the
+  # uid rule so LAN/VPN traffic never gets shoved into the tunnel. Priorities
+  # 1100/1101 sit clear of vpn-egress's 1000/1001.
   mkRuleLines = verb:
     (map (net: "${ip} rule ${verb} from all to ${net} lookup main priority 1100") localNetworks)
-    ++ [ "${ip} rule ${verb} fwmark ${fwmark} lookup ${table} priority 1101" ];
+    ++ [ "${ip} rule ${verb} uidrange ${toString uid}-${toString uid} lookup ${table} priority 1101" ];
 
   startScript = pkgs.writeShellScript "transmission-egress-start" ''
     set -eu
@@ -118,12 +123,10 @@ in
   # external oneshot added. The `ip rule`/route above are instead preserved by
   # vpn-egress.nix's global ManageForeignRoutingPolicyRules=false / ManageForeignRoutes=false.
   networking.firewall.extraCommands = lib.mkAfter ''
-    # Mark transmission's locally-originated traffic so the fwmark ip-rule steers
-    # it into table ${table} (→ default dev ${iface}).
-    iptables -t mangle -A OUTPUT -m owner --uid-owner ${toString uid} -j MARK --set-mark ${fwmark}
-
-    # SNAT to ${iface}'s address so the source is the tunnel IP regardless of the
-    # source picked by the pre-mark route lookup (mirrors vpn-egress's MASQUERADE).
+    # SNAT to ${iface}'s address so the source is always the tunnel IP, even if
+    # an early route lookup picked a different source (mirrors vpn-egress's
+    # MASQUERADE). Belt-and-suspenders now that the uid ip-rule routes via
+    # table ${table} from the first lookup.
     iptables -t nat -A POSTROUTING -o ${iface} -m owner --uid-owner ${toString uid} -j MASQUERADE
     # Clamp MSS — the tunnel is nested inside wg0 (MTU 1340), so PMTU would
     # otherwise black-hole.
@@ -153,7 +156,6 @@ in
     iptables -D OUTPUT -m owner --uid-owner ${toString uid} -j ${ksChain} 2>/dev/null || true
     iptables -F ${ksChain} 2>/dev/null || true
     iptables -X ${ksChain} 2>/dev/null || true
-    iptables -t mangle -D OUTPUT -m owner --uid-owner ${toString uid} -j MARK --set-mark ${fwmark} 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o ${iface} -m owner --uid-owner ${toString uid} -j MASQUERADE 2>/dev/null || true
     iptables -t mangle -D POSTROUTING -p tcp --syn -o ${iface} -m owner --uid-owner ${toString uid} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
     ip6tables -D OUTPUT -m owner --uid-owner ${toString uid} -j ${ksChain6} 2>/dev/null || true
