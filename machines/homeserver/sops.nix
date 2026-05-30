@@ -53,6 +53,16 @@
 
       "wireguard-client/wgproton" = { key = "wireguard-client/wgproton"; };
 
+      "wireguard-client/wgproton-bt" = { key = "wireguard-client/wgproton-bt"; };
+
+      # htpasswd hash for the torrent.acpuchades.com basic-auth (rendered into the
+      # caddy/torrent-auth template). Generate with: caddy hash-password
+      "caddy/torrent" = {
+        owner = "caddy";
+        group = "caddy";
+        mode = "0400";
+      };
+
       # Per-peer preshared keys for wg0 (declarative peers in my.vpn-server.peers)
       "wireguard/psk/alex-ipad" = { mode = "0400"; };
       "wireguard/psk/alex-laptop" = { mode = "0400"; };
@@ -104,6 +114,17 @@
         content = ''
           basic_auth {
             admin ${config.sops.placeholder."caddy/prefect"}
+          }
+        '';
+      };
+
+      "caddy/torrent-auth" = {
+        owner = "caddy";
+        group = "caddy";
+        mode = "0400";
+        content = ''
+          basic_auth {
+            admin ${config.sops.placeholder."caddy/torrent"}
           }
         '';
       };

@@ -37,6 +37,9 @@ let
         # Host-specific policy routing: ProtonVPN egress for wg0 clients
         ./vpn-egress.nix
 
+        # Host-specific egress confinement + NAT-PMP for the transmission daemon
+        ./transmission-egress.nix
+
         # Ephemeral root + persisted state — DISABLED.
         # The btrfs @/@root-blank/@persist layout described in MIGRATION.md has
         # not been built yet (root is still ext4 — see hardware-configuration.nix).
@@ -50,6 +53,7 @@ let
         # Custom modules
         ../../modules/vpn-server
         ../../modules/wireguard-client
+        ../../modules/transmission-server
         ../../modules/dns-filtering
         ../../modules/web-server
         ../../modules/postgresql-server
@@ -171,6 +175,35 @@ let
             allowedIPs = [ "0.0.0.0/0" ]; # IPv4 only; wg0 clients have no IPv6, avoids a dead ::/0 route
           };
         };
+
+        # Second ProtonVPN tunnel, dedicated to the transmission daemon so its
+        # BitTorrent traffic exits on a separate IP with NAT-PMP port forwarding.
+        # Proton hands every config the same 10.2.0.2/32 address; that's fine here
+        # because the route lives in its own table (43, not main), exactly like
+        # wgproton/table 42 — the duplicate interface address never reaches the
+        # main table. IPv4-only (table 43 carries no v6 route); the IPv6 address
+        # is omitted since it would be unused. Confinement + kill switch + NAT-PMP
+        # are in machines/homeserver/transmission-egress.nix.
+        interfaces.wgproton-bt = {
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
+          address = [ "10.2.0.2/32" ];
+          allowedIPsAsRoutes = true;
+          table = "43";
+          mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
+          peer = {
+            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
+            endpoint = "130.195.250.66:51820";
+            allowedIPs = [ "0.0.0.0/0" ];
+          };
+        };
+      };
+
+      my.transmission-server = {
+        enable = true;
+        hostName = "torrent.acpuchades.com";
+        downloadDir = "/srv/shared/Downloads";
+        allowedNetworks = privateNetworks;
+        basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
       };
 
       my.dns-filtering = {
@@ -204,6 +237,7 @@ let
           { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
         ];
       };
 
@@ -363,6 +397,7 @@ let
             name = "Network";
             services = [
               { name = "AdGuard Home"; icon = "adguard-home.png"; description = "DNS filtering"; href = "https://${config.my.dns-filtering.virtualHost}"; }
+              { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client (VPN-confined)"; href = "https://${config.my.transmission-server.hostName}"; }
             ];
           }
           {
