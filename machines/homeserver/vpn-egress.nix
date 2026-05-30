@@ -91,6 +91,17 @@ in
   # relaxes spoof protection on the public interface — accepted here.
   networking.firewall.checkReversePath = lib.mkDefault "loose";
 
+  # systemd-networkd deletes routing policy rules and routes it doesn't manage
+  # ("foreign") whenever it (re)starts. The policy rules and the table-${table}
+  # `unreachable` fallback are added imperatively by the oneshot below, so without
+  # this networkd wipes them on every restart/rebuild — client internet then falls
+  # through to the ISP route and the kill switch drops it (LAN keeps working).
+  # Tell networkd to leave foreign rules/routes alone.
+  systemd.network.config.networkConfig = {
+    ManageForeignRoutingPolicyRules = false;
+    ManageForeignRoutes = false;
+  };
+
   systemd.services."vpn-egress-${iface}" = {
     description = "Policy routing: steer ${lib.concatStringsSep "," from} out ${iface}";
     wantedBy = [ "multi-user.target" ];

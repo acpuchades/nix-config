@@ -3,64 +3,38 @@
 let
   cfg = config.my.vpn-server;
 
+  # Generates a new peer (keypair + preshared key) and a ready-to-import client
+  # config, then prints the sops entry + the Nix block to add under
+  # my.vpn-server.peers. Peers are declarative (managed by systemd-networkd via
+  # networking.wireguard), so registering one is: paste the block, store the
+  # PSK in sops, rebuild. The script touches nothing on the server itself.
   wg-create-profile = pkgs.writeShellApplication {
     name = "wg-create-profile";
     runtimeInputs = [ pkgs.wireguard-tools ];
     text = ''
       usage() {
-        echo "Usage: wg-create-profile [--install] <peer-name> <peer-ip>"
+        echo "Usage: wg-create-profile <peer-name> <peer-ip>"
         echo ""
-        echo "Creates a directory in the current folder (spaces in name become dashes) containing:"
-        echo "  <peer_name>-private.key        — peer private key"
-        echo "  <peer_name>-public.key         — peer public key"
-        echo "  <peer_name>-psk                — preshared key"
-        echo "  <peer-name>.conf               — server-side profile config"
-        echo "  <peer_name>-client.conf        — ready-to-import client config"
-        echo ""
-        echo "With --install, also copies the server profile into ${cfg.profilesDir}"
-        echo "and registers it with the running ${cfg.interface} interface (uses sudo)."
-        echo ""
-        echo "File base names use underscores in place of spaces and dashes."
+        echo "Generates a WireGuard peer and writes <peer-name>.conf in the"
+        echo "current directory (import that on the device). It then prints the"
+        echo "preshared key to store in sops and the Nix block to add under"
+        echo "my.vpn-server.peers. After adding both and rebuilding, the peer is live."
         exit 1
       }
 
-      INSTALL=0
-      POSITIONAL=()
-      for arg in "$@"; do
-        case "$arg" in
-          --install) INSTALL=1 ;;
-          -h|--help) usage ;;
-          *) POSITIONAL+=("$arg") ;;
-        esac
-      done
-      set -- "''${POSITIONAL[@]}"
-
-      [ $# -ne 2 ] && usage
-
-      if [ "$(id -u)" -eq 0 ]; then
-        echo "wg-create-profile should not be run as root or via sudo." >&2
-        echo "Run it as your normal user; --install will invoke sudo itself." >&2
-        exit 1
-      fi
+      [ "$#" -ne 2 ] && usage
+      case "''${1:-}" in -h|--help) usage ;; esac
 
       PEER_NAME="$1"
       PEER_IP="$2"
       PEER_SLUG="''${PEER_NAME// /-}"
-      FILE_BASE="''${PEER_NAME//[ -]/_}"
-      PROFILE_DIR="$(pwd)/$PEER_SLUG"
-
-      mkdir -p "$PROFILE_DIR"
 
       PRIVATE_KEY=$(wg genkey)
       PUBLIC_KEY=$(echo "$PRIVATE_KEY" | wg pubkey)
       PSK=$(wg genpsk)
 
-      echo "$PRIVATE_KEY" > "$PROFILE_DIR/$FILE_BASE-private.key"
-      echo "$PUBLIC_KEY"  > "$PROFILE_DIR/$FILE_BASE-public.key"
-      echo "$PSK"         > "$PROFILE_DIR/$FILE_BASE-psk"
-      chmod 600 "$PROFILE_DIR/$FILE_BASE-private.key" "$PROFILE_DIR/$FILE_BASE-psk"
-
-      cat > "$PROFILE_DIR/$FILE_BASE-client.conf" <<EOF
+      umask 077
+      cat > "$PEER_SLUG.conf" <<EOF
       [Interface]
       PrivateKey = $PRIVATE_KEY
       Address = $PEER_IP/32
@@ -73,30 +47,31 @@ let
       AllowedIPs = 0.0.0.0/0, ::/0
       PersistentKeepalive = 25
       EOF
-      chmod 600 "$PROFILE_DIR/$FILE_BASE-client.conf"
 
-      cat > "$PROFILE_DIR/$PEER_SLUG.conf" <<EOF
-      [Peer]
-      PublicKey = $PUBLIC_KEY
-      PresharedKey = $PSK
-      AllowedIPs = $PEER_IP/32
+      cat <<EOF
+
+      Wrote $PEER_SLUG.conf — import this on the device.
+
+      Register the peer on the server (declarative — two edits + rebuild):
+
+      1) Store the preshared key in sops:
+           sops machines/homeserver/secrets/default.yml
+         add it under the wireguard/psk branch:
+           wireguard:
+               psk:
+                   $PEER_SLUG: $PSK
+         and declare it in machines/homeserver/sops.nix (secrets):
+           "wireguard/psk/$PEER_SLUG" = { mode = "0400"; };
+
+      2) Add the peer under my.vpn-server.peers in machines/homeserver/default.nix:
+           $PEER_SLUG = {
+             publicKey = "$PUBLIC_KEY";
+             allowedIPs = [ "$PEER_IP/32" ];
+             presharedKeyFile = config.sops.secrets."wireguard/psk/$PEER_SLUG".path;
+           };
+
+      Then rebuild: sudo nixos-rebuild switch --flake .#homeserver
       EOF
-      chmod 600 "$PROFILE_DIR/$PEER_SLUG.conf"
-
-      echo "Profile created in $PROFILE_DIR"
-      echo "Peer public key: $PUBLIC_KEY"
-      echo ""
-
-      if [ "$INSTALL" -eq 1 ]; then
-        echo "Registering on ${cfg.interface}..."
-        sudo cp "$PROFILE_DIR/$PEER_SLUG.conf" "${cfg.profilesDir}/"
-        sudo wg addconf ${cfg.interface} "${cfg.profilesDir}/$PEER_SLUG.conf"
-        echo "Registered."
-      else
-        echo "To register on the server:"
-        echo "  sudo cp $PROFILE_DIR/$PEER_SLUG.conf ${cfg.profilesDir}/ && \\"
-        echo "  sudo wg addconf ${cfg.interface} ${cfg.profilesDir}/$PEER_SLUG.conf"
-      fi
     '';
   };
 in
@@ -108,12 +83,6 @@ in
       type = lib.types.str;
       default = "wg0";
       description = "WireGuard interface name";
-    };
-
-    profilesDir = lib.mkOption {
-      type = lib.types.path;
-      default = "/etc/wireguard/profiles.d";
-      description = "Directory of profile config files loaded at interface startup";
     };
 
     serverIp = lib.mkOption {
@@ -159,6 +128,38 @@ in
       type = lib.types.str;
       description = "Interface client traffic is masqueraded onto (e.g. eth0, wlp3s0)";
     };
+
+    peers = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          publicKey = lib.mkOption {
+            type = lib.types.str;
+            description = "The peer's WireGuard public key.";
+          };
+          allowedIPs = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            description = ''
+              Tunnel addresses routed to this peer, e.g. [ "10.0.0.2/32" ].
+            '';
+          };
+          presharedKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = ''
+              Path to this peer's preshared-key file (typically a sops secret).
+              Null for no preshared key.
+            '';
+          };
+        };
+      });
+      default = { };
+      description = ''
+        Declarative WireGuard peers, keyed by a label. These are managed by
+        systemd-networkd, so they survive interface restarts/rebuilds. Generate
+        a peer's keys, client config, and the block to paste here with
+        `wg-create-profile`.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -166,37 +167,10 @@ in
       ips = [ cfg.serverIp ];
       listenPort = cfg.listenPort;
       privateKeyFile = cfg.privateKeyFile;
+      peers = lib.mapAttrsToList (_: peer: {
+        inherit (peer) publicKey allowedIPs presharedKeyFile;
+      }) cfg.peers;
     };
-
-    systemd.services."wg-load-profiles-${cfg.interface}" = {
-      description = "Load WireGuard profiles for ${cfg.interface}";
-      # These interfaces are managed by systemd-networkd (useNetworkd = true),
-      # so there is NO wireguard-<iface>.service to anchor to. Tie the loader to
-      # the interface's .device (so it starts when the link appears and stops
-      # when it goes) AND make it `partOf` systemd-networkd, so the profiles are
-      # re-applied whenever networkd recreates the interface on a rebuild. The
-      # original anchored after/bindsTo the .device but wantedBy=multi-user.target,
-      # so it only ran at boot — dropping every peer when the link was rebuilt.
-      after = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
-      bindsTo = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
-      wantedBy = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
-      partOf = [ "systemd-networkd.service" ];
-      path = [ pkgs.wireguard-tools ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        shopt -s nullglob
-        for f in ${cfg.profilesDir}/*.conf; do
-          wg addconf ${cfg.interface} "$f"
-        done
-      '';
-    };
-
-    systemd.tmpfiles.rules = [
-      "d ${cfg.profilesDir} 0700 root root -"
-    ];
 
     boot.kernel.sysctl = {
       "net.ipv4.ip_forward" = 1;

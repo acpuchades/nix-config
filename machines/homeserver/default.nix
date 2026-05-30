@@ -117,6 +117,38 @@ let
         serverEndpoint = "vpn.acpuchades.com:51820";
         clientDns = "10.0.0.1";
         upstreamInterface = "wlp3s0";
+        peers = {
+          alex-ipad = {
+            publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
+            allowedIPs = [ "10.0.0.4/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
+          };
+          alex-laptop = {
+            publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
+            allowedIPs = [ "10.0.0.2/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-laptop".path;
+          };
+          alex-phone = {
+            publicKey = "buzTS+bB/mymK+PGP+NPVX7lzJEsHs+5ETYzurzvUgk=";
+            allowedIPs = [ "10.0.0.3/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone".path;
+          };
+          mubin-laptop = {
+            publicKey = "V2Vw6ViZK2RJgHyRA+nas7zwYcGIsnVJxJpff5/NxiA=";
+            allowedIPs = [ "10.0.0.10/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop".path;
+          };
+          mubin-phone-personal = {
+            publicKey = "aNPjIRiISsRILptMmmMO668b6N+gIHdJvrHcC5H4by0=";
+            allowedIPs = [ "10.0.0.11/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
+          };
+          mubin-phone-work = {
+            publicKey = "OUvDj9vX7NxnHBE+9t/9W+EjMuwyhxEvnlOtHZxPc0I=";
+            allowedIPs = [ "10.0.0.12/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
+          };
+        };
       };
 
       # ProtonVPN egress tunnel (ES#95). Installs its default route into a
