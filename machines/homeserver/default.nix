@@ -37,8 +37,13 @@ let
         # Host-specific policy routing: ProtonVPN egress for wg0 clients
         ./vpn-egress.nix
 
-        # Host-specific egress confinement + NAT-PMP for the transmission daemon
-        ./transmission-egress.nix
+        # Host-specific egress confinement + NAT-PMP for the transmission daemon.
+        # DISABLED 2026-05-30: ProtonVPN port forwarding (NAT-PMP) is not serviced
+        # for this account on its servers — the request egresses fine but Proton
+        # never replies, so the BT tunnel gets no inbound peer port. Re-enable this
+        # together with the wgproton-bt interface and my.transmission-server below
+        # once port forwarding works. (sops secrets are intentionally left in place.)
+        # ./transmission-egress.nix
 
         # Ephemeral root + persisted state — DISABLED.
         # The btrfs @/@root-blank/@persist layout described in MIGRATION.md has
@@ -184,27 +189,34 @@ let
         # main table. IPv4-only (table 43 carries no v6 route); the IPv6 address
         # is omitted since it would be unused. Confinement + kill switch + NAT-PMP
         # are in machines/homeserver/transmission-egress.nix.
-        interfaces.wgproton-bt = {
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
-          address = [ "10.2.0.2/32" ];
-          allowedIPsAsRoutes = true;
-          table = "43";
-          mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
-          peer = {
-            publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";  # ES#124
-            endpoint = "130.195.250.98:51820";
-            allowedIPs = [ "0.0.0.0/0" ];
-          };
-        };
+        #
+        # DISABLED 2026-05-30: Proton port forwarding isn't serviced for this
+        # account (NAT-PMP never replies), so this tunnel has no purpose for now.
+        # Re-enable with ./transmission-egress.nix and my.transmission-server.
+        # interfaces.wgproton-bt = {
+        #   privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
+        #   address = [ "10.2.0.2/32" ];
+        #   allowedIPsAsRoutes = true;
+        #   table = "43";
+        #   mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
+        #   peer = {
+        #     publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";  # ES#124
+        #     endpoint = "130.195.250.98:51820";
+        #     allowedIPs = [ "0.0.0.0/0" ];
+        #   };
+        # };
       };
 
-      my.transmission-server = {
-        enable = true;
-        hostName = "torrent.acpuchades.com";
-        downloadDir = "/srv/shared/Downloads";
-        allowedNetworks = privateNetworks;
-        basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
-      };
+      # DISABLED 2026-05-30: no usable inbound port without Proton NAT-PMP (see
+      # the transmission-egress import and wgproton-bt above). Re-enable all three
+      # together when port forwarding works.
+      # my.transmission-server = {
+      #   enable = true;
+      #   hostName = "torrent.acpuchades.com";
+      #   downloadDir = "/srv/shared/Downloads";
+      #   allowedNetworks = privateNetworks;
+      #   basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
+      # };
 
       my.dns-filtering = {
         enable = true;
@@ -397,7 +409,8 @@ let
             name = "Network";
             services = [
               { name = "AdGuard Home"; icon = "adguard-home.png"; description = "DNS filtering"; href = "https://${config.my.dns-filtering.virtualHost}"; }
-              { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client (VPN-confined)"; href = "https://${config.my.transmission-server.hostName}"; }
+              # DISABLED 2026-05-30: transmission off (no Proton port forwarding).
+              # { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client (VPN-confined)"; href = "https://${config.my.transmission-server.hostName}"; }
             ];
           }
           {
