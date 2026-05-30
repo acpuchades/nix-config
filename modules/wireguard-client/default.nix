@@ -35,6 +35,18 @@ let
         '';
       };
 
+      mtu = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+        description = ''
+          Optional interface MTU. Leave null for the WireGuard default
+          (1420). Lower it when this tunnel is nested inside another
+          WireGuard tunnel, whose stacked overhead would otherwise cause
+          PMTU black-holing (e.g. 1340 for a tunnel carrying traffic that
+          already crossed one WireGuard hop).
+        '';
+      };
+
       peer = {
         publicKey = lib.mkOption {
           type = lib.types.str;
@@ -144,6 +156,7 @@ in
       ips = ifc.address;
       privateKeyFile = ifc.privateKeyFile;
       listenPort = ifc.listenPort;
+      mtu = lib.mkIf (ifc.mtu != null) ifc.mtu;
       allowedIPsAsRoutes = ifc.allowedIPsAsRoutes;
       table = lib.mkIf (ifc.table != null) ifc.table;
       peers = [
