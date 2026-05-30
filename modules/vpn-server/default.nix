@@ -170,9 +170,17 @@ in
 
     systemd.services."wg-load-profiles-${cfg.interface}" = {
       description = "Load WireGuard profiles for ${cfg.interface}";
+      # These interfaces are managed by systemd-networkd (useNetworkd = true),
+      # so there is NO wireguard-<iface>.service to anchor to. Tie the loader to
+      # the interface's .device (so it starts when the link appears and stops
+      # when it goes) AND make it `partOf` systemd-networkd, so the profiles are
+      # re-applied whenever networkd recreates the interface on a rebuild. The
+      # original anchored after/bindsTo the .device but wantedBy=multi-user.target,
+      # so it only ran at boot — dropping every peer when the link was rebuilt.
       after = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
       bindsTo = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = [ "sys-subsystem-net-devices-${cfg.interface}.device" ];
+      partOf = [ "systemd-networkd.service" ];
       path = [ pkgs.wireguard-tools ];
       serviceConfig = {
         Type = "oneshot";
