@@ -53,6 +53,14 @@
 
       "wireguard-client/wgproton" = { key = "wireguard-client/wgproton"; };
 
+      # Per-peer preshared keys for wg0 (declarative peers in my.vpn-server.peers)
+      "wireguard/psk/alex-ipad" = { mode = "0400"; };
+      "wireguard/psk/alex-laptop" = { mode = "0400"; };
+      "wireguard/psk/alex-phone" = { mode = "0400"; };
+      "wireguard/psk/mubin-laptop" = { mode = "0400"; };
+      "wireguard/psk/mubin-phone-personal" = { mode = "0400"; };
+      "wireguard/psk/mubin-phone-work" = { mode = "0400"; };
+
       "nut/monitor" = {
         mode = "0400";
       };
