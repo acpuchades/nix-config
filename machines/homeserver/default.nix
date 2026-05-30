@@ -18,10 +18,21 @@ let
 
   configuration =
     inputs@{ config, lib, pkgs, ... }:
-    import ./settings.nix inputs // {
+    {
       imports = [
         # Include the results of the hardware scan.
         ./hardware-configuration.nix
+
+        # Host settings, imported as a module so it merges with full option
+        # semantics. It used to be `import ./settings.nix inputs // { ... }`,
+        # but that shallow `//` silently dropped any top-level key settings.nix
+        # shared with the inline set — notably `services` (losing the journald
+        # SystemMaxUse cap) and `security` (masking the sudo setting).
+        ./settings.nix
+        ./services.nix
+        ./networking.nix
+        ./sops.nix
+        ./users.nix
 
         # Host-specific policy routing: ProtonVPN egress for wg0 clients
         ./vpn-egress.nix
@@ -56,12 +67,6 @@ let
         ../../modules/host-security
         ../../modules/ups-monitor
       ];
-
-      # SOPS-Nix configuration
-      sops = import ./sops.nix inputs;
-
-      # User configuration
-      users = import ./users.nix inputs;
 
       systemd.network.networks = {
         "10-wlp3s0" = {
@@ -370,12 +375,6 @@ let
         basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
         workerPools.default.installPolicy = "if-not-present";
       };
-
-      # List services that you want to enable:
-      services = import ./services.nix inputs;
-
-      # Networking configuration.
-      networking = import ./networking.nix inputs;
 
       # Copy the NixOS configuration file and link it from the resulting system
       # (/run/current-system/configuration.nix). This is useful in case you
