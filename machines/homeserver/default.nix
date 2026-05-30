@@ -23,6 +23,9 @@ let
         # Include the results of the hardware scan.
         ./hardware-configuration.nix
 
+        # Host-specific policy routing: ProtonVPN egress for wg0 clients
+        ./vpn-egress.nix
+
         # Ephemeral root + persisted state — DISABLED.
         # The btrfs @/@root-blank/@persist layout described in MIGRATION.md has
         # not been built yet (root is still ext4 — see hardware-configuration.nix).
@@ -111,19 +114,24 @@ let
         upstreamInterface = "wlp3s0";
       };
 
-      # ProtonVPN egress tunnel (ES#95). allowedIPsAsRoutes stays at its
-      # default (false), so bringing this up installs no routes and does not
-      # touch the host's default route — the 10.0.0.0/24 egress steering is
-      # added separately by the policy-routing layer. DNS (10.2.0.1) from the
-      # profile is intentionally ignored; resolution stays on AdGuard Home.
+      # ProtonVPN egress tunnel (ES#95). Installs its default route into a
+      # dedicated table (42, not main), so bringing it up never touches the
+      # host's default route; machines/homeserver/vpn-egress.nix steers the
+      # 10.0.0.0/24 client subnet into that table with a kill switch. DNS
+      # (10.2.0.1) from the profile is intentionally ignored; resolution stays
+      # on AdGuard Home.
       my.wireguard-client = {
         enable = true;
         interfaces.wgproton = {
           privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
           address = [ "10.2.0.2/32" "2a07:b944::2:2/128" ];
+          allowedIPsAsRoutes = true;
+          table = "42";
+          mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
           peer = {
             publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
             endpoint = "130.195.250.66:51820";
+            allowedIPs = [ "0.0.0.0/0" ]; # IPv4 only; wg0 clients have no IPv6, avoids a dead ::/0 route
           };
         };
       };
