@@ -64,6 +64,7 @@ let
         ../../modules/postgresql-server
         ../../modules/cloud-suite
         ../../modules/samba-server
+        ../../modules/media-server
         ../../modules/print-server
         ../../modules/gps-backend
         ../../modules/mail-relay
@@ -242,6 +243,7 @@ let
           { domain = "adguard.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "bitwarden.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "photos.acpuchades.com";    answer = homeServerLocalAddress; }
+          { domain = "media.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "gps.acpuchades.com";       answer = homeServerLocalAddress; }
@@ -330,6 +332,21 @@ let
         };
       };
 
+      my.media-server = {
+        enable = true;
+        hostName = "media.acpuchades.com";
+        # Libraries live inside the Samba share so media dropped over SMB is
+        # readable by Jellyfin; shareGroup = "share" makes jellyfin join the
+        # group and provisions the folders root:share 2770 (matching the share).
+        mediaDir = "/srv/shared/Media";
+        libraries = [ "Movies" "Shows" "Music" ];
+        shareGroup = "share";
+        # Internal hosts only — Caddy restricts the vhost to the LAN/VPN subnets.
+        allowedNetworks = privateNetworks;
+        # Same GPU render node Immich uses; enable the codecs in Jellyfin's UI.
+        accelerationDevices = [ "/dev/dri/renderD128" ];
+      };
+
       my.print-server = {
         enable = true;
         allowedNetworks = privateNetworks;
@@ -397,6 +414,12 @@ let
               { name = "Immich";      icon = "immich.png";           description = "Photo & video backup";              href = "https://${config.my.cloud-suite.immich.hostName}"; }
               { name = "Vaultwarden"; icon = "vaultwarden.png";      description = "Password manager";                  href = "https://${config.my.cloud-suite.bitwarden.hostName}"; }
               { name = "Collabora";   icon = "collabora-online.png"; description = "Online office suite";               href = "https://${config.my.cloud-suite.collabora.hostName}"; }
+            ];
+          }
+          {
+            name = "Media";
+            services = [
+              { name = "Jellyfin"; icon = "jellyfin.png"; description = "Movies, shows & music"; href = "https://${config.my.media-server.hostName}"; }
             ];
           }
           {
