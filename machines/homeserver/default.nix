@@ -35,6 +35,7 @@ let
 
         # Custom modules
         ../../modules/vpn-server
+        ../../modules/wireguard-client
         ../../modules/dns-filtering
         ../../modules/web-server
         ../../modules/postgresql-server
@@ -102,6 +103,23 @@ let
         upstreamInterface = "wlp3s0";
       };
 
+      # ProtonVPN egress tunnel (ES#95). allowedIPsAsRoutes stays at its
+      # default (false), so bringing this up installs no routes and does not
+      # touch the host's default route — the 10.0.0.0/24 egress steering is
+      # added separately by the policy-routing layer. DNS (10.2.0.1) from the
+      # profile is intentionally ignored; resolution stays on AdGuard Home.
+      my.wireguard-client = {
+        enable = true;
+        interfaces.wgproton = {
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
+          address = [ "10.2.0.2/32" "2a07:b944::2:2/128" ];
+          peer = {
+            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
+            endpoint = "130.195.250.66:51820";
+          };
+        };
+      };
+
       my.dns-filtering = {
         enable = true;
         adguardPort = 3000;
@@ -111,6 +129,15 @@ let
         virtualHost = "adguard.acpuchades.com";
         allowedNetworks = privateNetworks;
         dnsRewrites = [
+          # Split-horizon for the WireGuard endpoint so on-LAN always-on clients
+          # connect to the homeserver locally instead of via router hairpin.
+          # External resolvers still get the public IP via DDNS. Caveat: AdGuard
+          # rewrites are global, so a connected *remote* client that re-resolves
+          # this name through the tunnel (10.0.0.1) also gets 192.168.2.2 — which
+          # only it can't reach. Expected to be a self-healing blip on reconnect,
+          # not a lockout; see [[no-global-rewrite-wg-endpoint]] and verify with a
+          # remote re-resolution test before fully trusting it.
+          { domain = "vpn.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "www.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "blog.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }

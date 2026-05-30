@@ -50,6 +50,8 @@
 
     "wireguard/private-key" = { key = "wireguard/private-key"; };
 
+    "wireguard-client/wgproton" = { key = "wireguard-client/wgproton"; };
+
     "nut/monitor" = {
       mode = "0400";
     };
