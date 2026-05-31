@@ -439,7 +439,7 @@ let
           {
             name = "Workflows & Analytics";
             services = [
-              { name = "Prefect";     icon = "prefect.png";    description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
+              { name = "Prefect";     icon = "https://avatars.githubusercontent.com/u/39270919?s=200&v=4"; description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
               { name = "Umami";       icon = "umami.png";      description = "Web analytics";          href = "https://${config.my.web-analytics.hostName}"; }
               { name = "GPS Backend"; icon = "mdi-map-marker"; description = "Location tracking backend"; href = "https://${config.my.gps-backend.hostName}"; }
             ];
