@@ -208,16 +208,28 @@ let
         # };
       };
 
-      # DISABLED 2026-05-30: no usable inbound port without Proton NAT-PMP (see
-      # the transmission-egress import and wgproton-bt above). Re-enable all three
-      # together when port forwarding works.
-      # my.transmission-server = {
-      #   enable = true;
-      #   hostName = "torrent.acpuchades.com";
-      #   downloadDir = "/srv/shared/Downloads";
-      #   allowedNetworks = privateNetworks;
-      #   basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
-      # };
+      # NOTE 2026-05-31: enabled WITHOUT VPN egress confinement for now — the
+      # wgproton-bt tunnel and ./transmission-egress.nix (kill switch + NAT-PMP)
+      # above stay disabled until Proton port forwarding works. So the daemon
+      # currently egresses via the default route (real ISP IP, no kill switch)
+      # and has no inbound peer port (peer-port stays at its placeholder, LAN
+      # firewall closed). Re-enable wgproton-bt + transmission-egress to confine it.
+      my.transmission-server = {
+        enable = true;
+        hostName = "torrent.acpuchades.com";
+        downloadDir = "/srv/shared/Downloads";
+        allowedNetworks = privateNetworks;
+        basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
+      };
+
+      # TEMPORARY 2026-05-31: open the BitTorrent peer port (TCP+UDP 51413) on the
+      # host firewall so a router port-forward to this machine reaches the daemon.
+      # The module forces this off (openPeerPorts = false) on the assumption the
+      # peer port lives on the wgproton-bt tunnel; with that tunnel disabled the
+      # port has to be opened on the LAN firewall instead. Forward TCP+UDP 51413
+      # on the router → 192.168.2.2. REVERT this when wgproton-bt + transmission-
+      # egress come back (the tunnel's NAT-PMP supplies the inbound port instead).
+      services.transmission.openPeerPorts = lib.mkForce true;
 
       my.dns-filtering = {
         enable = true;
@@ -432,8 +444,7 @@ let
             name = "Network";
             services = [
               { name = "AdGuard Home"; icon = "adguard-home.png"; description = "DNS filtering"; href = "https://${config.my.dns-filtering.virtualHost}"; }
-              # DISABLED 2026-05-30: transmission off (no Proton port forwarding).
-              # { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client (VPN-confined)"; href = "https://${config.my.transmission-server.hostName}"; }
+              { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client"; href = "https://${config.my.transmission-server.hostName}"; }
             ];
           }
           {
