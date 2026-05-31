@@ -220,6 +220,14 @@ let
         downloadDir = "/srv/shared/Downloads";
         allowedNetworks = privateNetworks;
         basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
+        # Bumped above the module defaults (8000/1500 full, 2000/500 turtle) so
+        # slow torrents aren't ceilinged — schedule unchanged (turtle 08:00–23:00,
+        # full speed overnight). A cap is a ceiling not a floor: this only helps
+        # torrents that actually have the peers to saturate it.
+        maxDownKBps = 15000; # ~120 Mbit/s full speed (overnight 23:00–08:00)
+        maxUpKBps = 2500;
+        altDownKBps = 4000;  # ~32 Mbit/s turtle (active 08:00–23:00)
+        altUpKBps = 1000;
       };
 
       # TEMPORARY 2026-05-31: open the BitTorrent peer port (TCP+UDP 51413) on the
