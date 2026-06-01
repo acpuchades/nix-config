@@ -123,6 +123,13 @@ in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
 
+    # AeroSpace "hides" inactive-workspace windows by parking them off-screen in
+    # the bottom-right corner. App Exposé / Mission Control then scale their
+    # layout over a bounding box that includes those parked windows, rendering
+    # everything tiny. Grouping windows by application keeps Exposé legible.
+    # (Merges per-key with the system.defaults.dock block in settings.nix.)
+    system.defaults.dock.expose-group-apps = true;
+
     services.jankyborders = {
       enable = true;
 
