@@ -20,14 +20,14 @@
 {
   # key = the bare key for super+alt+<key>; name = the AeroSpace workspace id.
   homes = {
-    d = { name = "design";   apps = [ "affinity" ]; };
-    v = { name = "vms";      apps = [ "utm" ]; };
-    m = { name = "mail";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
-    r = { name = "reading";  apps = [ "obsidian" "reeder" ]; };
-    b = { name = "browsers"; apps = [ "zen" "chromium" "safari" ]; };
-    e = { name = "editor";   apps = [ "emacs" ]; };
-    c = { name = "comms";    apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
-    s = { name = "music";    apps = [ "spotify" ]; };
+    d = { name = "design";    apps = [ "affinity" ]; };
+    v = { name = "vms";       apps = [ "utm" ]; };
+    e = { name = "email";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
+    r = { name = "reading";   apps = [ "obsidian" "reeder" ]; };
+    b = { name = "browsing";  apps = [ "zen" "chromium" "safari" ]; };
+    c = { name = "coding";    apps = [ "emacs" ]; };
+    m = { name = "messaging"; apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
+    n = { name = "music";     apps = [ "spotify" ]; };
   };
 
   taskSpaces = [ "1" "2" "3" "4" "5" "6" "7" "8" "9" "0" ];
