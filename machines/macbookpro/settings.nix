@@ -115,16 +115,22 @@
       # Disable Force Click; keep regular click+drag behavior.
       "com.apple.trackpad.forceClick" = false;
     };
-    # Mission Control (3-finger swipe up) and App Exposé (3-finger swipe down);
-    # plus the two-finger gestures (smart zoom, Notification Center edge swipe).
+    # Mission Control (3-finger swipe up), App Exposé (3-finger swipe down) and
+    # switch between Spaces / full-screen apps (3-finger swipe left/right) —
+    # the last is how we reach native-fullscreen Spaces AeroSpace can't manage.
+    # Horiz and four-finger are mutually exclusive, so four-finger horiz is off.
     # NB: enabling TrackpadThreeFingerDrag would disable the swipes above.
     "com.apple.AppleMultitouchTrackpad" = {
       TrackpadThreeFingerVertSwipeGesture = 2;
+      TrackpadThreeFingerHorizSwipeGesture = 2;
+      TrackpadFourFingerHorizSwipeGesture = 0;
       TrackpadTwoFingerDoubleTapGesture = 1;
       TrackpadTwoFingerFromRightEdgeSwipeGesture = 3;
     };
     "com.apple.driver.AppleBluetoothMultitouch.trackpad" = {
       TrackpadThreeFingerVertSwipeGesture = 2;
+      TrackpadThreeFingerHorizSwipeGesture = 2;
+      TrackpadFourFingerHorizSwipeGesture = 0;
       TrackpadTwoFingerDoubleTapGesture = 1;
       TrackpadTwoFingerFromRightEdgeSwipeGesture = 3;
     };
