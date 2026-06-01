@@ -64,9 +64,6 @@ let
       parts = lib.splitString "+" chord;
     in lib.concatMapStringsSep "-" (p: modMap.${p} or p) parts;
 
-  # Aerospace puts workspace 10 on the "0" key.
-  numberKey = n: if n == 10 then "0" else toString n;
-
   # Logical action → aerospace command.
   actionMap = {
     focus-left  = "focus left";
@@ -97,17 +94,19 @@ let
     (action: chord: lib.nameValuePair (toKey chord) actionMap.${action})
     shared.shortcuts;
 
-  mkWsBindings = prefix: cmdTemplate:
-    lib.listToAttrs (lib.genList (i:
-      let
-        n = i + 1;
-        key = toKey "${prefix}+${numberKey n}";
-      in lib.nameValuePair key (cmdTemplate (toString n))
-    ) 10);
+  # Every workspace as a {key, ws} target: letter homes + numbered task spaces.
+  wsTargets =
+    lib.mapAttrsToList (key: h: { inherit key; ws = h.name; }) shared.homes
+    ++ map (digit: { key = digit; ws = digit; }) shared.taskSpaces;
 
-  switchBindings = mkWsBindings shared.workspaceKeys.switch          (n: "workspace ${n}");
-  moveBindings   = mkWsBindings shared.workspaceKeys.move-window     (n: "move-node-to-workspace ${n}");
-  followBindings = mkWsBindings shared.workspaceKeys.move-and-follow (n: "move-node-to-workspace --focus-follows-window ${n}");
+  mkWsBindings = prefix: cmdTemplate:
+    lib.listToAttrs (map (t:
+      lib.nameValuePair (toKey "${prefix}+${t.key}") (cmdTemplate t.ws)
+    ) wsTargets);
+
+  switchBindings = mkWsBindings shared.workspaceKeys.switch          (ws: "workspace ${ws}");
+  moveBindings   = mkWsBindings shared.workspaceKeys.move-window     (ws: "move-node-to-workspace ${ws}");
+  followBindings = mkWsBindings shared.workspaceKeys.move-and-follow (ws: "move-node-to-workspace --focus-follows-window ${ws}");
 
   floatRules = map (app: {
     "if".app-id = appIds.${app};
@@ -115,31 +114,14 @@ let
   }) shared.floats;
 
   workspaceRules = lib.concatLists (lib.mapAttrsToList
-    (wsNum: ws: map (app: {
+    (_key: h: map (app: {
       "if".app-id = appIds.${app};
-      run = [ "move-node-to-workspace ${wsNum}" ];
-    }) ws.apps)
-    shared.workspaces);
+      run = [ "move-node-to-workspace ${h.name}" ];
+    }) h.apps)
+    shared.homes);
 in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
-
-    # Disable macOS trackpad Exposé/Spaces gestures that conflict with
-    # AeroSpace's workspace model. mkForce overrides values set in settings.nix.
-    system.defaults.CustomUserPreferences = {
-      "com.apple.AppleMultitouchTrackpad" = {
-        TrackpadThreeFingerVertSwipeGesture = lib.mkForce 0;
-        TrackpadThreeFingerHorizSwipeGesture = 0;
-      };
-      "com.apple.driver.AppleBluetoothMultitouch.trackpad" = {
-        TrackpadThreeFingerVertSwipeGesture = lib.mkForce 0;
-        TrackpadThreeFingerHorizSwipeGesture = 0;
-      };
-      "com.apple.dock" = {
-        showAppExposeGestureEnabled = lib.mkForce false;
-        showMissionControlGestureEnabled = lib.mkForce false;
-      };
-    };
 
     services.jankyborders = {
       enable = true;

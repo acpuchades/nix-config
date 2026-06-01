@@ -7,26 +7,30 @@
 #
 # Key chord notation: modifiers and key separated by "+", lowercased.
 # `super` is the primary modifier — cmd on macOS, mod4 on Linux.
+#
+# Workspaces come in two kinds:
+#   - homes      : task-agnostic apps with a fixed home, keyed by a mnemonic
+#                  letter (super+alt+<letter>). Every app here is auto-assigned
+#                  to its workspace on launch.
+#   - taskSpaces : numbered scratch workspaces (super+alt+<digit>) for ad-hoc
+#                  work. Nothing is auto-assigned, so task-specific tools
+#                  (office, pdf, claude, ghostty, …) open in whichever one is
+#                  focused — the absence of an entry IS "open where I am".
 
 {
-  workspaces = {
-    "1"  = { name = "design";       apps = [ "affinity" ]; };
-    "2"  = { name = "vms-remote";   apps = [ "utm" ]; };
-    "3"  = { name = "transfers";    apps = [ "localsend" "transmission" ]; };
-    "4"  = { name = "reading-docs"; apps = [
-      "obsidian" "reeder" "pdf-expert" "acrobat-pro" "zotero"
-      "libreoffice" "ms-word" "ms-excel" "ms-powerpoint" "ms-outlook"
-      "keynote" "notes" "preview"
-    ]; };
-    # workspace 5 intentionally unassigned — free for ad-hoc work
-    "6"  = { name = "browsers";     apps = [ "zen" "chromium" "safari" ]; };
-    "7"  = { name = "terminal";     apps = [ "ghostty" ]; };
-    "8"  = { name = "dev";          apps = [ "emacs" "claude-desktop" ]; };
-    "9"  = { name = "comms";        apps = [
-      "signal" "whatsapp" "ms-teams" "zoom" "proton-mail" "apple-mail"
-    ]; };
-    "10" = { name = "music";        apps = [ "spotify" ]; };
+  # key = the bare key for super+alt+<key>; name = the AeroSpace workspace id.
+  homes = {
+    d = { name = "design";   apps = [ "affinity" ]; };
+    v = { name = "vms";      apps = [ "utm" ]; };
+    m = { name = "mail";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
+    r = { name = "reading";  apps = [ "obsidian" "reeder" ]; };
+    b = { name = "browsers"; apps = [ "zen" "chromium" "safari" ]; };
+    e = { name = "editor";   apps = [ "emacs" ]; };
+    c = { name = "comms";    apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
+    s = { name = "music";    apps = [ "spotify" ]; };
   };
+
+  taskSpaces = [ "1" "2" "3" "4" "5" "6" "7" "8" "9" "0" ];
 
   floats = [
     "system-preferences" "finder" "activity-monitor" "calculator"
@@ -61,11 +65,11 @@
     service-mode = "super+alt+shift+semicolon";
   };
 
-  # Modifier prefixes for the 1..10 number row. Each per-WM module generates
-  # one binding per workspace: <prefix>+<N> with workspace 10 on key "0".
+  # Modifier prefixes applied to every workspace key (home letters and task
+  # digits alike). Each per-WM module emits <prefix>+<key> for each workspace.
   workspaceKeys = {
-    switch          = "super+alt";        # switch to workspace N
-    move-window     = "super+alt+shift";  # move focused window to workspace N
-    move-and-follow = "super+alt+ctrl";   # move window to workspace N and follow it
+    switch          = "super+alt";        # switch to the workspace
+    move-window     = "super+alt+shift";  # move focused window to the workspace
+    move-and-follow = "super+alt+ctrl";   # move window to the workspace and follow it
   };
 }
