@@ -1,9 +1,17 @@
 { ... }:
 {
   enable = true;
-  onActivation.autoUpdate = true;
+  # Keep Homebrew updates out of the rebuild path: a `darwin-rebuild switch`
+  # only installs missing casks, never updates Homebrew or upgrades existing
+  # apps — so rebuilds stay deterministic. Upgrade deliberately instead:
+  #   brew update && brew upgrade && brew cleanup
+  onActivation.autoUpdate = false;
+  onActivation.upgrade = false;
   onActivation.cleanup = "uninstall";
-  onActivation.upgrade = true;
+  # Homebrew ≥5.1 refuses `brew bundle --cleanup` non-interactively without an
+  # explicit force flag; nix-darwin (pinned ~Feb 2026) doesn't pass one yet.
+  # Drop this once the flake's nix-darwin input is new enough to handle it.
+  onActivation.extraFlags = [ "--force-cleanup" ];
 
   taps = [ ];
 
@@ -39,7 +47,6 @@
     "signal"
     "spotify"
     "the-unarchiver"
-    "transmission"
     "utm"
     "veracrypt"
     "whatsapp"
