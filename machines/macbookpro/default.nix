@@ -23,8 +23,6 @@ let
     # Set the primary user for the system.
     system.primaryUser = "alex";
 
-    my.tiling-wm.enable = true;
-
     sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
     sops.defaultSopsFile = ./secrets/default.yml;
     sops.defaultSopsFormat = "yaml";
@@ -44,7 +42,6 @@ in
     modules = [
       ./settings.nix
 
-      ../../modules/tiling-wm
       ../../modules/r-dev/system.nix
 
       {

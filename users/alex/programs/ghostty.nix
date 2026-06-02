@@ -1,14 +1,9 @@
-{ config, osConfig, lib, pkgs, ... }:
+{ pkgs, ... }:
 
 let
   ghosttyPackage =
     if pkgs.stdenv.isDarwin then pkgs.ghostty-bin
     else pkgs.ghostty;
-
-  # Native NSWindow tabs conflict with AeroSpace tiling: each cmd-t briefly
-  # creates a real window that AeroSpace tiles before it merges into the tab
-  # group, leaving the original window stuck at half-size.
-  tilingWmEnabled = osConfig.my.tiling-wm.enable or false;
 in
 {
   enable = true;
@@ -24,6 +19,5 @@ in
     font-size = 13;
     term = "xterm-256color";
     theme = "Catppuccin Mocha";
-    keybind = lib.optionals tilingWmEnabled [ "cmd+t=unbind" ];
   };
 }
