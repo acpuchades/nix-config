@@ -128,34 +128,44 @@ let
         clientDns = "10.0.0.1";
         upstreamInterface = "wlp3s0";
         peers = {
-          alex-ipad = {
-            publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
-            allowedIPs = [ "10.0.0.4/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
-          };
           alex-laptop = {
             publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
             allowedIPs = [ "10.0.0.2/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-laptop".path;
           };
-          alex-phone = {
-            publicKey = "buzTS+bB/mymK+PGP+NPVX7lzJEsHs+5ETYzurzvUgk=";
+          alex-ipad = {
+            publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
             allowedIPs = [ "10.0.0.3/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone".path;
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
+          };
+          alex-phone-owner = {
+            publicKey = "jzXucrFLPLL0og1QXP75R+oYUyTqNCRnD6gw3SMPI0M=";
+            allowedIPs = [ "10.0.0.4/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-owner".path;
+          };
+          alex-phone-personal = {
+            publicKey = "ayIoJHS1QIvbyixoVTRMuDB+RMoh6N7mgscfP7RY7wY=";
+            allowedIPs = [ "10.0.0.5/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-personal".path;
+          };
+          alex-phone-work = {
+            publicKey = "r/0vQN5JOLlWWOBwIi9SRJj8F06FrMP9xywO+PMs6Rc=";
+            allowedIPs = [ "10.0.0.6/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-work".path;
           };
           mubin-laptop = {
             publicKey = "V2Vw6ViZK2RJgHyRA+nas7zwYcGIsnVJxJpff5/NxiA=";
-            allowedIPs = [ "10.0.0.10/32" ];
+            allowedIPs = [ "10.0.0.11/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop".path;
           };
           mubin-phone-personal = {
             publicKey = "aNPjIRiISsRILptMmmMO668b6N+gIHdJvrHcC5H4by0=";
-            allowedIPs = [ "10.0.0.11/32" ];
+            allowedIPs = [ "10.0.0.12/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
           };
           mubin-phone-work = {
             publicKey = "OUvDj9vX7NxnHBE+9t/9W+EjMuwyhxEvnlOtHZxPc0I=";
-            allowedIPs = [ "10.0.0.12/32" ];
+            allowedIPs = [ "10.0.0.13/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
           };
         };
