@@ -34,8 +34,25 @@ let
         ./sops.nix
         ./users.nix
 
-        # Host-specific policy routing: ProtonVPN egress for wg0 clients
-        ./vpn-egress.nix
+        # Host-specific policy routing: ProtonVPN egress for wg0 clients.
+        # DISABLED 2026-06-02: wg0 clients reached the LAN but had no usable
+        # internet through the nested wgproton tunnel. TWO distinct faults:
+        #   (a) PMTU black-holing — the 1340 tunnel dropped clients' large
+        #       TCP/QUIC packets (a "need to frag (mtu 1340)" flood). Lowering
+        #       the client profile MTU to 1280 (tried on alex-laptop) DID stop
+        #       the flood — so this part is understood/fixable.
+        #   (b) UNRESOLVED: even with (a) fixed, FORWARDED client traffic
+        #       (masqueraded to 10.2.0.2) still gets NO replies back from Proton,
+        #       while server-sourced egress (also 10.2.0.2, but OUTPUT path) AND
+        #       the gateway's own 10.2.0.1<->10.2.0.2 ICMP ping-pong both work.
+        #       The tunnel is healthy; only relayed/forwarded flows black-hole on
+        #       the return leg. Root cause not found (needs an outer-path capture
+        #       on wlp3s0 to see if forwarded encrypted pkts reach Proton / if
+        #       encrypted replies come back).
+        # Disabled so wg0 clients egress directly via the ISP (vpn-server's NAT,
+        # no kill switch, real ISP IP). Re-enabling needs (b) solved, not just
+        # the MTU. (sops secret left in place.)
+        # ./vpn-egress.nix
 
         # Host-specific egress confinement + NAT-PMP for the transmission daemon.
         # DISABLED 2026-05-30: ProtonVPN port forwarding (NAT-PMP) is not serviced
@@ -179,18 +196,23 @@ let
       # on AdGuard Home.
       my.wireguard-client = {
         enable = true;
-        interfaces.wgproton = {
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
-          address = [ "10.2.0.2/32" "2a07:b944::2:2/128" ];
-          allowedIPsAsRoutes = true;
-          table = "42";
-          mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
-          peer = {
-            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
-            endpoint = "130.195.250.66:51820";
-            allowedIPs = [ "0.0.0.0/0" ]; # IPv4 only; wg0 clients have no IPv6, avoids a dead ::/0 route
-          };
-        };
+        # DISABLED 2026-06-02 together with ./vpn-egress.nix above: forwarded
+        # wg0-client egress through this tunnel got no replies from Proton (full
+        # reasoning on the import comment — MTU was only part of it). With egress
+        # steering gone the tunnel would just sit up unused, so it's disabled too.
+        # Re-enabling needs the forwarded-no-reply issue solved, not just the MTU.
+        # interfaces.wgproton = {
+        #   privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
+        #   address = [ "10.2.0.2/32" "2a07:b944::2:2/128" ];
+        #   allowedIPsAsRoutes = true;
+        #   table = "42";
+        #   mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
+        #   peer = {
+        #     publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
+        #     endpoint = "130.195.250.66:51820";
+        #     allowedIPs = [ "0.0.0.0/0" ]; # IPv4 only; wg0 clients have no IPv6, avoids a dead ::/0 route
+        #   };
+        # };
 
         # Second ProtonVPN tunnel, dedicated to the transmission daemon so its
         # BitTorrent traffic exits on a separate IP with NAT-PMP port forwarding.
