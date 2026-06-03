@@ -44,6 +44,19 @@
     "nextcloud"
   ];
 
+  # Float individual windows by title instead of by app — for apps whose
+  # floating window shares its native identifier (bundle ID / app class) with
+  # windows that should stay tiled, so `floats` (app-level) can't target it.
+  # `title` is matched as a substring of the window title.
+  #   e.g. Zotero's "add citation" search popup (insert references in Word) is
+  #   the same app as the main library.
+  # Zotero's citation dialog (used to add references in Word) shares the main
+  # library's bundle ID, so it can't be floated app-wide via `floats`. The macOS
+  # window title AeroSpace sees is "Diálogo de citas".
+  titleFloats = [
+    { app = "zotero"; title = "Diálogo de citas"; }
+  ];
+
   shortcuts = {
     focus-left  = "super+alt+h";
     focus-down  = "super+alt+j";
