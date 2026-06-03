@@ -119,6 +119,15 @@ let
       run = [ "move-node-to-workspace ${h.name}" ];
     }) h.apps)
     shared.homes);
+
+  # Guard: evict any window not pinned to a home by the app-id rules above out of
+  # that home workspace, keeping homes limited to their apps. Ordered AFTER
+  # floatRules/workspaceRules so assigned + floating apps match their specific
+  # rule first (first-match-wins); only unmatched windows reach the guard.
+  homeGuardRules = lib.mapAttrsToList (_key: h: {
+    "if".workspace = h.name;
+    run = [ "move-node-to-workspace --focus-follows-window ${shared.unassignedSpace}" ];
+  }) shared.homes;
 in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
@@ -198,7 +207,7 @@ in
           cmd-alt-shift-l = [ "join-with right" "mode main" ];
         };
 
-        on-window-detected = floatRules ++ workspaceRules;
+        on-window-detected = floatRules ++ workspaceRules ++ homeGuardRules;
       };
     };
   };

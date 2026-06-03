@@ -22,15 +22,19 @@
   homes = {
     d = { name = "design";    apps = [ "affinity" ]; };
     v = { name = "vms";       apps = [ "utm" ]; };
-    e = { name = "email";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
+    m = { name = "email";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
     r = { name = "reading";   apps = [ "obsidian" "reeder" ]; };
     b = { name = "browsing";  apps = [ "zen" "chromium" "safari" ]; };
     c = { name = "coding";    apps = [ "emacs" ]; };
-    m = { name = "messaging"; apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
+    t = { name = "talk";      apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
     n = { name = "music";     apps = [ "spotify" ]; };
   };
 
   taskSpaces = [ "1" "2" "3" "4" "5" "6" "7" "8" "9" "0" ];
+
+  # Home workspaces only ever hold their assigned apps; any other window opened
+  # while a home is focused is evicted here (see homeGuardRules in aerospace.nix).
+  unassignedSpace = "0";
 
   floats = [
     "system-preferences" "finder" "activity-monitor" "calculator"
