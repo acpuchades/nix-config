@@ -113,6 +113,18 @@ let
     run = [ "layout floating" ];
   }) shared.floats;
 
+  # Float only specific windows of an app by title — needed when the window we
+  # want floating shares its bundle ID with windows we want tiled (see
+  # shared.titleFloats). Matched before workspaceRules/homeGuardRules so the
+  # window floats in place rather than being assigned/evicted.
+  titleFloatRules = map (f: {
+    "if" = {
+      app-id = appIds.${f.app};
+      window-title-regex-substring = f.title;
+    };
+    run = [ "layout floating" ];
+  }) shared.titleFloats;
+
   workspaceRules = lib.concatLists (lib.mapAttrsToList
     (_key: h: map (app: {
       "if".app-id = appIds.${app};
@@ -207,7 +219,7 @@ in
           cmd-alt-shift-l = [ "join-with right" "mode main" ];
         };
 
-        on-window-detected = floatRules ++ workspaceRules ++ homeGuardRules;
+        on-window-detected = floatRules ++ titleFloatRules ++ workspaceRules ++ homeGuardRules;
       };
     };
   };
