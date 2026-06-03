@@ -50,10 +50,14 @@
     focus-up    = "super+alt+k";
     focus-right = "super+alt+l";
 
-    move-left  = "super+alt+shift+h";
-    move-down  = "super+alt+shift+j";
-    move-up    = "super+alt+shift+k";
-    move-right = "super+alt+shift+l";
+    # ctrl is the "transport" modifier (move the focused thing): cmd+opt+ctrl is a
+    # comfortable bottom-left cluster, unlike the pinky-stretch cmd+opt+shift. Used
+    # here and for move-and-follow below. This inverts the i3/AeroSpace "shift=move"
+    # convention in favour of ergonomics; shift holds only the rarer ops.
+    move-left  = "super+alt+ctrl+h";
+    move-down  = "super+alt+ctrl+j";
+    move-up    = "super+alt+ctrl+k";
+    move-right = "super+alt+ctrl+l";
 
     resize-shrink = "super+alt+minus";
     resize-grow   = "super+alt+equal";
@@ -73,7 +77,7 @@
   # digits alike). Each per-WM module emits <prefix>+<key> for each workspace.
   workspaceKeys = {
     switch          = "super+alt";        # switch to the workspace
-    move-window     = "super+alt+shift";  # move focused window to the workspace
-    move-and-follow = "super+alt+ctrl";   # move window to the workspace and follow it
+    move-window     = "super+alt+shift";  # move focused window there, stay put (rarer → pinky shift)
+    move-and-follow = "super+alt+ctrl";   # move focused window there and follow (frequent → comfy ctrl)
   };
 }
