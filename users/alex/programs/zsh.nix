@@ -17,7 +17,7 @@
     fi
 
     if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ]; then
-      tmux attach -t main || tmux new -s main
+      exec tmux new-session -A -s main
     fi
   '';
   oh-my-zsh = {
