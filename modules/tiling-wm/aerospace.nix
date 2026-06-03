@@ -123,12 +123,26 @@ in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
 
-    # AeroSpace "hides" inactive-workspace windows by parking them off-screen in
-    # the bottom-right corner. App Exposé / Mission Control then scale their
-    # layout over a bounding box that includes those parked windows, rendering
-    # everything tiny. Grouping windows by application keeps Exposé legible.
-    # (Merges per-key with the system.defaults.dock block in settings.nix.)
-    system.defaults.dock.expose-group-apps = true;
+    # These merge per-key with the system.defaults.dock block in settings.nix.
+    system.defaults.dock = {
+      # AeroSpace "hides" inactive-workspace windows by parking them off-screen in
+      # the bottom-right corner. App Exposé / Mission Control then scale their
+      # layout over a bounding box that includes those parked windows, rendering
+      # everything tiny. Grouping windows by application keeps Exposé legible.
+      # mkForce overrides the `false` default kept in settings.nix.
+      expose-group-apps = lib.mkForce true;
+
+      # Keep Spaces in a fixed order so workspace bindings don't break when macOS
+      # reorders them by recent use.
+      mru-spaces = false;
+    };
+
+    # Native NSWindow tabs conflict with AeroSpace tiling: each cmd-t briefly
+    # creates a real window that AeroSpace tiles before it merges into the tab
+    # group, leaving the original window stuck at half-size. Unbind it here so the
+    # workaround travels with the module instead of living in ghostty.nix.
+    home-manager.users.${config.system.primaryUser}.programs.ghostty.settings.keybind =
+      [ "cmd+t=unbind" ];
 
     services.jankyborders = {
       enable = true;
