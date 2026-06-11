@@ -47,6 +47,7 @@
 ;; Programming mode hooks
 (add-hook 'prog-mode-hook #'hl-line-mode)  ;; highlight line
 (add-hook 'prog-mode-hook #'column-number-mode)  ;; column numbers
+(setq display-line-numbers-type 'relative)  ;; offsets from current line
 (add-hook 'prog-mode-hook #'display-line-numbers-mode)  ;; line numbers
 
 ;; Fill column indicator
