@@ -19,6 +19,10 @@
 
     # Impermanence (ephemeral root, persisted state)
     impermanence.url = "github:nix-community/impermanence";
+
+    # Better Zen — Betterfox-derived privacy/security user.js for Zen browser
+    better-zen.url = "github:Codextor/better-zen";
+    better-zen.flake = false;
   };
 
   outputs =
@@ -28,7 +32,8 @@
       nixpkgs,
       home-manager,
       sops-nix,
-      impermanence
+      impermanence,
+      better-zen
     }:
   {
     # Build darwin flake using:

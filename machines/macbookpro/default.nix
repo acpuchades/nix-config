@@ -3,6 +3,7 @@
   nix-darwin,
   home-manager,
   sops-nix,
+  better-zen,
   ...
 }:
 
@@ -62,7 +63,12 @@ in
       {
         home-manager.useGlobalPkgs = true;
         home-manager.useUserPackages = true;
-        home-manager.users.alex = import ../../users/alex;
+        home-manager.users.alex = {
+          imports = [
+            ../../users/alex
+            (import ./browser.nix { inherit better-zen; })
+          ];
+        };
         home-manager.extraSpecialArgs = { host = "macbookpro"; };
         home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
 
