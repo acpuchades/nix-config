@@ -79,7 +79,10 @@
     resize-shrink = "super+alt+minus";
     resize-grow   = "super+alt+equal";
 
-    layout-tiles           = "super+alt+slash";
+    # `slash` is a shifted key on the Spanish layout (shift+7), so super+alt+slash
+    # collides with the move-window prefix (super+alt+shift) on task digit 7.
+    # `period` pairs with `comma` (accordion) and is unshifted on both layouts.
+    layout-tiles           = "super+alt+period";
     layout-accordion       = "super+alt+comma";
     layout-fullscreen      = "super+alt+f";
     layout-floating-toggle = "super+alt+shift+space";
