@@ -49,6 +49,7 @@
     "the-unarchiver"
     "utm"
     "veracrypt"
+    "virtualbox"
     "whatsapp"
     "zen"
     "zoom"
