@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "better-zen": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1744876832,
+        "narHash": "sha256-7CWB3Gu3id84VLjbO0FUX4qLFsDRs6l4sxSPphb/9Hg=",
+        "owner": "Codextor",
+        "repo": "better-zen",
+        "rev": "3d0856aa284f8d52a3a6744096a0e519e0e63329",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Codextor",
+        "repo": "better-zen",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -116,6 +132,7 @@
     },
     "root": {
       "inputs": {
+        "better-zen": "better-zen",
         "home-manager": "home-manager",
         "impermanence": "impermanence",
         "nix-darwin": "nix-darwin",
