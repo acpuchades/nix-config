@@ -19,14 +19,18 @@
 
 {
   # key = the bare key for super+alt+<key>; name = the AeroSpace workspace id.
+  # Optional `layout` pins the workspace to a non-default sublayout, reapplied
+  # whenever it gains focus (the global default-root-container-layout only seeds
+  # fresh workspaces). One of: accordion-horizontal, accordion-vertical,
+  # tiles-horizontal, tiles-vertical. Omit to inherit the global tiles default.
   homes = {
-    d = { name = "design";    apps = [ "affinity" ]; };
+    d = { name = "design";    apps = [ "affinity" ]; layout = "accordion-horizontal"; };
     v = { name = "vms";       apps = [ "utm" ]; };
-    m = { name = "email";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; };
+    m = { name = "email";     apps = [ "proton-mail" "apple-mail" "ms-outlook" ]; layout = "accordion-horizontal"; };
     r = { name = "reading";   apps = [ "obsidian" "reeder" ]; };
-    b = { name = "browsing";  apps = [ "zen" "chromium" "safari" ]; };
+    b = { name = "browsing";  apps = [ "zen" "chromium" "safari" ]; layout = "accordion-horizontal"; };
     c = { name = "coding";    apps = [ "emacs" ]; };
-    t = { name = "talk";      apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; };
+    t = { name = "talk";      apps = [ "signal" "whatsapp" "ms-teams" "zoom" ]; layout = "accordion-horizontal"; };
     n = { name = "music";     apps = [ "spotify" ]; };
   };
 

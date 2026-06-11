@@ -140,6 +140,26 @@ let
     "if".workspace = h.name;
     run = [ "move-node-to-workspace --focus-follows-window ${shared.unassignedSpace}" ];
   }) shared.homes;
+
+  # AeroSpace has no per-workspace default layout, so homes with a `layout` are
+  # pinned by reapplying it on every focus-change into them. exec-on-workspace-change
+  # runs a single program, so all pinned homes share one bash callback that
+  # branches on $AEROSPACE_FOCUSED_WORKSPACE (set by AeroSpace for this hook).
+  aerospaceBin = "${config.services.aerospace.package}/bin/aerospace";
+  layoutMap = {
+    accordion-horizontal = "layout accordion horizontal";
+    accordion-vertical   = "layout accordion vertical";
+    tiles-horizontal     = "layout tiles horizontal";
+    tiles-vertical       = "layout tiles vertical";
+  };
+  layoutHomes = lib.filterAttrs (_key: h: h ? layout) shared.homes;
+  layoutCases = lib.mapAttrsToList
+    (_key: h: "${h.name}) ${aerospaceBin} ${layoutMap.${h.layout}} ;;")
+    layoutHomes;
+  workspaceLayoutCallback =
+    [ "/bin/bash" "-c"
+      ''case "$AEROSPACE_FOCUSED_WORKSPACE" in ${lib.concatStringsSep " " layoutCases} esac''
+    ];
 in
 {
   config = lib.mkIf (config.my.tiling-wm.enable && pkgs.stdenv.isDarwin) {
@@ -193,6 +213,8 @@ in
         accordion-padding = 30;
 
         on-focused-monitor-changed = [ "move-mouse monitor-lazy-center" ];
+
+        exec-on-workspace-change = workspaceLayoutCallback;
 
         gaps = {
           inner.horizontal = 8;
