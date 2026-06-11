@@ -3,6 +3,7 @@ inputs: {
   home-manager.enable = true;
 
   atuin = import ./atuin.nix inputs;
+  claude-code = import ./claude-code.nix inputs;
   eza = import ./eza.nix inputs;
   fzf = import ./fzf.nix inputs;
   ghostty = import ./ghostty.nix inputs;
