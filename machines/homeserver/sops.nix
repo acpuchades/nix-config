@@ -64,12 +64,13 @@
       };
 
       # Per-peer preshared keys for wg0 (declarative peers in my.vpn-server.peers)
-      "wireguard/psk/alex-ipad" = { mode = "0400"; };
       "wireguard/psk/alex-laptop" = { mode = "0400"; };
+      "wireguard/psk/alex-ipad" = { mode = "0400"; };
       "wireguard/psk/alex-phone-owner" = { mode = "0400"; };
       "wireguard/psk/alex-phone-personal" = { mode = "0400"; };
       "wireguard/psk/alex-phone-work" = { mode = "0400"; };
-      "wireguard/psk/mubin-laptop" = { mode = "0400"; };
+      "wireguard/psk/mubin-laptop-personal" = { mode = "0400"; };
+      "wireguard/psk/mubin-laptop-work" = { mode = "0400"; };
       "wireguard/psk/mubin-phone-personal" = { mode = "0400"; };
       "wireguard/psk/mubin-phone-work" = { mode = "0400"; };
 

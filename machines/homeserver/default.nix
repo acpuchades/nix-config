@@ -170,18 +170,23 @@ let
             allowedIPs = [ "10.0.0.6/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-work".path;
           };
-          mubin-laptop = {
-            publicKey = "V2Vw6ViZK2RJgHyRA+nas7zwYcGIsnVJxJpff5/NxiA=";
+          mubin-laptop-personal = {
+            publicKey = "Wk0VWDe0KNjrG8fDDTfFXpuNfZ8BNxLxhYiF1LFyCA4=";
+            allowedIPs = [ "10.0.0.10/32" ];
+            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-personal".path;
+          };
+          mubin-laptop-work = {
+            publicKey = "3jUISZl3AQAScASjxNnoGPvayi1/3jbLUzVS+6Kzfmo=";
             allowedIPs = [ "10.0.0.11/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop".path;
+            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-work".path;
           };
           mubin-phone-personal = {
-            publicKey = "aNPjIRiISsRILptMmmMO668b6N+gIHdJvrHcC5H4by0=";
+            publicKey = "y5XFrY1BT+lG25DM+0se9GBTiGcAv69Ag2twUbcWugE=";
             allowedIPs = [ "10.0.0.12/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
           };
           mubin-phone-work = {
-            publicKey = "OUvDj9vX7NxnHBE+9t/9W+EjMuwyhxEvnlOtHZxPc0I=";
+            publicKey = "efhtt7/eRYIvoyda7u+0GUA7y6WOxZtbPjIUNwdOsF4=";
             allowedIPs = [ "10.0.0.13/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
           };
