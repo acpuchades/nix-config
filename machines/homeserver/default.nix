@@ -285,15 +285,12 @@ let
         virtualHost = "adguard.acpuchades.com";
         allowedNetworks = privateNetworks;
         dnsRewrites = [
-          # Split-horizon for the WireGuard endpoint so on-LAN always-on clients
-          # connect to the homeserver locally instead of via router hairpin.
-          # External resolvers still get the public IP via DDNS. Caveat: AdGuard
-          # rewrites are global, so a connected *remote* client that re-resolves
-          # this name through the tunnel (10.0.0.1) also gets 192.168.2.2 — which
-          # only it can't reach. Expected to be a self-healing blip on reconnect,
-          # not a lockout; see [[no-global-rewrite-wg-endpoint]] and verify with a
-          # remote re-resolution test before fully trusting it.
-          { domain = "vpn.acpuchades.com";       answer = homeServerLocalAddress; }
+          # vpn.acpuchades.com is intentionally NOT rewritten here: it must
+          # always resolve to the public IP (via DDNS) so the WireGuard endpoint
+          # stays reachable. The router handles NAT hairpin for on-LAN clients,
+          # which avoids the split-horizon blip a global AdGuard rewrite caused
+          # for remote clients re-resolving the endpoint through the tunnel when
+          # switching networks while connected.
           { domain = "www.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "blog.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
