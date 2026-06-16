@@ -5,12 +5,6 @@
   autosuggestion.enable = true;
   syntaxHighlighting.enable = true;
   history.size = 10000;
-  loginExtra = ''
-    # mamba shell hook
-    if command -v mamba >/dev/null 2>&1; then
-      eval "$(${pkgs.mamba-cpp}/bin/mamba shell hook --shell zsh)"
-    fi
-  '';
   initContent = ''
     if [ -n "$SSH_CONNECTION" ]; then
       alias emacs="emacs -nw"

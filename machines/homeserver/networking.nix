@@ -11,7 +11,7 @@
     wireless = {
       enable = true;
       interfaces = [ "wlp3s0" ];
-      userControlled.enable = false;
+      userControlled = false;
       secretsFile = config.sops.templates."wifi/secrets".path;
       networks."MIWIFI_5G_dehC" = {
         pskRaw = "ext:home-wlan-psk";

@@ -128,6 +128,16 @@ in
       default = "monthly";
       description = "systemd OnCalendar expression for btrfs auto-scrub (only takes effect when btrfs filesystems are present).";
     };
+
+    secretKeyFile = lib.mkOption {
+      type = lib.types.path;
+      description = ''
+        Path to a file holding Grafana's `security.secret_key` (used to encrypt
+        secrets stored in its database). Read at runtime via Grafana's
+        `$__file{}` provider, so the value never enters the Nix store. Point this
+        at a sops secret owned by the grafana user.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [ {
@@ -184,6 +194,7 @@ in
           domain = config.my.server-stats.hostName;
           root_url = "https://${config.my.server-stats.hostName}";
         };
+        security.secret_key = "$__file{${cfg.secretKeyFile}}";
         "auth.anonymous" = {
           enabled = true;
           org_role = "Viewer";

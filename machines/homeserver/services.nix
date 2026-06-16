@@ -31,7 +31,7 @@
     # systemd-resolved → AdGuard Home → dnscrypt-proxy
     resolved = {
       enable = true;
-      extraConfig = "DNSStubListener=no";
+      settings.Resolve.DNSStubListener = false;
     };
 
     # Avahi/mDNS (.local)
