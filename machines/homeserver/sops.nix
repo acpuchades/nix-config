@@ -140,7 +140,7 @@
           ttl=120
           login=token
           password=${config.sops.placeholder."cloudflare/token"}
-          analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
+          acpuchades.com,analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
       '';
 
       "postfix/sasl_passwd" = {
