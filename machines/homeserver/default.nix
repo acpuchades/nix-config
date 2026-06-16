@@ -291,6 +291,7 @@ let
           # which avoids the split-horizon blip a global AdGuard rewrite caused
           # for remote clients re-resolving the endpoint through the tunnel when
           # switching networks while connected.
+          { domain = "acpuchades.com";           answer = homeServerLocalAddress; }
           { domain = "www.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "blog.acpuchades.com";      answer = homeServerLocalAddress; }
           { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
@@ -313,6 +314,9 @@ let
         enable = true;
         adminEmail = adminEmailAddress;
         virtualHosts = {
+          "acpuchades.com" = {
+            redirect = "https://www.acpuchades.com";
+          };
           "www.acpuchades.com" = {
             root = "/var/www/acpuchades.com";
           };
