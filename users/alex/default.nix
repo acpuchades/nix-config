@@ -134,7 +134,7 @@ inputs@{ config, lib, pkgs, ... }:
     nil
     nix-direnv
     nixd
-    nixfmt-rfc-style
+    nixfmt
     sops
     ssh-to-age
   ];

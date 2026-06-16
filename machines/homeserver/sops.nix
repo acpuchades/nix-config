@@ -44,6 +44,15 @@
         mode = "0400";
       };
 
+      # Grafana DB encryption key (services.grafana.settings.security.secret_key).
+      # Read at runtime via Grafana's $__file{} provider, so it must be owned by
+      # the grafana user. Generate with: openssl rand -base64 24
+      "grafana/secret-key" = {
+        owner = "grafana";
+        group = "grafana";
+        mode = "0400";
+      };
+
       "passwd/alex" = {
         key = "passwd/alex";
         neededForUsers = true;
