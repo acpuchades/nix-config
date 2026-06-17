@@ -161,9 +161,14 @@
         '';
       };
 
-      "wifi/secrets".content = ''
-        home-wlan-psk=${config.sops.placeholder."wifi/password"}
-      '';
+      "wifi/secrets" = {
+        owner = "wpa_supplicant";
+        group = "wpa_supplicant";
+        mode = "0400";
+        content = ''
+          home-wlan-psk=${config.sops.placeholder."wifi/password"}
+        '';
+      };
 
     };
 
