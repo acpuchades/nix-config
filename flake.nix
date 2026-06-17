@@ -13,6 +13,14 @@
     home-manager.url = "github:nix-community/home-manager/release-26.05";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
 
+    # Emacs Overlay — daily-regenerated MELPA/ELPA package set. nixpkgs only
+    # snapshots Emacs packages once per release and freezes them, which routinely
+    # ships packages broken against the bundled Emacs; this overlay tracks the
+    # real upstream releases so we roll forward with `nix flake update` instead
+    # of pinning per-package commit hashes.
+    emacs-overlay.url = "github:nix-community/emacs-overlay";
+    emacs-overlay.inputs.nixpkgs.follows = "nixpkgs";
+
     # Sops-Nix
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
@@ -33,7 +41,8 @@
       home-manager,
       sops-nix,
       impermanence,
-      better-zen
+      better-zen,
+      emacs-overlay
     }:
   {
     # Build darwin flake using:

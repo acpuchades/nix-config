@@ -4,6 +4,7 @@
   home-manager,
   sops-nix,
   better-zen,
+  emacs-overlay,
   ...
 }:
 
@@ -47,6 +48,7 @@ in
 
       ../../modules/tiling-wm
       ../../modules/r-dev/system.nix
+      (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
 
       {
         # WORKAROUND: disable direnv failing test suite on macos
