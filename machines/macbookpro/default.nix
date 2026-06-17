@@ -44,10 +44,8 @@ in
   nix-darwin.lib.darwinSystem {
 
     modules = [
-      ./settings.nix
-
-      ../../modules/tiling-wm
       ../../modules/r-dev/system.nix
+
       (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
 
       {
@@ -58,6 +56,8 @@ in
           })
         ];
       }
+
+      ./settings.nix
 
       configuration
       sops-nix.darwinModules.sops
