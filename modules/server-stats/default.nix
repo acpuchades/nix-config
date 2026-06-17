@@ -138,6 +138,29 @@ in
         at a sops secret owned by the grafana user.
       '';
     };
+
+    rendererTokenFile = lib.mkOption {
+      type = lib.types.path;
+      description = ''
+        Path to a file holding the raw image-renderer token. Read by Grafana via
+        its `$__file{}` provider into `[rendering] renderer_token`, so the value
+        never enters the Nix store. Must match the renderer's `AUTH_TOKEN`
+        (see {option}`rendererAuthEnvFile`). Point at a sops secret owned by the
+        grafana user. Generate with: openssl rand -hex 32
+      '';
+    };
+
+    rendererAuthEnvFile = lib.mkOption {
+      type = lib.types.path;
+      description = ''
+        Path to an EnvironmentFile defining `AUTH_TOKEN=<token>` for
+        grafana-image-renderer. The renderer takes its auth token only from the
+        environment (its CLI/config args land in the Nix store and `ps`, so a
+        secret can't go there), and as of the 26.05 bump it refuses the built-in
+        default token in production. Must hold the same value as
+        {option}`rendererTokenFile`. Point at a sops template.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [ {
@@ -168,22 +191,18 @@ in
       ];
     };
 
-    systemd.services.grafana-image-renderer = {
-      description = "Grafana Image Renderer";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "network.target" ];
-      path = [ pkgs.chromium ];
-      serviceConfig = {
-        ExecStart = "${pkgs.grafana-image-renderer}/bin/grafana-image-renderer server";
-        User = "grafana";
-        Restart = "on-failure";
-        Environment = [
-          "HTTP_HOST=127.0.0.1"
-          "HTTP_PORT=8081"
-          "ENABLE_METRICS=true"
-        ];
-      };
+    # Native image-renderer module. `provisionGrafana` wires Grafana's
+    # rendering.server_url/callback_url automatically (renderer listens on the
+    # default localhost:8081). The auth token is the only secret and can't live
+    # in `settings` (those become CLI args, visible in the store and `ps`), so it
+    # comes in as AUTH_TOKEN via an EnvironmentFile — read by the service manager
+    # as root, so the DynamicUser sandbox doesn't block it.
+    services.grafana-image-renderer = {
+      enable = true;
+      provisionGrafana = true;
     };
+    systemd.services.grafana-image-renderer.serviceConfig.EnvironmentFile =
+      cfg.rendererAuthEnvFile;
 
     services.grafana = {
       enable = true;
@@ -199,10 +218,10 @@ in
           enabled = true;
           org_role = "Viewer";
         };
-        rendering = {
-          server_url = "http://127.0.0.1:8081/render";
-          callback_url = "http://127.0.0.1:${toString config.my.server-stats.port}/";
-        };
+        # server_url/callback_url are provisioned by services.grafana-image-renderer
+        # (provisionGrafana). Only the token is set here, via the file provider so
+        # it never enters the Nix store, matching the renderer's AUTH_TOKEN.
+        rendering.renderer_token = "$__file{${cfg.rendererTokenFile}}";
       };
       provision = {
         enable = true;
