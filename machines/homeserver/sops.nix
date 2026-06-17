@@ -53,6 +53,15 @@
         mode = "0400";
       };
 
+      # Shared token for grafana-image-renderer. Rendered into the
+      # grafana/renderer-env template below in both AUTH_TOKEN /
+      # GF_RENDERING_RENDERER_TOKEN forms. Generate with: openssl rand -hex 32
+      "grafana/renderer-token" = {
+        owner = "grafana";
+        group = "grafana";
+        mode = "0400";
+      };
+
       "passwd/alex" = {
         key = "passwd/alex";
         neededForUsers = true;
@@ -167,6 +176,15 @@
         mode = "0400";
         content = ''
           home-wlan-psk=${config.sops.placeholder."wifi/password"}
+        '';
+      };
+
+      "grafana/renderer-env" = {
+        owner = "grafana";
+        group = "grafana";
+        mode = "0400";
+        content = ''
+          AUTH_TOKEN=${config.sops.placeholder."grafana/renderer-token"}
         '';
       };
 

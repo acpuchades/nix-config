@@ -452,6 +452,8 @@ let
         port = 3001;
         allowedNetworks = privateNetworks;
         secretKeyFile = config.sops.secrets."grafana/secret-key".path;
+        rendererTokenFile = config.sops.secrets."grafana/renderer-token".path;
+        rendererAuthEnvFile = config.sops.templates."grafana/renderer-env".path;
       };
 
       my.web-analytics = {
