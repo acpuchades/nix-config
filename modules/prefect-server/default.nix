@@ -86,12 +86,26 @@ in
       workerPools = cfg.workerPools;
     };
 
-    systemd.services.prefect-server.serviceConfig = {
-      DynamicUser = lib.mkForce false;
-      User = "prefect";
-      Group = "prefect";
-      ReadWritePaths = [ cfg.dataDir ];
-    };
+    systemd.services = lib.mkMerge [
+      {
+        prefect-server.serviceConfig = {
+          DynamicUser = lib.mkForce false;
+          User = "prefect";
+          Group = "prefect";
+          ReadWritePaths = [ cfg.dataDir ];
+        };
+      }
+
+      # Pin every worker to the LOCAL API. Otherwise the worker resolves the
+      # public baseUrl (https://.../api), which sits behind Caddy basic_auth and
+      # answers 401 — so the worker can never reach api/work_pools/<pool>. The
+      # local server has no auth, so workers must talk to it directly.
+      (lib.mapAttrs'
+        (name: _: lib.nameValuePair "prefect-worker-${name}" {
+          environment.PREFECT_API_URL = "http://127.0.0.1:${toString cfg.port}/api";
+        })
+        cfg.workerPools)
+    ];
 
     services.caddy.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
       ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
