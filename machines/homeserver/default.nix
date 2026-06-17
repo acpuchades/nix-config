@@ -7,6 +7,7 @@
   home-manager,
   sops-nix,
   impermanence,
+  emacs-overlay,
   ...
 }:
 
@@ -450,6 +451,7 @@ let
         hostName = "status.acpuchades.com";
         port = 3001;
         allowedNetworks = privateNetworks;
+        secretKeyFile = config.sops.secrets."grafana/secret-key".path;
       };
 
       my.web-analytics = {
@@ -569,6 +571,7 @@ nixpkgs.lib.nixosSystem {
   modules = [
 
     ../../modules/r-dev/system.nix
+    (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
 
     configuration
     sops-nix.nixosModules.sops
