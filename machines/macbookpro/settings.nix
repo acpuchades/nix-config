@@ -32,6 +32,9 @@
     magnification = false;
     tilesize = 64;
 
+    # Show a dot under apps that are currently running.
+    show-process-indicators = true;
+
     # Hot corners: 1 = Disabled (no action), 13 = Lock Screen.
     wvous-bl-corner = 1;
     wvous-br-corner = 13;
@@ -89,6 +92,12 @@
     GuestEnabled = false;
   };
 
+  system.defaults.WindowManager = {
+    # Don't sweep all windows aside to reveal the desktop when clicking the
+    # wallpaper; only do so from Mission Control / a hot corner.
+    EnableStandardClickToShowDesktop = false;
+  };
+
   system.defaults.NSGlobalDomain = {
     AppleShowAllExtensions = true;
     KeyRepeat = 2;
@@ -100,6 +109,21 @@
     NSAutomaticSpellingCorrectionEnabled = false;
     # Two-finger swipe between pages.
     AppleEnableSwipeNavigateWithScrolls = true;
+
+    # Hold a key to repeat it (e.g. in editors) instead of showing the accent
+    # character picker.
+    ApplePressAndHoldEnabled = false;
+
+    # Expand the save and print panels by default instead of the compact sheet.
+    NSNavPanelExpandedStateForSaveMode = true;
+    PMPrintingExpandedStateForPrint = true;
+
+    # Save new documents to disk by default rather than iCloud.
+    NSDocumentSaveNewDocumentsToCloud = false;
+
+    # Spring-loaded folders: hover a drag over a folder to open it.
+    "com.apple.springing.enabled" = true;
+    "com.apple.springing.delay" = 0.5;
   };
 
   # Additional custom settings for macOS
