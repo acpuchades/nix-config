@@ -113,8 +113,7 @@
       "com.apple.trackpad.forceClick" = false;
     };
     # Mission Control (3-finger swipe up), App Exposé (3-finger swipe down) and
-    # switch between Spaces / full-screen apps (3-finger swipe left/right) —
-    # the last is how we reach native-fullscreen Spaces AeroSpace can't manage.
+    # switch between Spaces / full-screen apps (3-finger swipe left/right).
     # Horiz and four-finger are mutually exclusive, so four-finger horiz is off.
     # NB: enabling TrackpadThreeFingerDrag would disable the swipes above.
     "com.apple.AppleMultitouchTrackpad" = {
