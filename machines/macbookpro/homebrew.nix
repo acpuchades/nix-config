@@ -23,6 +23,7 @@
     "adobe-acrobat-reader"
     "affinity"
     "alcove"
+    "android-studio"
     "bartender"
     "bitwarden"
     "chromium"

@@ -2,7 +2,6 @@
 
 with pkgs;
 [
-  android-tools
   ext4fuse
   ffmpeg-full
   go
