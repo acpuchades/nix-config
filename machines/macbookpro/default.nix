@@ -15,6 +15,22 @@ let
     # Necessary for using flakes on this system.
     nix.settings.experimental-features = "nix-command flakes";
 
+    # Binary cache for emacs-overlay / nix-community builds so they download
+    # instead of compiling locally. Merges with the rstats cache from r-dev.
+    nix.settings.extra-substituters = [ "https://nix-community.cachix.org" ];
+    nix.settings.extra-trusted-public-keys = [
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+    ];
+
+    # Deduplicate identical files in the store to reclaim disk, weekly.
+    nix.optimise.automatic = true;
+    nix.optimise.interval = { Weekday = 0; Hour = 3; Minute = 30; };
+
+    # Garbage-collect old generations weekly so /nix/store doesn't grow unbounded.
+    nix.gc.automatic = true;
+    nix.gc.interval = { Weekday = 0; Hour = 3; Minute = 0; };
+    nix.gc.options = "--delete-older-than 14d";
+
     # Set Git commit hash for darwin-version.
     system.configurationRevision = self.rev or self.dirtyRev or null;
 
