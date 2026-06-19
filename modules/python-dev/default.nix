@@ -37,5 +37,17 @@
       channel_priority: strict
       auto_activate_base: false
     '';
+
+    # Initialize the mamba shell so `mamba activate` works in interactive shells.
+    # nixpkgs wraps the real binary as `.mamba-wrapped`; the generated hook derives
+    # its shell-function name from that basename, and the leading dot makes
+    # `${name%.*}` strip it to an empty string ("unknown MAMBA_EXE" error). Rewrite
+    # the embedded path to the sibling `mamba` wrapper, which runs the same and has a
+    # clean basename.
+    programs.zsh.initContent = lib.mkAfter ''
+      if command -v mamba >/dev/null 2>&1; then
+        eval "$(mamba shell hook --shell zsh | sed 's|\.mamba-wrapped|mamba|g')"
+      fi
+    '';
   };
 }
