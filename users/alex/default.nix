@@ -18,6 +18,7 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-nix
     ../../modules/emacs-rust
     ../../modules/emacs-golang
+    ../../modules/emacs-copilot
   ];
 
   # This value determines the home Manager release that your
