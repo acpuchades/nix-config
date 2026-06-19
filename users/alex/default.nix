@@ -4,6 +4,9 @@ inputs@{ config, lib, pkgs, ... }:
   imports = [
     ../../modules/r-dev
     ../../modules/python-dev
+    ../../modules/rust-dev
+    ../../modules/golang-dev
+    ../../modules/nix-dev
 
     ../../modules/emacs-core
     ../../modules/emacs-completion
@@ -13,6 +16,8 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-ess
     ../../modules/emacs-python
     ../../modules/emacs-nix
+    ../../modules/emacs-rust
+    ../../modules/emacs-golang
   ];
 
   # This value determines the home Manager release that your
@@ -129,14 +134,6 @@ inputs@{ config, lib, pkgs, ... }:
     git-crypt
     ntfy
     prefect
-
-    # Nix
-    nil
-    nix-direnv
-    nixd
-    nixfmt
-    sops
-    ssh-to-age
   ];
 
   home.sessionVariables = {
