@@ -1,4 +1,4 @@
-inputs@{ config, lib, pkgs, ... }:
+inputs@{ config, lib, pkgs, host, ... }:
 
 {
   imports = [
@@ -19,6 +19,8 @@ inputs@{ config, lib, pkgs, ... }:
     ../../modules/emacs-rust
     ../../modules/emacs-golang
     ../../modules/emacs-copilot
+  ] ++ lib.optionals (host == "macbookpro") [
+    ../../modules/android-dev
   ];
 
   # This value determines the home Manager release that your
