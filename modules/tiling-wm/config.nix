@@ -42,8 +42,8 @@
 
   floats = [
     "system-preferences" "finder" "activity-monitor" "calculator"
-    "raycast" "bartender" "cleanshot" "clop" "little-snitch"
-    "micro-snitch" "dropover" "hand-mirror" "alcove" "text-edit"
+    "raycast" "bartender" "cleanshot" "clop" "lulu"
+    "oversight" "dropover" "hand-mirror" "alcove" "text-edit"
     "ui-agent" "user-notification-center" "kaspersky-agent" "bitwarden"
     "nextcloud"
   ];

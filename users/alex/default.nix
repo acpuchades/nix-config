@@ -142,6 +142,10 @@ inputs@{ config, lib, pkgs, host, ... }:
   home.sessionVariables = {
     EDITOR = "emacsclient -a ''";
     PAGER = "bat --paging=always";
+    # Syntax-highlight plain `less` by piping files through bat, which bundles
+    # syntaxes for Rust, Go, Python, Nix, etc. — one preprocessor covers them all.
+    LESSOPEN = "|${pkgs.bat}/bin/bat --color=always %s";
+    LESS = "-R";
     VISUAL = "emacsclient -a ''";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
