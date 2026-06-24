@@ -9,6 +9,9 @@
   # Enable the touch ID authentication for sudo.
   security.pam.services.sudo_local.touchIdAuth = true;
 
+  # Use the global NTP pool instead of Apple's time server.
+  networking.timeServer = "pool.ntp.org";
+
   system.activationScripts.postActivation.text = ''
     # Reload macOS settings and restart Dock so defaults take effect without a logout cycle.
     sudo -u ${config.system.primaryUser} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
@@ -19,6 +22,15 @@
     for script in /opt/homebrew/Caskroom/libreoffice-language-pack/*/SilentInstall.sh; do
       [ -x "$script" ] && /bin/bash "$script" || true
     done
+
+    # Privacy: opt out of "Share Mac Analytics" / "Share with app developers".
+    # This is a root-owned system plist, so it can't go through the per-user
+    # defaults that system.defaults.CustomUserPreferences manages.
+    analytics_plist="/Library/Application Support/CrashReporter/DiagnosticMessagesHistory.plist"
+    mkdir -p "$(dirname "$analytics_plist")"
+    defaults write "$analytics_plist" AutoSubmit -bool false
+    defaults write "$analytics_plist" ThirdPartyDataSubmit -bool false
+    chmod 644 "$analytics_plist"
   '';
 
   system.defaults.dock = {
@@ -205,6 +217,38 @@
     };
     "com.apple.AdLib" = {
       allowApplePersonalizedAdvertising = false;
+      # Privacy: disable the per-device advertising identifier (IDFA).
+      allowIdentifierForAdvertising = false;
+    };
+    # Privacy: don't show the crash-report dialog or auto-submit crash data.
+    "com.apple.CrashReporter" = {
+      DialogType = "none";
+    };
+    # Privacy: turn Siri off and opt out of sharing Siri/dictation and search
+    # query data with Apple (2 = opted out).
+    "com.apple.assistant.support" = {
+      "Assistant Enabled" = 0;
+      "Siri Data Sharing Opt-In Status" = 2;
+      "Search Queries Data Sharing Status" = 2;
+    };
+    # Privacy: keep "Hey Siri" voice trigger and the Siri menu-bar icon off.
+    "com.apple.Siri" = {
+      VoiceTriggerUserEnabled = 0;
+      StatusMenuVisible = 0;
+    };
+    # Privacy: opt out of Apple Intelligence entirely (ARM Macs, macOS 15.3+).
+    # A restart may be required for the toggle to fully take effect.
+    "com.apple.CloudSubscriptionFeatures.optIn" = {
+      "545129924" = false;
+    };
+    # Privacy: disable Handoff/Continuity activity advertising and receiving.
+    "com.apple.coreservices.useractivityd" = {
+      ActivityAdvertisingAllowed = false;
+      ActivityReceivingAllowed = false;
+    };
+    # Privacy: disable AirDrop discovery.
+    "com.apple.NetworkBrowser" = {
+      DisableAirDrop = true;
     };
     "com.apple.print.PrintingPrefs" = {
       # Automatically quit printer app once the print jobs complete
