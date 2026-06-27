@@ -26,6 +26,7 @@
       mamba-cpp
       pyright
       ruff
+      twine
       uv
     ];
 

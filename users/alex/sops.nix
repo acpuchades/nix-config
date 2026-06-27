@@ -31,6 +31,11 @@ inputs@{ config, host, ...}:
       key = "ntfy/token";
     };
 
+    "pypi/token" = {
+      sopsFile = ./secrets/${host}.yml;
+      key = "pypi/token";
+    };
+
     "prefect/user" = {
       sopsFile = ./secrets/default.yml;
       key = "prefect/user";
@@ -54,6 +59,12 @@ inputs@{ config, host, ...}:
         user: acpuchades
         git_protocol: https
         oauth_token: ${config.sops.placeholder."github/token"}
+    '';
+
+    "pypi/pypirc".content = ''
+      [pypi]
+      username = __token__
+      password = ${config.sops.placeholder."pypi/token"}
     '';
 
     "prefect/profiles.toml".content = ''

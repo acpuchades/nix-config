@@ -6,6 +6,10 @@
   syntaxHighlighting.enable = true;
   history.size = 10000;
   initContent = ''
+    if [ -r "${config.sops.secrets."pypi/token".path}" ]; then
+      export UV_PUBLISH_TOKEN="$(cat "${config.sops.secrets."pypi/token".path}")"
+    fi
+
     if [ -n "$SSH_CONNECTION" ]; then
       alias emacs="emacs -nw"
     fi
