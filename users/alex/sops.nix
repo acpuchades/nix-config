@@ -12,6 +12,11 @@ inputs@{ config, host, ...}:
       key = "anthropic/token";
     };
 
+    "crates-io/token" = {
+      sopsFile = ./secrets/${host}.yml;
+      key = "crates-io/token";
+    };
+
     "github/token" = {
       sopsFile = ./secrets/${host}.yml;
       key = "github/token";
@@ -39,6 +44,11 @@ inputs@{ config, host, ...}:
   };
 
   templates = {
+    "cargo/credentials.toml".content = ''
+      [registry]
+      token = "${config.sops.placeholder."crates-io/token"}"
+    '';
+
     "gh/hosts.yml".content = ''
       github.com:
         user: acpuchades

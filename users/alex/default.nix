@@ -59,6 +59,15 @@ inputs@{ config, lib, pkgs, host, ... }:
     source = ./files/starship.toml;
   };
 
+  home.activation.writeCargoCredentials = lib.hm.dag.entryAfter [ "sops-nix" ] ''
+    set -euo pipefail
+
+    mkdir -p "$HOME/.cargo"
+    install -C -m 600 \
+      "${config.sops.templates."cargo/credentials.toml".path}" \
+      "$HOME/.cargo/credentials.toml"
+  '';
+
   home.activation.writeGhHosts = lib.hm.dag.entryAfter [ "sops-nix" ] ''
     set -euo pipefail
 
@@ -109,6 +118,7 @@ inputs@{ config, lib, pkgs, host, ... }:
     direnv
     delta
     duckdb
+    exiftool
     fd
     fastfetch
     jq
