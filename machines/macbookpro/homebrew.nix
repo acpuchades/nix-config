@@ -47,6 +47,7 @@
     "raycast"
     "signal"
     "spotify"
+    "syntax-highlight"
     "the-unarchiver"
     "utm"
     "veracrypt"
