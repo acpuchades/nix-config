@@ -68,6 +68,14 @@ inputs@{ config, lib, pkgs, host, ... }:
       "$HOME/.cargo/credentials.toml"
   '';
 
+  home.activation.writePypirc = lib.hm.dag.entryAfter [ "sops-nix" ] ''
+    set -euo pipefail
+
+    install -C -m 600 \
+      "${config.sops.templates."pypi/pypirc".path}" \
+      "$HOME/.pypirc"
+  '';
+
   home.activation.writeGhHosts = lib.hm.dag.entryAfter [ "sops-nix" ] ''
     set -euo pipefail
 
