@@ -45,8 +45,8 @@ let
     bartender                 = "com.surteesstudios.Bartender";
     cleanshot                 = "pl.maketheweb.cleanshotx";
     clop                      = "com.lowtechguys.Clop";
-    lulu                      = "com.objective-see.lulu";
-    oversight                 = "com.objective-see.oversight";
+    little-snitch             = "at.obdev.LittleSnitch";
+    micro-snitch              = "at.obdev.MicroSnitch";
     dropover                  = "me.damir.dropover-mac";
     hand-mirror               = "com.rocketshipapps.handmirror";
     alcove                    = "com.alcoveapp.alcove";
