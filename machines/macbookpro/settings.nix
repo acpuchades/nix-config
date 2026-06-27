@@ -9,10 +9,13 @@
   # Enable the touch ID authentication for sudo.
   security.pam.services.sudo_local.touchIdAuth = true;
 
-  # Use the global NTP pool instead of Apple's time server.
-  networking.timeServer = "pool.ntp.org";
-
   system.activationScripts.postActivation.text = ''
+    # Use the global NTP pool instead of Apple's time server. nix-darwin has no
+    # option for this, so set it imperatively via systemsetup (requires root,
+    # which postActivation has) and keep network time syncing on.
+    systemsetup -setnetworktimeserver pool.ntp.org
+    systemsetup -setusingnetworktime on
+
     # Reload macOS settings and restart Dock so defaults take effect without a logout cycle.
     sudo -u ${config.system.primaryUser} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
     sudo -u ${config.system.primaryUser} /usr/bin/killall Dock || true

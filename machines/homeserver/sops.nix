@@ -187,8 +187,6 @@
           AUTH_TOKEN=${config.sops.placeholder."grafana/renderer-token"}
         '';
       };
-
     };
-
   };
 }
