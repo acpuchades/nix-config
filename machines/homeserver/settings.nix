@@ -1,9 +1,8 @@
 { lib, ... }:
 
 {
-  # Allow claude-code (unfree) without opting the whole server into unfree.
-  nixpkgs.config.allowUnfreePredicate =
-    pkg: builtins.elem (lib.getName pkg) [ "claude-code" ];
+  # Allow installation of not-free software.
+  nixpkgs.config.allowUnfree = true;
 
   nix.settings = {
     experimental-features = [
