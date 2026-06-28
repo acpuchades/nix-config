@@ -19,5 +19,7 @@
       cargo-edit
       cargo-watch
     ] ++ config.my.rust-dev.extraPackages;
+
+    home.sessionPath = [ "$HOME/.cargo/bin" ];
   };
 }
