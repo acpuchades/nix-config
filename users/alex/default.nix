@@ -6,6 +6,7 @@ inputs@{ config, lib, pkgs, host, ... }:
     ../../modules/python-dev
     ../../modules/rust-dev
     ../../modules/golang-dev
+    ../../modules/c-dev
     ../../modules/nix-dev
 
     ../../modules/emacs-core
