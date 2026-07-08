@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 
 {
   # Allow installation of not-free software.
@@ -55,6 +55,15 @@
   #   enableSSHSupport = true;
   # };
   programs.zsh.enable = true;
+
+  # Provide a stub dynamic linker at the FHS path so foreign (non-Nix)
+  # dynamically-linked binaries can run — e.g. pip-installed manylinux
+  # wheels like numpy that expect libstdc++.so.6 at the system location.
+  programs.nix-ld.enable = true;
+  programs.nix-ld.libraries = with pkgs; [
+    stdenv.cc.cc.lib # libstdc++.so.6, libgcc_s
+    zlib
+  ];
 
   security.sudo.wheelNeedsPassword = true;
 
