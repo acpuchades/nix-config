@@ -28,6 +28,17 @@
       allowedTCPPorts = [
         8333  # bitcoin
       ];
+
+      # Trust the LAN: accept all inbound traffic sourced from the local subnet
+      # (wlp3s0 is on 192.168.2.0/24). Internet traffic routed in via the router
+      # keeps its non-LAN source address and is unaffected. iptables backend —
+      # nftables is not enabled here (the egress modules rely on iptables).
+      extraCommands = ''
+        iptables -A nixos-fw -s 192.168.2.0/24 -j nixos-fw-accept
+      '';
+      extraStopCommands = ''
+        iptables -D nixos-fw -s 192.168.2.0/24 -j nixos-fw-accept || true
+      '';
     };
   };
 }
