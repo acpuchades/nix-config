@@ -14,14 +14,18 @@
     {
       plugin = resurrect;
       extraConfig = ''
-        set -g @resurrect-capture-pane-contents 'on'
+        # Don't snapshot/restore pane scrollback, so `clear` stays cleared
+        # across restores. Live scrollback is still kept via historyLimit.
+        set -g @resurrect-capture-pane-contents 'off'
       '';
     }
     {
       plugin = continuum;
       extraConfig = ''
         set -g @continuum-restore 'on'
-        set -g @continuum-save-interval '15'
+        # Save often so an exited tab is dropped from the snapshot quickly
+        # and won't be resurrected on the next restore.
+        set -g @continuum-save-interval '1'
       '';
     }
   ];
