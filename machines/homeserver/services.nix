@@ -50,6 +50,11 @@
         # Parallelism
         par=0                   # 0 = auto-detect cores; explicit value caps it
 
+        # UTXO cache — soft ceiling, not a reservation: bitcoind flushes to
+        # disk under memory pressure, so it yields RAM to other workloads.
+        # Big win for IBD/reindex/validation speed. Default 450 MiB.
+        dbcache=4000            # MiB
+
         # Mempool — bigger = more fee-rate visibility, more RAM
         maxmempool=1000         # MiB; default 300
 
@@ -95,6 +100,17 @@
     postgresql = {
       enable = true;
       dataDir = "/srv/encrypted/postgresql";
+      # shared_buffers is allocated at startup and held for the postmaster's
+      # lifetime — the one knob here that truly locks RAM away — so kept modest
+      # to leave the bulk free for ad-hoc data analysis. effective_cache_size is
+      # only a planner hint (allocates nothing) and reflects the OS page cache.
+      settings = {
+        shared_buffers = "2GB";
+        effective_cache_size = "24GB";
+        work_mem = "64MB";
+        maintenance_work_mem = "512MB";
+        max_parallel_workers_per_gather = 4;
+      };
       ensureDatabases = [
         "prefect"
       ];

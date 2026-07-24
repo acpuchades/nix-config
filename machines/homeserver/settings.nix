@@ -21,6 +21,35 @@
   # Weekly TRIM for the NVMe.
   services.fstrim.enable = true;
 
+  # Memory tuning for a 64 GB host. None of these reserve RAM: swappiness just
+  # biases the kernel away from swapping out the working set (keeping analysis
+  # data resident), and vfs_cache_pressure keeps the dentry/inode cache around
+  # for the many-file workloads (NextCloud, Samba, Jellyfin, Bitcoin blocks).
+  boot.kernel.sysctl = {
+    "vm.swappiness" = 10;
+    "vm.vfs_cache_pressure" = 50;
+  };
+
+  # RAM-backed /tmp — faster and saves NVMe wear. tmpfs is demand-paged and
+  # swappable, so it costs nothing until used; the cap keeps a temp-file-heavy
+  # analysis job from silently eating into RAM (point big jobs at a disk TMPDIR).
+  boot.tmp.useTmpfs = true;
+  boot.tmp.tmpfsSize = "8G";
+
+  # This box does Bitcoin validation and Jellyfin transcoding 24/7; bias the
+  # AMD cores toward responsiveness rather than the default powersave.
+  powerManagement.cpuFreqGovernor = "schedutil";
+
+  # Compressed RAM-backed swap. Costs nothing until used, and gives the kernel
+  # a fast cushion to absorb transient memory pressure during heavy analysis —
+  # cold pages get compressed in RAM (higher priority than the disk swap) rather
+  # than triggering a hard OOM-kill. Not a reservation and never touches the NVMe.
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";
+    memoryPercent = 25; # cap on compressible pages held; ~15 GB of a 64 GB host
+  };
+
   # Cap journald growth so a chatty service can't fill /.
   services.journald.extraConfig = ''
     SystemMaxUse=2G
