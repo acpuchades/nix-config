@@ -376,6 +376,24 @@
     services.vaultwarden = {
       enable = true;
       dbBackend = "postgresql";
+      # nixpkgs 25.11 ships 1.36.0, which does not support Bitwarden clients
+      # >= 2026.7.0 (sync/data errors). Override to 1.37.0 until nixpkgs bumps;
+      # drop this block once pkgs.vaultwarden >= 1.37.0.
+      package = pkgs.vaultwarden.overrideAttrs (old: rec {
+        version = "1.37.0";
+        src = pkgs.fetchFromGitHub {
+          owner = "dani-garcia";
+          repo = "vaultwarden";
+          tag = version;
+          hash = "sha256-7l9tIBCfk8DeQDtIoENnjGUzVWJM3aZxw6eA+YaktlM=";
+        };
+        cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+          inherit src;
+          name = "vaultwarden-${version}-vendor";
+          hash = "sha256-sza4ZQz2+QJJJ03Upt6sGXAv+1VPImN2qZHXaTSALFQ=";
+        };
+        env = (old.env or { }) // { VW_VERSION = version; };
+      });
       config = {
         DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
         DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
