@@ -6,7 +6,6 @@
   nixpkgs,
   home-manager,
   sops-nix,
-  impermanence,
   emacs-overlay,
   ...
 }:
@@ -62,16 +61,6 @@ let
         # together with the wgproton-bt interface and my.transmission-server below
         # once port forwarding works. (sops secrets are intentionally left in place.)
         # ./transmission-egress.nix
-
-        # Ephemeral root + persisted state — DISABLED.
-        # The btrfs @/@root-blank/@persist layout described in MIGRATION.md has
-        # not been built yet (root is still ext4 — see hardware-configuration.nix).
-        # Enabling these before the migration would bind empty dirs over
-        # /etc/ssh, /var/lib/nixos and /home/alex on rebuild (breaking sops
-        # decryption) and install a btrfs rollback unit that fails on the ext4
-        # root. Re-enable both lines only after completing the live-USB migration.
-        # ./impermanence.nix
-        # impermanence.nixosModules.impermanence
 
         # Custom modules
         ../../modules/vpn-server

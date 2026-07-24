@@ -25,9 +25,6 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Impermanence (ephemeral root, persisted state)
-    impermanence.url = "github:nix-community/impermanence";
-
     # Better Zen — Betterfox-derived privacy/security user.js for Zen browser
     better-zen.url = "github:Codextor/better-zen";
     better-zen.flake = false;
@@ -40,7 +37,6 @@
       nixpkgs,
       home-manager,
       sops-nix,
-      impermanence,
       better-zen,
       emacs-overlay
     }:
