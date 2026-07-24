@@ -55,7 +55,7 @@ Home-manager config shared across both machines, with `host` arg for per-host co
 home-manager.extraSpecialArgs = { host = "macbookpro"; }; # or "homeserver"
 ```
 
-Programs configured: ghostty, git (with delta), gpg, ssh, tmux, zsh (oh-my-zsh + plugins), starship, mu4e/mbsync (email), gh.
+Programs configured: ghostty, git (with delta), gpg, ssh, tmux, zsh (oh-my-zsh + plugins), starship, gh.
 
 ### Secrets Management
 
