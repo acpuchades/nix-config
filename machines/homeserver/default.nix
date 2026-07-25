@@ -74,6 +74,9 @@ let
         ../../modules/media-server
         ../../modules/print-server
         ../../modules/gps-backend
+        ../../modules/geocoding
+        ../../modules/tor-bridge
+        ../../modules/push-notifications
         ../../modules/mail-relay
         ../../modules/prefect-server
         ../../modules/home-assistant
@@ -297,6 +300,10 @@ let
           { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
+          { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
+          # ntfy is reachable from off-LAN by design; this rewrite only affects
+          # clients resolving through AdGuard, and just saves them a NAT hairpin.
+          { domain = "ntfy.acpuchades.com";      answer = homeServerLocalAddress; }
         ];
       };
 
@@ -408,6 +415,48 @@ let
         email.from = "noreply@acpuchades.com";
       };
 
+      # Nominatim. Kept LAN/WireGuard-only: a public geocoding endpoint is a
+      # scraper magnet, and the only consumers here are Traccar and Home
+      # Assistant. See the module header — enabling this creates an EMPTY
+      # database; the Spain extract has to be imported by hand once.
+      my.geocoding = {
+        enable = true;
+        hostName = "nominatim.acpuchades.com";
+        allowedNetworks = privateNetworks;
+        # Keep the database off /srv/encrypted: that is a spinning disk, and
+        # Nominatim is dominated by random index reads. /var/lib is on the ext4
+        # NVMe root, which also sidesteps the btrfs CoW + zstd penalty the rest
+        # of the cluster pays. A Spain extract needs ~15-20 GB of the 386 GB
+        # free there.
+        tablespace.enable = true;
+        updates = {
+          enable = true;
+          # Must match the extract imported by hand (spain-latest.osm.pbf).
+          replicationUrl = "https://download.geofabrik.de/europe/spain-updates/";
+        };
+      };
+
+      # ntfy. Deliberately NOT restricted to privateNetworks — a push server
+      # that only works on the LAN is pointless. Auth is deny-all instead, so
+      # users/tokens must be created with the CLI before anything can publish
+      # or subscribe. See the module header.
+      my.push-notifications = {
+        enable = true;
+        hostName = "ntfy.acpuchades.com";
+      };
+
+      # obfs4 Tor bridge. Both ports below still need forwarding on the router,
+      # same as 51820 for WireGuard.
+      my.tor-bridge = {
+        enable = true;
+        nickname = "acpuchades";
+        contactInfo = adminEmailAddress;
+        bandwidth = {
+          rate = "10 MBytes";
+          burst = "20 MBytes";
+        };
+      };
+
       my.mail-relay = {
         enable = true;
         origin = "acpuchades.com";
@@ -492,12 +541,14 @@ let
               { name = "Prefect";     icon = "https://avatars.githubusercontent.com/u/39270919?s=200&v=4"; description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
               { name = "Umami";       icon = "umami.png";      description = "Web analytics";          href = "https://${config.my.web-analytics.hostName}"; }
               { name = "GPS Backend"; icon = "mdi-map-marker"; description = "Location tracking backend"; href = "https://${config.my.gps-backend.hostName}"; }
+              { name = "Nominatim";   icon = "mdi-map-search"; description = "OSM geocoding & reverse geocoding"; href = "https://${config.my.geocoding.hostName}"; }
             ];
           }
           {
             name = "Monitoring";
             services = [
               { name = "Grafana"; icon = "grafana.png"; description = "Metrics & dashboards"; href = "https://${config.my.server-stats.hostName}"; }
+              { name = "ntfy";    icon = "mdi-bell-ring";  description = "Push notifications";    href = "https://${config.my.push-notifications.hostName}"; }
             ];
           }
         ];
