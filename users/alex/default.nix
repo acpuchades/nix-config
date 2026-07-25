@@ -138,6 +138,7 @@ inputs@{ config, lib, pkgs, host, ... }:
 
     # Network
     curl
+    mosh
     nmap
     netcat
     openssh

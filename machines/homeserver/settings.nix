@@ -85,6 +85,11 @@
   # };
   programs.zsh.enable = true;
 
+  # mosh (mobile shell): local echo + predictive typing over UDP eliminates the
+  # dropped/laggy characters that plain SSH suffers under network jitter. Enabling
+  # this installs the server and opens UDP 60000-61000 in the firewall.
+  programs.mosh.enable = true;
+
   # Provide a stub dynamic linker at the FHS path so foreign (non-Nix)
   # dynamically-linked binaries can run — e.g. pip-installed manylinux
   # wheels like numpy that expect libstdc++.so.6 at the system location.
