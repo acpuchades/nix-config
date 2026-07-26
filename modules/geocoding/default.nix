@@ -209,6 +209,14 @@ in
       "d ${cfg.tablespace.location} 0700 postgres postgres -"
     ];
 
+    # The postgresql unit runs ProtectSystem=strict with only its dataDir in
+    # ReadWritePaths, so a tablespace living anywhere else is read-only to the
+    # server — CREATE TABLESPACE then fails with "Read-only file system". Grant
+    # the server write access to the location. (systemd list-valued serviceConfig
+    # options concatenate across modules, so this merges with the dataDir entry.)
+    systemd.services.postgresql.serviceConfig.ReadWritePaths =
+      lib.mkIf cfg.tablespace.enable [ cfg.tablespace.location ];
+
     # NixOS has no declarative tablespace equivalent to `ensureDatabases`, so
     # create it here — before nominatim-init runs `import --prepare-database`,
     # which is the first thing that would reference it.
