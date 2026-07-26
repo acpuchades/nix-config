@@ -450,28 +450,20 @@ let
         hostName = "ntfy.acpuchades.com";
       };
 
-      # Confined OpenClaw agent — Telegram-only, loopback gateway, unprivileged.
+      # OpenClaw agent — Telegram-only, loopback gateway, but NOT confined on
+      # the host side (no sandbox/grants; see the module header).
       # REQUIRES SOPS secrets before switching, or activation fails:
       #   sops machines/homeserver/secrets/default.yml
-      #     openclaw/anthropic-key, openclaw/telegram-token, openclaw/telegram-userid
+      #     openclaw/telegram-token, openclaw/telegram-userid
+      # Auth is the Claude subscription via the Claude CLI runtime — log in once:
+      #   sudo -u eva -H claude            # /login, then quit
       my.openclaw = {
         enable = true;
+        # The bot is eva_lebbot, so she gets a real account here: /home/eva,
+        # her own workspace, her own Claude login.
+        user = "eva";
         # Telegram allowlist ID is a SOPS secret (openclaw/telegram-userid),
         # not a plaintext option — this repo is public.
-
-        # Read-only: full journal + /proc + Prometheus stats (logs & system stats).
-        observability.enable = true;
-
-        # Bounded sysadmin grants — all off by default; enable what you want.
-        # The agent never gains privileges: it manages units over D-Bus and
-        # polkit authorises it (see the module).
-        # grants.serviceControl.enable = true;   # empty units = manage ANY service
-        # grants.rebootHost = true;
-        # grants.gcCollect.enable = true;
-        # grants.backupTrigger = { enable = true; units = [ "restic-backups-main.service" ]; };
-        # grants.btrfsSnapshot = { enable = true; subvolume = "/srv/encrypted"; };
-        # Sealed update on a ROOT-OWNED checkout (not the agent's — arbitrary-root otherwise):
-        # grants.update = { enable = true; flakePath = "/etc/nixos"; };
       };
 
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,
