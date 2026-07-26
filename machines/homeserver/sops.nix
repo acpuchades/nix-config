@@ -123,13 +123,10 @@
         mode = "0400";
       };
 
-      # Gemini API key for eva's model failover (fallbackModels), rendered into
-      # the env file below as GEMINI_API_KEY / GOOGLE_API_KEY. Populate with:
-      #   sops machines/homeserver/secrets/default.yml   (openclaw/gemini-token)
-      "openclaw/gemini-token" = {
-        owner = "eva";
-        mode = "0400";
-      };
+      # (Gemini failover removed 2026-07-26 — its key/project never had access to
+      # gemini-2.5-flash. The encrypted openclaw/gemini-token value may still sit
+      # in secrets/default.yml, harmless and unreferenced; re-declare here to
+      # revive it.)
 
     };
 
@@ -225,17 +222,6 @@
         '';
       };
 
-      # Env file for eva's model failover (Gemini). Added as an EnvironmentFile
-      # on the openclaw service; the google provider reads GEMINI_API_KEY or
-      # GOOGLE_API_KEY, so both are set to the same key.
-      "openclaw/gemini-env" = {
-        owner = "eva";
-        mode = "0400";
-        content = ''
-          GEMINI_API_KEY=${config.sops.placeholder."openclaw/gemini-token"}
-          GOOGLE_API_KEY=${config.sops.placeholder."openclaw/gemini-token"}
-        '';
-      };
     };
   };
 }
