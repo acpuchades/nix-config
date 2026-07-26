@@ -163,6 +163,8 @@ let
           voiceId = cfg.tts.voiceId;
         } // lib.optionalAttrs (cfg.tts.modelId != null) {
           modelId = cfg.tts.modelId;
+        } // lib.optionalAttrs (cfg.tts.speed != null) {
+          voiceSettings.speed = cfg.tts.speed;
         };
       };
     };
@@ -405,6 +407,17 @@ in
           Provider TTS model id, or null to leave it to the provider default.
           ElevenLabs "eleven_multilingual_v2" handles non-English (e.g. Spanish);
           "eleven_turbo_v2_5" trades some quality for latency.
+        '';
+      };
+      speed = lib.mkOption {
+        type = lib.types.nullOr (lib.types.numbers.between 0.5 2.0);
+        default = null;
+        example = 1.1;
+        description = ''
+          Speech rate for replies, or null for the provider default. Maps to the
+          ElevenLabs voice setting `voiceSettings.speed` (accepted range
+          0.5–2.0; 1.0 is normal, >1 faster). ElevenLabs-specific; other
+          providers model rate differently.
         '';
       };
       auto = lib.mkOption {
