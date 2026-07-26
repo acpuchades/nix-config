@@ -572,6 +572,31 @@ let
         };
       };
 
+      # Eva's daily self-portrait. A oneshot that runs each morning as eva and
+      # generates one present-day photo into her personal album, named by date
+      # (/home/eva/workspace/photos/daily/YYYY-MM-DD.png). The script and the
+      # Gemini API token both live in eva's home; it only saves (never sends),
+      # so it needs no bot credentials. Editable without a rebuild since the
+      # script lives in the workspace, not the store.
+      systemd.services.eva-daily-photo = {
+        description = "Eva's daily self-portrait generation";
+        path = [ pkgs.bash pkgs.curl pkgs.coreutils ];
+        serviceConfig = {
+          Type = "oneshot";
+          User = "eva";
+          ExecStart = "${pkgs.bash}/bin/bash /home/eva/workspace/photos/daily_photo.sh";
+        };
+      };
+      systemd.timers.eva-daily-photo = {
+        description = "Run Eva's daily self-portrait each morning";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "*-*-* 08:07:00";
+          Persistent = true;          # catch up after downtime
+          RandomizedDelaySec = "300";
+        };
+      };
+
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,
       # same as 51820 for WireGuard.
       my.tor-bridge = {
