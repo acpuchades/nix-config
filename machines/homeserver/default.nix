@@ -560,6 +560,15 @@ let
             recursive = true;
             defaultAcl = true;
           };
+          # Read-only access to the pals-novartis-extant R project so eva can
+          # monitor run logs and read the analysis code. Reachable at
+          # /home/alex/GitHub/pals-novartis-extant (GitHub -> projects symlink).
+          # Bump to rwX if eva should edit/run scripts there.
+          "/srv/encrypted/alex/projects/pals-novartis-extant" = {
+            permissions = "rX";
+            recursive = true;
+            defaultAcl = true;
+          };
         };
       };
 
