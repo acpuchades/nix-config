@@ -1,0 +1,26 @@
+#!/bin/sh
+# Generic send-email action for an openclaw agent.
+#
+# Recipients are positional ARGUMENTS; the message (headers + body) is read from
+# stdin. Deliberately NOT `sendmail -t`: the To/Cc/Bcc headers do not route, so a
+# poisoned message cannot smuggle a hidden recipient — the delivered set is
+# exactly the arguments (which is also what the openclaw exec allowlist matches).
+#
+# This script is identity-agnostic: nothing about the agent or its address is
+# baked in. The sender, if any, is supplied by the nix module as $MAIL_FROM, and
+# the sendmail binary as $SENDMAIL (both pinned by the immutable wrapper the
+# module builds around this file).
+set -eu
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: $(basename "$0") RECIPIENT [RECIPIENT...]  (message on stdin)" >&2
+  exit 2
+fi
+
+sendmail=${SENDMAIL:-sendmail}
+
+if [ -n "${MAIL_FROM:-}" ]; then
+  exec "$sendmail" -i -f "$MAIL_FROM" -- "$@"
+else
+  exec "$sendmail" -i -- "$@"
+fi
