@@ -464,6 +464,47 @@ let
         user = "eva";
         # Telegram allowlist ID is a SOPS secret (openclaw/telegram-userid),
         # not a plaintext option — this repo is public.
+
+        # Passwordless sudo for host, service and power management. Bare paths,
+        # so any arguments are allowed — a broad grant (an injected agent could
+        # rebuild the system, stop any unit, or power off the box); deliberate,
+        # not least privilege. Paths are the NixOS profile symlinks `sudo`
+        # resolves. This is the single source of truth for eva's sudo access —
+        # it used to live as a standalone security.sudo.extraRules block in
+        # settings.nix.
+        sudoCommands = [
+          "/run/current-system/sw/bin/nixos-rebuild"
+          "/run/current-system/sw/bin/systemctl"
+          "/run/current-system/sw/bin/shutdown"
+          "/run/current-system/sw/bin/journalctl"
+        ];
+
+        # Writable access to the two repos eva works on, plus execute-only
+        # ("X") traversal on the private parents in between — /home/alex is 0700
+        # and /srv/encrypted/alex{,/projects} are 0710, so without these eva
+        # cannot even reach the targets. X grants search (reach a known path),
+        # NOT listing (r): the intermediate dirs' other contents stay hidden.
+        #
+        # /home/alex/GitHub is a symlink to /srv/encrypted/alex/projects, so the
+        # site's real path is used here (the symlink itself needs no ACL; path
+        # resolution follows it, and /home/alex X covers reading the link).
+        # recursive + defaultAcl: cover what exists now AND what gets created
+        # later, so files eva or alex add stay mutually accessible.
+        access = {
+          "/home/alex" = { permissions = "X"; };
+          "/srv/encrypted/alex" = { permissions = "X"; };
+          "/srv/encrypted/alex/projects" = { permissions = "X"; };
+          "/home/alex/nix-config" = {
+            permissions = "rwX";
+            recursive = true;
+            defaultAcl = true;
+          };
+          "/srv/encrypted/alex/projects/acpuchades-site" = {
+            permissions = "rwX";
+            recursive = true;
+            defaultAcl = true;
+          };
+        };
       };
 
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,

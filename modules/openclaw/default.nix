@@ -215,6 +215,92 @@ in
       '';
     };
 
+    # WHAT IT CAN DO TO THE HOST. The two options below are the deliberate,
+    # narrow exceptions to the "no host access" posture described in the header:
+    # a way to hand the agent specific files and specific root commands, and
+    # nothing more. Both are prompt-injectable surface — grant the minimum.
+
+    access = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          permissions = lib.mkOption {
+            type = lib.types.str;
+            default = "rwX";
+            example = "rX";
+            description = ''
+              ACL permission bits to grant the agent on this path, in setfacl(1)
+              syntax. "rwX" is read/write plus execute/search only where it
+              already applies (directories and already-executable files) — the
+              capital X is what stops it from marking every data file
+              executable. Use "rX" for read-only access.
+            '';
+          };
+          recursive = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Apply the ACL to everything already under this path (setfacl -R),
+              not just the path itself. Set this for a directory whose existing
+              contents the agent should reach.
+            '';
+          };
+          defaultAcl = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Also set a default ACL on this directory (setfacl -d), so entries
+              created under it later inherit the same grant. Without it, only
+              what exists at activation time is covered; new files created by
+              other users would not be readable to the agent.
+            '';
+          };
+        };
+      });
+      default = { };
+      example = lib.literalExpression ''
+        {
+          "/srv/share" = { permissions = "rwX"; recursive = true; defaultAcl = true; };
+          "/etc/some-config.toml" = { permissions = "rX"; };
+        }
+      '';
+      description = ''
+        Filesystem paths the agent is granted access to via POSIX ACLs, keyed by
+        path. This adds a `user:<agent>:<perms>` ACL entry with setfacl on each
+        activation (a oneshot ordered before the service), leaving the path's
+        owner and group untouched — it is additive access, not a chown. Use it to
+        hand the agent a shared directory or a specific file without making it a
+        member of that resource's group.
+
+        The grant is only ever added, never removed: dropping a path here leaves
+        the ACL it set in place (clear it by hand with `setfacl -x`). Every path
+        here is reachable by anything that reaches the agent, which is
+        prompt-injectable — grant the narrowest path and permissions that work.
+      '';
+    };
+
+    sudoCommands = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression ''
+        [
+          "/run/current-system/sw/bin/systemctl restart some.service"
+          "/run/current-system/sw/bin/systemctl start another.service"
+        ]
+      '';
+      description = ''
+        Commands the agent may run through sudo (as root) without a password.
+        Each entry is a sudoers command spec: an absolute path, optionally
+        followed by the exact arguments it is allowed. A path with no arguments
+        permits ANY arguments; append `""` to forbid arguments entirely; a bare
+        directory (trailing slash) permits anything inside it.
+
+        PREFER exact paths with fixed arguments over open command names or
+        wildcards. This account is prompt-injectable (see the header), so every
+        entry here is something an attacker who reaches the agent can run as
+        root — grant the single narrowest command that does the job.
+      '';
+    };
+
     # The allowed Telegram user ID is NOT a Nix option — public repo, so it is
     # sourced from SOPS (openclaw/telegram-userid) and rendered into the config
     # at activation. Get your ID from @userinfobot.
@@ -254,6 +340,16 @@ in
     # `sudo -u <user> -H ...`.
     services.openssh.settings.DenyUsers = [ cfg.user ];
 
+    # Passwordless sudo for exactly the commands listed in cfg.sudoCommands and
+    # nothing else. NOPASSWD is required because the account has no password (`!`
+    # above), so it could not answer a prompt even if asked.
+    security.sudo.extraRules = lib.mkIf (cfg.sudoCommands != [ ]) [
+      {
+        users = [ cfg.user ];
+        commands = map (command: { inherit command; options = [ "NOPASSWD" ]; }) cfg.sudoCommands;
+      }
+    ];
+
     # The state dir is the agent's, group-readable by openclaw. setgid so
     # everything written below it inherits that group without the agent having
     # to be a member — with UMask=0027 below, that is what makes the state
@@ -270,6 +366,31 @@ in
       "d ${stateDir} 2750 ${cfg.user} openclaw -"
       "Z ${stateDir} - ${cfg.user} openclaw -"
     ];
+
+    # Grant the agent ACL access to cfg.access paths. A root oneshot (setfacl
+    # needs root) ordered before the service, reapplied on every activation so a
+    # newly added path is picked up on the next switch. It is `before` but not
+    # required by openclaw, so a bad path here logs a failure without blocking
+    # the agent from starting.
+    systemd.services.openclaw-grant-access = lib.mkIf (cfg.access != { }) {
+      description = "Grant the OpenClaw agent ACL access to configured paths";
+      wantedBy = [ "multi-user.target" ];
+      before = [ "openclaw.service" ];
+      path = [ pkgs.acl ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        set -euo pipefail
+      '' + lib.concatStrings (lib.mapAttrsToList (path: opts:
+        let rec' = lib.optionalString opts.recursive "-R "; in
+        ''
+          setfacl ${rec'}-m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path}
+        '' + lib.optionalString opts.defaultAcl ''
+          setfacl ${rec'}-d -m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path}
+        '') cfg.access);
+    };
 
     # Populate before switching:  sops machines/homeserver/secrets/default.yml
     #   openclaw/telegram-token  -> BotFather token
