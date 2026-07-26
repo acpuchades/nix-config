@@ -17,7 +17,7 @@ let
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
 
   configuration =
-    inputs@{ config, lib, pkgs, ... }:
+    inputs@{ config, options, lib, pkgs, ... }:
     {
       imports = [
         # Include the results of the hardware scan.
@@ -452,7 +452,7 @@ let
 
       # OpenClaw agent — Telegram-only, loopback gateway, but NOT confined on
       # the host side (no sandbox/grants; see the module header).
-      # REQUIRES SOPS secrets before switching, or activation fails:
+      # Needs the two SOPS secrets below populated (declared in sops.nix):
       #   sops machines/homeserver/secrets/default.yml
       #     openclaw/telegram-token, openclaw/telegram-userid
       # Auth is the Claude subscription via the Claude CLI runtime — log in once:
@@ -462,8 +462,12 @@ let
         # The bot is eva_lebbot, so she gets a real account here: /home/eva,
         # her own workspace, her own Claude login.
         user = "eva";
-        # Telegram allowlist ID is a SOPS secret (openclaw/telegram-userid),
-        # not a plaintext option — this repo is public.
+
+        # The module is secret-system agnostic and takes runtime FILES; on this
+        # host they are the sops-nix secret paths. The token/ID values live only
+        # in the encrypted secrets file, never in this public repo or the store.
+        telegram.tokenFile = config.sops.secrets."openclaw/telegram-token".path;
+        telegram.allowedIdFile = config.sops.secrets."openclaw/telegram-userid".path;
 
         # Two-tier model use. Everyday chat runs on the Sonnet 4.6 primary
         # (my.openclaw.model). Opus 4.8 is reserved for COMPLEX work only:
@@ -481,49 +485,94 @@ let
         fallbackModels = [ "google/gemini-2.5-flash" ];
         settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
 
-        # TEMPORARY wide-open tool/exec policy — full access, never prompt.
-        # Alex will tighten this toward least-privilege later; for now eva may
-        # run anything without approval. Combined with her sudo grant below
-        # (nixos-rebuild / systemctl / shutdown), this is effectively
-        # unrestricted host control from an allowlisted Telegram DM.
-        settings.tools.exec.security = "full"; # no exec allowlist gating
-        settings.tools.exec.ask = "off"; # never ask for confirmation
-        settings.tools.exec.strictInlineEval = false; # allow `python -c`/`node -e` unprompted
-        settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace
-        # "approvals" only controls WHERE approval prompts are forwarded; with
-        # ask=off nothing is ever prompted, so forwarding stays off (explicit).
+        # Exec policy: allowlist + confirm-on-miss, via the module's first-class
+        # options (pinned every start, so eva can't self-escalate at runtime).
+        # Only allowlisted commands run unprompted; anything else raises an
+        # approval request in the origin Telegram DM, answered inline.
+        #
+        # safeBins is the pre-blessed set. It is the module's read-only default
+        # PLUS the observe-only system/text tools below — everything here either
+        # cannot mutate at all, or can only mutate with root (which eva has solely
+        # through the gated sudo grant, i.e. a DIFFERENT, still-prompted command
+        # string). Deliberately NOT pre-blessed, so they keep prompting: anything
+        # that writes/deletes, forks a shell, or evaluates code — sed/awk (in-
+        # place / system()), find (-exec/-delete), xargs, tee, cp/mv/rm, env,
+        # git (push/reset), systemctl, nix, docker, curl/wget, and the shells/
+        # interpreters. eva widens coverage for a SPECIFIC invocation at runtime
+        # without a rebuild via `openclaw approvals allowlist add "<glob>"` (e.g.
+        # "git status", "git diff*") — per-agent state, not re-seeded here.
+        exec = {
+          security = "allowlist";
+          ask = "on-miss";
+          strictInlineEval = true;
+          safeBins = options.my.openclaw.exec.safeBins.default ++ [
+            # Process / system / network INSPECTION (read-only; their mutating
+            # subcommands need root, which a bare non-sudo invocation lacks).
+            "ps" "pgrep" "pstree" "lsof" "ss" "ip" "journalctl" "w" "who"
+            "vmstat" "iostat" "mpstat" "lscpu" "lsblk" "lsmem" "lsusb" "lspci"
+            "nproc" "arch" "getent" "locale" "tty" "cal"
+            # More read-only text/data shaping (stdin/args -> stdout; no writes,
+            # no exec, no network).
+            "tac" "tr" "rev" "fold" "fmt" "expand" "unexpand" "paste" "join"
+            "printf" "seq" "expr" "test" "namei" "pathchk"
+            "sha1sum" "sha512sum" "b2sum" "base64" "base32"
+            "xxd" "hexdump" "od" "strings"
+          ];
+          # Pre-seeded full-command-line globs (merged with eva's own runtime
+          # additions). These bless read-only SUBCOMMANDS of tools too dangerous
+          # to whole-binary allowlist — only forms that cannot mutate. eva works
+          # in git repos and inspects services/logs/nix, so:
+          allowlist = [
+            # git — read-only porcelain/plumbing only. NOT "git branch*"/"git
+            # tag*"/"git remote*" (they'd also match -d/-D/add/remove/rename).
+            "git status*" "git log*" "git diff*" "git show*" "git blame*"
+            "git rev-parse*" "git describe*" "git ls-files*" "git shortlog*"
+            "git reflog*" "git cat-file*" "git branch --list*" "git remote -v"
+            "git config --get*" "git config --list*"
+            # systemctl — inspection subcommands (status/show/list/is-* never
+            # mutate). Restart/stop/start still go through her gated sudo grant.
+            "systemctl status*" "systemctl show*" "systemctl cat*"
+            "systemctl list-units*" "systemctl list-timers*"
+            "systemctl list-unit-files*" "systemctl is-active*"
+            "systemctl is-enabled*" "systemctl is-failed*"
+            "systemctl --user status*" "systemctl --user list-units*"
+            # nix — read-only query subcommands (no build/gc/store mutation).
+            "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
+            "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
+            "nixos-version*"
+          ];
+        };
+        settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
+        # "approvals.exec.enabled" only controls FORWARDING approval prompts to
+        # OTHER channels; the prompt already surfaces in the origin Telegram DM,
+        # the only channel eva has, so forwarding stays off (explicit).
         settings.approvals.exec.enabled = false;
 
-        # Web access: lightweight HTTP fetch only, for now. The DuckDuckGo
-        # search plugin exists in the config schema, but its bundled runtime
-        # surface (duckduckgo/web-search-contract-api.js) fails to load in this
-        # nixpkgs build of OpenClaw 2026.5.7 — enabling it crash-loops the
-        # gateway at startup ("required secrets are unavailable"). Left disabled
-        # until that packaging gap is resolved; web_fetch needs no plugin.
+        # Web access: lightweight HTTP fetch only, for now. The DuckDuckGo search
+        # plugin's bundled surface (duckduckgo/web-search-contract-api.js) used to
+        # fail to load here for the SAME reason the google provider did — the
+        # store-hardlink boundary guard, now patched in the module. It may load
+        # after that fix, but it also reported "required secrets are unavailable"
+        # (its own key requirement), so it stays disabled until revisited;
+        # web_fetch needs no plugin.
         settings.tools.web.fetch.enabled = true;
 
-        # Text-to-speech for replies. Uses the keyless, hosted Microsoft/Edge
-        # provider (NOT the heavy local tts-local-cli). auto="inbound" = she
-        # only speaks when YOU send a voice message (talk→talk); typed messages
-        # get typed replies. Spanish voice is bound via a TTS persona. The caps
-        # stop a huge reply from spawning a giant/slow synthesis. Every key here
-        # is checked against the strict `messages.tts` schema (additionalProps
-        # is false) so it can't crash-loop startup; the persona provider binding
-        # is the one open-additionalProps spot, so the voice is best-effort
-        # until confirmed live.
-        settings.messages.tts = {
-          enabled = true;
+        # Reply text-to-speech via ElevenLabs, through the module's tts options.
+        # auto="inbound" = she only speaks when YOU send a voice message
+        # (talk→talk); typed messages get typed replies. The multilingual model
+        # handles Spanish; the caps stop a huge reply from spawning a giant/slow
+        # synthesis. The ELEVENLABS_API_KEY reaches the service via the
+        # SOPS-rendered EnvironmentFile below — never a Nix value.
+        tts = {
+          enable = true;
+          provider = "elevenlabs";
+          voiceId = "dNjJKg63Fr5AXwIdkATa";
+          modelId = "eleven_multilingual_v2";
+          label = "Eva (español)";
           auto = "inbound";
           mode = "final";
-          provider = "microsoft";
           maxTextLength = 800;
           timeoutMs = 15000;
-          persona = "spanish";
-          personas.spanish = {
-            label = "Eva (español)";
-            provider = "microsoft";
-            providers.microsoft.voice = "es-ES-ElviraNeural";
-          };
         };
 
         # Passwordless sudo for host, service and power management. Bare paths,
@@ -577,36 +626,29 @@ let
         };
       };
 
-      # Gemini API key for eva's model failover (fallbackModels above). The
-      # google provider reads GEMINI_API_KEY / GOOGLE_API_KEY from the env; this
-      # EnvironmentFile lives in eva's home (0600), so the key never enters this
-      # public repo. Leading "-" makes it optional (missing file won't fail start).
-      systemd.services.openclaw.serviceConfig.EnvironmentFile = "-/home/eva/.config/eva/gemini.env";
+      # Provider API keys reaching the service via my.openclaw.environmentFiles —
+      # the token comes in from outside the module, next to the model/voice that
+      # needs it. Both are SOPS-rendered env files (openclaw/*-env), so no key is
+      # in this public repo or the store:
+      #   * Gemini (model failover, fallbackModels above) — GEMINI_API_KEY /
+      #     GOOGLE_API_KEY.
+      #   * ElevenLabs (reply TTS) — ELEVENLABS_API_KEY.
+      my.openclaw.environmentFiles = [
+        config.sops.templates."openclaw/gemini-env".path
+        config.sops.templates."openclaw/elevenlabs-env".path
+      ];
 
-      # Eva's daily self-portrait. A oneshot that runs each morning as eva and
-      # generates one present-day photo into her personal album, named by date
-      # (/home/eva/workspace/photos/daily/YYYY-MM-DD.png). The script and the
-      # Gemini API token both live in eva's home; it only saves (never sends),
-      # so it needs no bot credentials. Editable without a rebuild since the
-      # script lives in the workspace, not the store.
-      systemd.services.eva-daily-photo = {
-        description = "Eva's daily self-portrait generation";
-        path = [ pkgs.bash pkgs.curl pkgs.coreutils ];
-        serviceConfig = {
-          Type = "oneshot";
-          User = "eva";
-          ExecStart = "${pkgs.bash}/bin/bash /home/eva/workspace/photos/daily_photo.sh";
-        };
-      };
-      systemd.timers.eva-daily-photo = {
-        description = "Run Eva's daily self-portrait each morning";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          OnCalendar = "*-*-* 08:07:00";
-          Persistent = true;          # catch up after downtime
-          RandomizedDelaySec = "300";
-        };
-      };
+      # Eva's daily self-portrait is scheduled ON THE MACHINE, not here — both
+      # the script (/home/eva/workspace/photos/daily_photo.sh) and its schedule
+      # live in eva's home as user-owned systemd units under
+      # /home/eva/.config/systemd/user/, so she can retune either without a
+      # rebuild. This keeps script and schedule in ONE place (the machine),
+      # matching the rest of her workspace-local tooling, instead of splitting a
+      # store-pinned timer here from a home-dir script. One-time setup, as eva:
+      #   loginctl enable-linger eva          # run the user timer without a login
+      #   systemctl --user daemon-reload
+      #   systemctl --user enable --now eva-daily-photo.timer
+      # (unit files eva-daily-photo.{service,timer} live beside the script.)
 
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,
       # same as 51820 for WireGuard.

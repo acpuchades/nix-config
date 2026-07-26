@@ -104,6 +104,33 @@
       #   sops machines/homeserver/secrets/default.yml
       "samba/alex" = { mode = "0400"; };
 
+      # OpenClaw (eva) Telegram identity, consumed as files by my.openclaw.
+      # telegram.{tokenFile,allowedIdFile}. The token is read by systemd
+      # LoadCredential (as root, then handed to the service), so default
+      # ownership is fine. The allowed-ID file is read by the service's
+      # ExecStartPre seed script, which runs AS eva, so it must be eva-readable.
+      "openclaw/telegram-token" = { mode = "0400"; };
+      "openclaw/telegram-userid" = {
+        owner = "eva";
+        mode = "0400";
+      };
+
+      # ElevenLabs API key for eva's reply TTS, rendered into the env file below
+      # and read by the openclaw service as ELEVENLABS_API_KEY. Populate with:
+      #   sops machines/homeserver/secrets/default.yml   (openclaw/elevenlabs-token)
+      "openclaw/elevenlabs-token" = {
+        owner = "eva";
+        mode = "0400";
+      };
+
+      # Gemini API key for eva's model failover (fallbackModels), rendered into
+      # the env file below as GEMINI_API_KEY / GOOGLE_API_KEY. Populate with:
+      #   sops machines/homeserver/secrets/default.yml   (openclaw/gemini-token)
+      "openclaw/gemini-token" = {
+        owner = "eva";
+        mode = "0400";
+      };
+
     };
 
     templates = {
@@ -185,6 +212,28 @@
         mode = "0400";
         content = ''
           AUTH_TOKEN=${config.sops.placeholder."grafana/renderer-token"}
+        '';
+      };
+
+      # Env file for eva's reply TTS (ElevenLabs). Added as an EnvironmentFile on
+      # the openclaw service; the elevenlabs provider reads ELEVENLABS_API_KEY.
+      "openclaw/elevenlabs-env" = {
+        owner = "eva";
+        mode = "0400";
+        content = ''
+          ELEVENLABS_API_KEY=${config.sops.placeholder."openclaw/elevenlabs-token"}
+        '';
+      };
+
+      # Env file for eva's model failover (Gemini). Added as an EnvironmentFile
+      # on the openclaw service; the google provider reads GEMINI_API_KEY or
+      # GOOGLE_API_KEY, so both are set to the same key.
+      "openclaw/gemini-env" = {
+        owner = "eva";
+        mode = "0400";
+        content = ''
+          GEMINI_API_KEY=${config.sops.placeholder."openclaw/gemini-token"}
+          GOOGLE_API_KEY=${config.sops.placeholder."openclaw/gemini-token"}
         '';
       };
     };
