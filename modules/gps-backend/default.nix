@@ -81,6 +81,20 @@ in
       };
     };
 
+    geocoder = {
+      url = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "http://127.0.0.1:8098/reverse";
+        description = ''
+          Reverse-geocoding endpoint used to turn positions into street
+          addresses. When set, Traccar's Nominatim geocoder is enabled and
+          pointed at this URL (e.g. the self-hosted `my.nominatim` instance).
+          When null, geocoding is left at Traccar's defaults.
+        '';
+      };
+    };
+
     email = {
       from = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
@@ -135,6 +149,13 @@ in
         osmand = {
           address = "127.0.0.1";
           port = toString osmAndBackendPort;
+        };
+      } // lib.optionalAttrs (cfg.geocoder.url != null) {
+        # Reverse-geocode positions into street addresses via Nominatim.
+        geocoder = {
+          enable = "true";
+          type = "nominatim";
+          url = cfg.geocoder.url;
         };
       } // lib.optionalAttrs (cfg.email.from != null) {
         mail.smtp = {

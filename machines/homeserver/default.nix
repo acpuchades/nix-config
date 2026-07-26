@@ -75,6 +75,7 @@ let
         ../../modules/print-server
         ../../modules/gps-backend
         ../../modules/geocoding
+        ../../modules/openclaw
         ../../modules/tor-bridge
         ../../modules/push-notifications
         ../../modules/mail-relay
@@ -413,6 +414,10 @@ let
         enable = true;
         hostName = "gps.acpuchades.com";
         email.from = "noreply@acpuchades.com";
+        # Reverse-geocode positions with the self-hosted Nominatim (my.geocoding
+        # below), over its loopback nginx port. Traccar turns fixes into
+        # addresses without hitting the public OSM endpoint.
+        geocoder.url = "http://127.0.0.1:${toString config.my.geocoding.port}/reverse";
       };
 
       # Nominatim. Kept LAN/WireGuard-only: a public geocoding endpoint is a
@@ -443,6 +448,30 @@ let
       my.push-notifications = {
         enable = true;
         hostName = "ntfy.acpuchades.com";
+      };
+
+      # Confined OpenClaw agent — Telegram-only, loopback gateway, unprivileged.
+      # REQUIRES SOPS secrets before switching, or activation fails:
+      #   sops machines/homeserver/secrets/default.yml
+      #     openclaw/anthropic-key, openclaw/telegram-token, openclaw/telegram-userid
+      my.openclaw = {
+        enable = true;
+        # Telegram allowlist ID is a SOPS secret (openclaw/telegram-userid),
+        # not a plaintext option — this repo is public.
+
+        # Read-only: full journal + /proc + Prometheus stats (logs & system stats).
+        observability.enable = true;
+
+        # Bounded sysadmin grants — all off by default; enable what you want.
+        # The agent never gains privileges: it manages units over D-Bus and
+        # polkit authorises it (see the module).
+        # grants.serviceControl.enable = true;   # empty units = manage ANY service
+        # grants.rebootHost = true;
+        # grants.gcCollect.enable = true;
+        # grants.backupTrigger = { enable = true; units = [ "restic-backups-main.service" ]; };
+        # grants.btrfsSnapshot = { enable = true; subvolume = "/srv/encrypted"; };
+        # Sealed update on a ROOT-OWNED checkout (not the agent's — arbitrary-root otherwise):
+        # grants.update = { enable = true; flakePath = "/etc/nixos"; };
       };
 
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,
