@@ -1,52 +1,56 @@
 { config, lib, pkgs, ... }:
 
 #
-# openclaw — self-hosted LLM agent (OpenClaw), run confined on the homeserver
-# and reachable ONLY through Telegram (long-polling; no inbound port). The
-# gateway/control UI is bound to loopback so it is reachable locally but never
-# from the LAN.
+# openclaw — self-hosted LLM agent (OpenClaw), reachable ONLY through Telegram
+# (long-polling; no inbound port). The gateway/control UI is bound to loopback
+# so it is reachable locally but never from the LAN.
 #
-# Posture (chosen deliberately): a "contained sysadmin" agent.
-#   * It may NOT author or activate this host's nix-config. Letting an LLM write
-#     config AND switch is arbitrary-root; that capability is intentionally
-#     absent.
-#   * It MAY do bounded sysadmin: read the full journal + Prometheus stats,
-#     manage systemd units, reboot, garbage-collect, trigger backups/snapshots,
-#     and trigger a SEALED system update. None of these let the agent run
-#     agent-authored code as root.
+# Two layers, and only one of them is here:
 #
-# Hard boundary = the OS sandbox, not OpenClaw's own settings. Upstream marks
-# this package `knownVulnerabilities` (LLM parses untrusted content with full
-# system access by default → prompt-injectable), so it is treated as hostile:
-# a dedicated unprivileged user, aggressive systemd sandbox, loopback + Telegram
-# egress only. Privileged actions run in SEPARATE units the sandboxed agent may
-# only *trigger* over D-Bus (polkit) — the agent itself never gains privileges,
-# so the base sandbox stays fully intact regardless of which grants are on.
+#   * WHO CAN TALK TO IT — kept and declarative. The gateway binds 127.0.0.1,
+#     Telegram DMs are locked to an explicit numeric-ID allowlist, groups are
+#     disabled, and the bot token never touches the store or the repo. OpenClaw
+#     rewrites its own config file at runtime, so it is re-seeded (overwritten)
+#     on every start to keep this authoritative.
 #
-# Residual risk to accept: the agent needs internet egress (Anthropic API +
-# Telegram), and with broad read grants a fully prompt-injected agent could
-# exfiltrate what it can read. Blast radius is read + bounded-ops, NOT arbitrary
-# root — recoverable without rebuilding the host or rotating every secret.
+#   * WHAT IT CAN DO TO THE HOST — deliberately absent. No systemd sandbox, no
+#     polkit rules, no capability grants. Upstream marks this package
+#     `knownVulnerabilities` (an LLM parses untrusted content with full system
+#     access by default → prompt-injectable), acknowledged below via
+#     permittedInsecurePackages. Confinement is to be configured separately.
 #
-# The "update" grant: the agent may trigger `openclaw-update.service`, which as
-# root runs a FIXED `nix flake update && nixos-rebuild switch` against a
-# root-owned flake checkout the agent cannot write. The agent chooses *when* to
-# update, never *what* — it cannot inject config. Trust shifts to upstream
-# nixpkgs (already trusted); the agent's power is limited to "force an upgrade".
+# Auth uses a Claude subscription rather than an Anthropic API key: OpenClaw
+# reuses a Claude Code CLI login on this host (`claude -p`), selected by the
+# `agentRuntime` option below. Log in once as the agent's own user:
+#
+#   sudo -u <user> -H claude            # /login, then quit
+#   systemctl restart openclaw
+#
+# That writes ~/.claude/.credentials.json, which OpenClaw picks up. On a box
+# where the browser flow is awkward, `claude setup-token` yields a long-lived
+# token instead — put it in the state dir's .env as CLAUDE_CODE_OAUTH_TOKEN.
 #
 
 let
   cfg = config.my.openclaw;
-  g = cfg.grants;
 
+  # The agent is a person on this host, not just a daemon: it runs as a real
+  # account (`user`, named after the bot) with a real home under /home, where
+  # its workspace and its Claude CLI login live. Service-owned state — the
+  # config file and session data — stays in /var/lib/openclaw, named after the
+  # software that owns it.
+  #
+  # Groups work in both directions, as they would for any other user:
+  #   * to let the agent touch something on this box, add it to that thing's
+  #     group (users.users.<user>.extraGroups = [ "share" ]; merges with the
+  #     account defined here);
+  #   * to let a human read the agent's state without becoming the agent, add
+  #     them to the `openclaw` group, which owns the state tree below.
+  # Its home is not covered by either — that stays 0700 and private to it.
+  homeDir = "/home/${cfg.user}";
   stateDir = "/var/lib/openclaw";
   configFile = "${stateDir}/openclaw.json";
   credDir = "/run/credentials/openclaw.service";
-
-  hostName = config.networking.hostName;
-
-  # A JS array literal from a Nix list of strings, for the polkit rule.
-  jsArray = xs: "[" + lib.concatMapStringsSep ", " (x: "\"${x}\"") xs + "]";
 
   # Opsec: the allowed Telegram ID is treated as a secret even though it isn't a
   # credential — it's rendered from SOPS at activation, so it never appears in
@@ -54,9 +58,8 @@ let
   # with openclaw/telegram-userid when the config template is rendered.
   telegramIdPlaceholder = config.sops.placeholder."openclaw/telegram-userid";
 
-  # Declarative base config. OpenClaw rewrites its own config file at runtime,
-  # so we re-seed it (overwrite) on every start to keep this authoritative.
-  # Access is locked to an explicit numeric-ID allowlist; groups disabled.
+  # Declarative base config. Access is locked to an explicit numeric-ID
+  # allowlist; groups disabled.
   baseConfig = {
     gateway = {
       bind = "127.0.0.1";
@@ -64,7 +67,9 @@ let
     };
     agents.defaults = {
       model.primary = cfg.model;
-      workspace = "${stateDir}/workspace";
+      workspace = "${homeDir}/workspace";
+    } // lib.optionalAttrs (cfg.agentRuntime != null) {
+      agentRuntime.id = cfg.agentRuntime;
     };
     channels.telegram = {
       enabled = true;
@@ -78,37 +83,46 @@ let
 
   # Rendered by sops-nix (real ID substituted) to a /run path owned by openclaw.
   configTemplateName = "openclaw/config.json";
-
-  startScript = pkgs.writeShellScript "openclaw-start" ''
-    set -euo pipefail
-    export ANTHROPIC_API_KEY="$(< "$CREDENTIALS_DIRECTORY/anthropic-key")"
-    exec ${lib.getExe pkgs.openclaw} gateway
-  '';
-
-  # Units the sandboxed agent is allowed to manage via polkit: the grant
-  # trigger-units it may start, plus any explicit service/backup allowlists.
-  triggerUnits =
-    (lib.optional g.gcCollect.enable "openclaw-gc.service")
-    ++ (lib.optional g.btrfsSnapshot.enable "openclaw-btrfs-snapshot.service")
-    ++ (lib.optional g.update.enable "openclaw-update.service");
-
-  manageableUnits =
-    triggerUnits
-    ++ (lib.optionals (g.serviceControl.enable && g.serviceControl.units != [ ]) g.serviceControl.units)
-    ++ (lib.optionals g.backupTrigger.enable g.backupTrigger.units);
-
-  # serviceControl with an empty allowlist == manage ANY unit (broad sysadmin).
-  serviceControlAll = g.serviceControl.enable && g.serviceControl.units == [ ];
-  usePolkit = manageableUnits != [ ] || serviceControlAll || g.rebootHost;
 in
 {
   options.my.openclaw = {
-    enable = lib.mkEnableOption "Confined OpenClaw agent (Telegram-only, loopback gateway)";
+    enable = lib.mkEnableOption "OpenClaw agent (Telegram-only, loopback gateway)";
+
+    package = lib.mkOption {
+      type = lib.types.package;
+      default = pkgs.openclaw;
+      defaultText = lib.literalExpression "pkgs.openclaw";
+      description = "OpenClaw package to run.";
+    };
+
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "openclaw";
+      description = ''
+        Account the agent lives as — a normal user with a home at /home/<user>,
+        holding its workspace and its Claude CLI login. Override it with the
+        bot's own name, so the identity it acts under on this host matches the
+        one people talk to. It gets no password and no SSH keys, so it is not
+        reachable from outside; use `sudo -u <user> -H ...` to act as it.
+      '';
+    };
 
     model = lib.mkOption {
       type = lib.types.str;
       default = "anthropic/claude-sonnet-4-6";
-      description = "Primary model, as provider/model. Uses the Anthropic key from SOPS.";
+      description = "Primary model, as provider/model.";
+    };
+
+    agentRuntime = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = "claude-cli";
+      example = null;
+      description = ''
+        Execution backend for the agent. "claude-cli" reuses this host's Claude
+        Code CLI login, so the Claude subscription pays rather than an Anthropic
+        API key. Set to null to use the provider's own API auth instead (which
+        then needs an API key configured out of band).
+      '';
     };
 
     port = lib.mkOption {
@@ -123,316 +137,110 @@ in
     # The allowed Telegram user ID is NOT a Nix option — public repo, so it is
     # sourced from SOPS (openclaw/telegram-userid) and rendered into the config
     # at activation. Get your ID from @userinfobot.
-
-    observability = {
-      enable = lib.mkEnableOption ''
-        read-only observability: full systemd journal (all units) + Prometheus
-        metrics, so the agent can track logs and system stats. This is a READ
-        widening, not escalation — the agent still cannot change the system
-      '';
-      prometheusUrl = lib.mkOption {
-        type = lib.types.str;
-        default = "http://127.0.0.1:9090";
-        description = "Prometheus base URL, exposed to the agent as $OPENCLAW_PROMETHEUS_URL.";
-      };
-      grafana = {
-        enable = lib.mkEnableOption "Grafana API access (needs a read-only token in SOPS: openclaw/grafana-token)";
-        url = lib.mkOption {
-          type = lib.types.str;
-          default = "http://127.0.0.1:3001";
-          description = "Grafana base URL, exposed to the agent as $OPENCLAW_GRAFANA_URL.";
-        };
-      };
-    };
-
-    # Bounded sysadmin capabilities, each OFF by default. None grant
-    # agent-authored code execution as root.
-    grants = {
-      serviceControl = {
-        enable = lib.mkEnableOption "start/stop/restart systemd units (real sysadmin)";
-        units = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ ];
-          example = [ "jellyfin.service" "transmission.service" ];
-          description = ''
-            Units the agent may start/stop/restart. EMPTY means ANY unit (broad
-            sysadmin — it can also stop security services, so treat as powerful);
-            a non-empty list restricts to exactly those units.
-          '';
-        };
-      };
-
-      rebootHost = lib.mkEnableOption "reboot / power off the machine on demand";
-
-      gcCollect = {
-        enable = lib.mkEnableOption "run `nix-collect-garbage` on demand";
-        olderThan = lib.mkOption {
-          type = lib.types.str;
-          default = "30d";
-          description = "Passed to `nix-collect-garbage --delete-older-than`.";
-        };
-      };
-
-      backupTrigger = {
-        enable = lib.mkEnableOption "trigger an allowlist of backup/job units on demand";
-        units = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ ];
-          example = [ "restic-backups-main.service" ];
-          description = "Backup/oneshot units the agent may start (start only).";
-        };
-      };
-
-      btrfsSnapshot = {
-        enable = lib.mkEnableOption "take a read-only btrfs snapshot on demand";
-        subvolume = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          example = "/srv/encrypted";
-          description = "Subvolume to snapshot (read-only). Required when enabled.";
-        };
-        snapshotDir = lib.mkOption {
-          type = lib.types.str;
-          default = "/srv/snapshots/openclaw";
-          description = "Directory to place timestamped snapshots in.";
-        };
-      };
-
-      update = {
-        enable = lib.mkEnableOption ''
-          trigger a SEALED system update: as root, `nix flake update` +
-          `nixos-rebuild switch` on a ROOT-OWNED flake the agent cannot write.
-          The agent picks when, never what — it cannot inject config
-        '';
-        flakePath = lib.mkOption {
-          type = lib.types.nullOr lib.types.str;
-          default = null;
-          example = "/etc/nixos";
-          description = ''
-            Root-owned checkout of your nix-config that the sealed updater runs
-            in. MUST NOT be writable by the openclaw user (or update collapses
-            back into arbitrary-root). Required when this grant is enabled.
-          '';
-        };
-      };
-
-      mediaLibrary = {
-        enable = lib.mkEnableOption "read/write access to specific media directories";
-        paths = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ ];
-          example = [ "/srv/media/library" "/srv/downloads" ];
-          description = "Directories added to the agent's writable sandbox. Nothing else.";
-        };
-      };
-
-      adguardRules = {
-        enable = lib.mkEnableOption "manage AdGuard Home filtering rules via its API";
-        apiBaseUrl = lib.mkOption {
-          type = lib.types.str;
-          default = "http://127.0.0.1:3000";
-          description = ''
-            AdGuard control API base URL, exposed as $OPENCLAW_ADGUARD_URL. NOTE:
-            hands the agent AdGuard admin creds (SOPS: openclaw/adguard-auth);
-            API auth is not per-endpoint, so this is broad AdGuard control.
-          '';
-        };
-      };
-    };
   };
 
   config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = !g.update.enable || g.update.flakePath != null;
-        message = "my.openclaw.grants.update requires grants.update.flakePath (a root-owned nix-config checkout).";
-      }
-      {
-        assertion = !g.update.enable || !(lib.hasPrefix stateDir (toString g.update.flakePath));
-        message = "my.openclaw.grants.update.flakePath must be root-owned and outside the agent's state dir, or update becomes arbitrary-root.";
-      }
-      {
-        assertion = !g.btrfsSnapshot.enable || g.btrfsSnapshot.subvolume != null;
-        message = "my.openclaw.grants.btrfsSnapshot requires grants.btrfsSnapshot.subvolume.";
-      }
-    ];
-
     # Upstream flags this package insecure on purpose. Acknowledge explicitly;
     # bump the version suffix when the packaged OpenClaw is updated.
     nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.5.7" ];
 
-    users.users.openclaw = {
-      isSystemUser = true;
-      group = "openclaw";
-      home = stateDir;
+    environment.systemPackages = [ cfg.package pkgs.claude-code ];
+
+    users.users.${cfg.user} = {
+      isNormalUser = true;
+      group = cfg.user;
+      home = homeDir;
+      createHome = true;
+      shell = pkgs.bashInteractive;
       description = "OpenClaw agent";
-      # Full journal read for observability is a group membership, not a write.
-      extraGroups = lib.optional cfg.observability.enable "systemd-journal";
+      # Local-only identity: no password, no keys, and sshd refuses it outright
+      # (below), so the account can be inhabited from a root session on this box
+      # and nowhere else. `!` is an invalid hash — it matches nothing.
+      hashedPassword = "!";
+      openssh.authorizedKeys.keys = [ ];
     };
+    users.groups.${cfg.user} = { };
+
+    # Read access to the agent's service state for principals who should be
+    # able to inspect it without becoming the agent. Deliberately NOT the
+    # agent's primary group — it owns its files as itself, and this is only an
+    # ACL over the state tree. Join it with users.users.<name>.extraGroups.
     users.groups.openclaw = { };
 
-    # Secrets live in this module so they only exist when the agent is enabled.
+    # Belt and braces on top of the empty password/key set: an authorized_keys
+    # file or password added later cannot silently open remote access. Covers
+    # mosh too, which authenticates over ssh. Act as the agent with
+    # `sudo -u <user> -H ...`.
+    services.openssh.settings.DenyUsers = [ cfg.user ];
+
+    # The state dir is the agent's, group-readable by openclaw. setgid so
+    # everything written below it inherits that group without the agent having
+    # to be a member — with UMask=0027 below, that is what makes the state
+    # actually readable to the group rather than just nominally owned by it.
+    systemd.tmpfiles.rules = [
+      "d ${stateDir} 2750 ${cfg.user} openclaw -"
+    ];
+
     # Populate before switching:  sops machines/homeserver/secrets/default.yml
-    #   openclaw/anthropic-key   -> Anthropic API key
     #   openclaw/telegram-token  -> BotFather token
     #   openclaw/telegram-userid -> your numeric Telegram user ID (allowlist)
-    #   openclaw/grafana-token   -> (only if observability.grafana) read-only token
-    #   openclaw/adguard-auth    -> (only if grants.adguardRules) AdGuard creds
-    sops.secrets =
-      {
-        "openclaw/anthropic-key" = { mode = "0400"; };
-        "openclaw/telegram-token" = { mode = "0400"; };
-        "openclaw/telegram-userid" = { mode = "0400"; };
-      }
-      // lib.optionalAttrs (cfg.observability.enable && cfg.observability.grafana.enable) {
-        "openclaw/grafana-token" = { mode = "0400"; };
-      }
-      // lib.optionalAttrs g.adguardRules.enable {
-        "openclaw/adguard-auth" = { mode = "0400"; };
-      };
+    sops.secrets = {
+      "openclaw/telegram-token" = { mode = "0400"; };
+      "openclaw/telegram-userid" = { mode = "0400"; };
+    };
 
     # openclaw.json rendered with the real Telegram ID substituted in, to a
     # /run path readable only by the agent — never the store, never the repo.
     sops.templates.${configTemplateName} = {
-      owner = "openclaw";
+      owner = cfg.user;
       mode = "0400";
       content = builtins.toJSON baseConfig;
     };
 
     systemd.services.openclaw = {
-      description = "OpenClaw agent (confined, Telegram-only)";
+      description = "OpenClaw agent gateway (Telegram-only)";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
 
-      serviceConfig = {
-        User = "openclaw";
-        Group = "openclaw";
+      # `claude` must be on PATH for the claude-cli runtime (subscription auth);
+      # the rest is what the agent's own shell tooling generally expects.
+      path = [ pkgs.claude-code pkgs.git pkgs.bash pkgs.coreutils ];
 
+      environment = {
+        HOME = homeDir;
+        OPENCLAW_STATE_DIR = stateDir;
+        OPENCLAW_CONFIG_PATH = configFile;
+      };
+
+      serviceConfig = {
+        User = cfg.user;
+        Group = cfg.user;
+
+        # Removed first so the file is always created fresh inside the setgid
+        # state dir, and therefore lands in the openclaw group — `install` would
+        # otherwise preserve an existing file's ownership.
         ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
           set -euo pipefail
-          install -m 0600 ${config.sops.templates.${configTemplateName}.path} ${configFile}
+          rm -f ${configFile}
+          install -m 0640 ${config.sops.templates.${configTemplateName}.path} ${configFile}
         '';
-        ExecStart = startScript;
+        ExecStart = "${lib.getExe cfg.package} gateway";
         Restart = "on-failure";
         RestartSec = 5;
 
-        StateDirectory = "openclaw";
-        StateDirectoryMode = "0700";
+        LoadCredential = [
+          "telegram-token:${config.sops.secrets."openclaw/telegram-token".path}"
+        ];
+
+        # No StateDirectory=: systemd would chown the tree to User:Group, i.e.
+        # the agent's own group, and there is no way to ask it for a different
+        # group. tmpfiles owns the directory instead (see above).
         WorkingDirectory = stateDir;
-
-        Environment =
-          [ "OPENCLAW_CONFIG_PATH=${configFile}" ]
-          ++ lib.optional cfg.observability.enable "OPENCLAW_PROMETHEUS_URL=${cfg.observability.prometheusUrl}"
-          ++ lib.optional (cfg.observability.enable && cfg.observability.grafana.enable) "OPENCLAW_GRAFANA_URL=${cfg.observability.grafana.url}"
-          ++ lib.optional g.adguardRules.enable "OPENCLAW_ADGUARD_URL=${g.adguardRules.apiBaseUrl}";
-
-        LoadCredential =
-          [
-            "anthropic-key:${config.sops.secrets."openclaw/anthropic-key".path}"
-            "telegram-token:${config.sops.secrets."openclaw/telegram-token".path}"
-          ]
-          ++ lib.optional (cfg.observability.enable && cfg.observability.grafana.enable)
-            "grafana-token:${config.sops.secrets."openclaw/grafana-token".path}"
-          ++ lib.optional g.adguardRules.enable
-            "adguard-auth:${config.sops.secrets."openclaw/adguard-auth".path}";
-
-        # --- Sandbox. Intact regardless of grants: privileged work happens in
-        # separate units triggered over D-Bus, needing neither setuid nor new
-        # privileges here. ---
-        NoNewPrivileges = true;
-        ProtectSystem = "strict";
-        ProtectHome = true;
-        PrivateTmp = true;
-        PrivateDevices = true;
-        ProtectKernelTunables = true;
-        ProtectKernelModules = true;
-        ProtectKernelLogs = true;
-        ProtectControlGroups = true;
-        ProtectClock = true;
-        ProtectHostname = true;
-        # Observability wants system-wide process visibility: /proc/<pid> for
-        # ALL processes (cmdlines, per-process cpu/mem). Reading another user's
-        # /proc/<pid>/environ still needs CAP_SYS_PTRACE we don't have, so
-        # env-borne secrets stay protected. Tight (own-procs-only) when off.
-        ProtectProc = if cfg.observability.enable then "default" else "invisible";
-        # Keep the non-pid /proc files (meminfo, stat, ...) readable regardless.
-        ProcSubset = "all";
-        RestrictNamespaces = true;
-        RestrictRealtime = true;
-        RestrictSUIDSGID = true;
-        LockPersonality = true;
-        MemoryDenyWriteExecute = false; # V8 JIT needs W+X pages
-        CapabilityBoundingSet = "";
-        AmbientCapabilities = "";
-        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" "AF_UNIX" ];
-        SystemCallFilter = [ "@system-service" ];
-        SystemCallArchitectures = "native";
-        ReadWritePaths = [ stateDir ] ++ lib.optionals g.mediaLibrary.enable g.mediaLibrary.paths;
-        UMask = "0077";
+        # 0640 files / 0750 dirs, so the openclaw group can read what the agent
+        # writes below the state dir. Its home stays 0700 regardless.
+        UMask = "0027";
       };
     };
-
-    # ---- Privileged trigger units (root, unsandboxed; agent may only start) ----
-    systemd.services.openclaw-gc = lib.mkIf g.gcCollect.enable {
-      description = "nix garbage collection (agent-triggered)";
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = "${config.nix.package}/bin/nix-collect-garbage --delete-older-than ${g.gcCollect.olderThan}";
-      };
-    };
-
-    systemd.services.openclaw-btrfs-snapshot = lib.mkIf g.btrfsSnapshot.enable {
-      description = "read-only btrfs snapshot (agent-triggered)";
-      path = [ pkgs.btrfs-progs pkgs.coreutils ];
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = pkgs.writeShellScript "openclaw-btrfs-snap" ''
-          set -euo pipefail
-          ts="$(date +%Y%m%d-%H%M%S)"
-          mkdir -p "${g.btrfsSnapshot.snapshotDir}"
-          exec btrfs subvolume snapshot -r "${toString g.btrfsSnapshot.subvolume}" \
-            "${g.btrfsSnapshot.snapshotDir}/openclaw-$ts"
-        '';
-      };
-    };
-
-    # Sealed updater: fixed command on a ROOT-OWNED flake the agent cannot write.
-    systemd.services.openclaw-update = lib.mkIf g.update.enable {
-      description = "Sealed system update: flake update + switch (agent-triggered)";
-      path = [ pkgs.nixos-rebuild pkgs.git config.nix.package ];
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = pkgs.writeShellScript "openclaw-update" ''
-          set -euo pipefail
-          cd "${toString g.update.flakePath}"
-          echo "openclaw-triggered update of ${toString g.update.flakePath}#${hostName}"
-          nix flake update
-          exec nixos-rebuild switch --flake "${toString g.update.flakePath}#${hostName}"
-        '';
-      };
-    };
-
-    # Let ONLY the openclaw user manage the allowed units / reboot — via polkit,
-    # so the agent keeps NoNewPrivileges (no sudo, no setuid).
-    security.polkit.extraConfig = lib.mkIf usePolkit ''
-      polkit.addRule(function(action, subject) {
-        if (subject.user != "openclaw") { return polkit.Result.NOT_HANDLED; }
-        if (action.id == "org.freedesktop.systemd1.manage-units") {
-          ${lib.optionalString serviceControlAll "return polkit.Result.YES;"}
-          var allowed = ${jsArray manageableUnits};
-          if (allowed.indexOf(action.lookup("unit")) >= 0) { return polkit.Result.YES; }
-        }
-        ${lib.optionalString g.rebootHost ''
-          if (action.id == "org.freedesktop.login1.reboot" ||
-              action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
-              action.id == "org.freedesktop.login1.power-off" ||
-              action.id == "org.freedesktop.login1.power-off-multiple-sessions") {
-            return polkit.Result.YES;
-          }
-        ''}
-        return polkit.Result.NOT_HANDLED;
-      });
-    '';
   };
 }
