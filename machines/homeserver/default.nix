@@ -476,6 +476,27 @@ let
         fallbackModels = [ ]; # no failover; Opus is for complex tasks only
         settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
 
+        # TEMPORARY wide-open tool/exec policy — full access, never prompt.
+        # Alex will tighten this toward least-privilege later; for now eva may
+        # run anything without approval. Combined with her sudo grant below
+        # (nixos-rebuild / systemctl / shutdown), this is effectively
+        # unrestricted host control from an allowlisted Telegram DM.
+        settings.tools.exec.security = "full"; # no exec allowlist gating
+        settings.tools.exec.ask = "off"; # never ask for confirmation
+        settings.tools.exec.strictInlineEval = false; # allow `python -c`/`node -e` unprompted
+        settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace
+        # "approvals" only controls WHERE approval prompts are forwarded; with
+        # ask=off nothing is ever prompted, so forwarding stays off (explicit).
+        settings.approvals.exec.enabled = false;
+
+        # Web access: keyless DuckDuckGo search + lightweight HTTP fetch.
+        # DuckDuckGo search is a plugin, so enable the plugin AND select it as
+        # the web_search provider (it needs no API key, unlike brave/tavily/exa).
+        settings.tools.web.search.enabled = true;
+        settings.tools.web.search.provider = "duckduckgo";
+        settings.tools.web.fetch.enabled = true;
+        settings.plugins.entries.duckduckgo.enabled = true;
+
         # Passwordless sudo for host, service and power management. Bare paths,
         # so any arguments are allowed — a broad grant (an injected agent could
         # rebuild the system, stop any unit, or power off the box); deliberate,
