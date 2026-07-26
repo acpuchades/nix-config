@@ -497,6 +497,30 @@ let
         # until that packaging gap is resolved; web_fetch needs no plugin.
         settings.tools.web.fetch.enabled = true;
 
+        # Text-to-speech for replies. Uses the keyless, hosted Microsoft/Edge
+        # provider (NOT the heavy local tts-local-cli). auto="inbound" = she
+        # only speaks when YOU send a voice message (talk→talk); typed messages
+        # get typed replies. Spanish voice is bound via a TTS persona. The caps
+        # stop a huge reply from spawning a giant/slow synthesis. Every key here
+        # is checked against the strict `messages.tts` schema (additionalProps
+        # is false) so it can't crash-loop startup; the persona provider binding
+        # is the one open-additionalProps spot, so the voice is best-effort
+        # until confirmed live.
+        settings.messages.tts = {
+          enabled = true;
+          auto = "inbound";
+          mode = "final";
+          provider = "microsoft";
+          maxTextLength = 800;
+          timeoutMs = 15000;
+          persona = "spanish";
+          personas.spanish = {
+            label = "Eva (español)";
+            provider = "microsoft";
+            providers.microsoft.voice = "es-ES-ElviraNeural";
+          };
+        };
+
         # Passwordless sudo for host, service and power management. Bare paths,
         # so any arguments are allowed — a broad grant (an injected agent could
         # rebuild the system, stop any unit, or power off the box); deliberate,
