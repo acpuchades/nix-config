@@ -13,6 +13,5 @@ with pkgs;
   nmap
   ntfs3g
   tcpdump
-  traceroute
   whois
 ]
