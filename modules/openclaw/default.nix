@@ -208,13 +208,48 @@ let
   # home for it, and the module needs no knowledge of sops/agenix/etc.
   configTemplate = settingsFormat.generate "openclaw.json" fullConfig;
 
-  # Shell lines that seed cfg.exec.allowlist into the exec-approval allowlist at
-  # start (for all agents). Merges, so the agent's own runtime additions survive;
-  # a failure warns but does not abort the unit.
-  allowlistSeedLines = lib.concatMapStringsSep "\n" (glob:
-    ''${lib.getExe openclawPatched} approvals allowlist add --agent '*' ${lib.escapeShellArg glob} >/dev/null 2>&1 \
-      || echo "[openclaw] WARN: exec-allowlist seed failed for: ${glob}" >&2''
-  ) cfg.exec.allowlist;
+  # The operator-declared exec-approval globs, rendered as ONE JSON file in the
+  # openclaw exec-approvals schema (pattern-only entries — OpenClaw backfills the
+  # id/lastUsedAt fields itself the first time it reads the file). Deterministic
+  # and secret-free, so the nix store is a fine home for it.
+  execApprovalsSeed = settingsFormat.generate "openclaw-exec-approvals.json" {
+    version = 1;
+    socket = { };
+    defaults = { };
+    agents."*".allowlist = map (pattern: { inherit pattern; }) cfg.exec.allowlist;
+  };
+
+  # Fast, Node-free seed: union the declared globs into the agent's live
+  # exec-approvals.json with a SINGLE jq call, replacing the old loop that ran
+  # one ~1.4s `openclaw approvals allowlist add` process per glob (~34 of them,
+  # which overran the gateway's 90s start-pre timeout and crash-looped it). The
+  # union is by pattern string, so the agent's own approve-and-remember entries
+  # survive across restarts; a failed merge warns and leaves the file untouched.
+  allowlistSeedMerge = ''
+    approvalsFile=${homeDir}/.openclaw/exec-approvals.json
+    mkdir -p "$(dirname "$approvalsFile")"
+    if [ -f "$approvalsFile" ]; then liveSrc="$approvalsFile"; else liveSrc=${execApprovalsSeed}; fi
+    tmp="$(mktemp)"
+    if ${lib.getExe pkgs.jq} -s '
+          .[0] as $seed | .[1] as $live
+          | ($live.agents["*"].allowlist // [])            as $cur
+          | ($cur | map(.pattern))                          as $have
+          | ($seed.agents["*"].allowlist
+             | map(select((.pattern) as $p | ($have | index($p)) | not))) as $add
+          | $live
+          | .version     //= 1
+          | .socket      //= {}
+          | .defaults    //= {}
+          | .agents      //= {}
+          | .agents["*"] //= {}
+          | .agents["*"].allowlist = ($cur + $add)
+        ' ${execApprovalsSeed} "$liveSrc" > "$tmp"; then
+      install -m 0600 "$tmp" "$approvalsFile"
+    else
+      echo "[openclaw] WARN: exec-approvals seed merge failed; leaving existing file untouched" >&2
+    fi
+    rm -f "$tmp"
+  '';
 in
 {
   options.my.openclaw = {
@@ -722,7 +757,12 @@ in
 
         # Config seeding is a BLUEPRINT merge, not a hard overwrite, in three
         # steps: (1) apply the config blueprint, (2) patch in the Telegram
-        # allowlist from the secret file, (3) seed the exec-approval globs.
+        # allowlist from the secret file, (3) union the exec-approval globs into
+        # the agent's live allowlist with a single jq merge. Step 3 was formerly
+        # ~34 sequential `openclaw approvals allowlist add` calls (~1.4s of Node
+        # cold-start each) that overran the 90s start-pre timeout and crash-
+        # looped the gateway; it is now one Node-free jq call (regression fixed
+        # 2026-07-26).
         #
         # (1) First boot (file absent) lays down the full Nix-rendered config,
         # created fresh inside the setgid state dir so it lands in the openclaw
@@ -764,14 +804,16 @@ in
           printf '{"channels":{"telegram":{"allowFrom":[%s]}},"commands":{"ownerAllowFrom":[%s]}}' "$ids" "$ids" \
             | ${lib.getExe openclawPatched} config patch --stdin
 
-          # (3) Seed the operator-declared exec-approval allowlist globs into
-          # ~/.openclaw/exec-approvals.json. Merges with the agent's own
-          # approve-and-remember entries; each add warns on failure, never aborts.
-          ${allowlistSeedLines}
+          # (3) Seed the operator-declared exec-approval globs (single jq merge).
+          ${allowlistSeedMerge}
         '';
         ExecStart = "${lib.getExe openclawPatched} gateway";
         Restart = "on-failure";
         RestartSec = 5;
+        # The seed above is now two fast config patches plus one jq merge, but
+        # keep a margin over systemd's 90s default so a momentarily loaded box
+        # never times the gateway out before it binds.
+        TimeoutStartSec = 180;
 
         LoadCredential = [
           "telegram-token:${cfg.telegram.tokenFile}"
