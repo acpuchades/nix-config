@@ -747,7 +747,11 @@ in
     # bump the version suffix when the packaged OpenClaw is updated.
     nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.5.7" ];
 
-    environment.systemPackages = [ openclawPatched pkgs.claude-code ];
+    # ffmpeg must be a *system* package (not just on the service PATH): the STT
+    # pipeline resolves it via requireSystemBin, which only trusts fixed dirs
+    # like /run/current-system/sw/bin — the system profile, i.e. this list.
+    environment.systemPackages = [ openclawPatched pkgs.claude-code ]
+      ++ lib.optionals cfg.stt.enable [ pkgs.ffmpeg-headless ];
 
     users.users.${cfg.user} = {
       isNormalUser = true;
@@ -834,10 +838,12 @@ in
 
       # `claude` must be on PATH for the claude-cli runtime (subscription auth);
       # the rest is what the agent's own shell tooling generally expects. When
-      # STT is on, whisper-cli + ffmpeg join the PATH — OpenClaw invokes both by
-      # name (ffmpeg for the OGG->WAV transcode, whisper-cli for transcription).
+      # STT is on, whisper-cli joins the PATH so OpenClaw can exec the configured
+      # transcription command by name. (ffmpeg is NOT enough on PATH — OpenClaw
+      # resolves it via requireSystemBin/trusted dirs, so it goes in
+      # environment.systemPackages below instead.)
       path = [ pkgs.claude-code pkgs.git pkgs.bash pkgs.coreutils ]
-        ++ lib.optionals cfg.stt.enable [ cfg.stt.package pkgs.ffmpeg-headless ];
+        ++ lib.optionals cfg.stt.enable [ cfg.stt.package ];
 
       environment = {
         HOME = homeDir;
