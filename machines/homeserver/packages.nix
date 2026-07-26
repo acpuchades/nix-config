@@ -8,6 +8,7 @@ with pkgs;
   curl
   ghostty.terminfo
   glibcLocalesUtf8
+  hashcat
   htop
   iw
   mailutils
