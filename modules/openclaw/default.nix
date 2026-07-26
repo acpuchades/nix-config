@@ -59,6 +59,82 @@ let
   configFile = "${stateDir}/openclaw.json";
   credDir = "/run/credentials/openclaw.service";
 
+  # --- optional email capability (see options.my.openclaw.mail) --------------
+  # Read-only Maildir viewers — no writes/network/exec, safe to run unprompted.
+  mailReadBins = [ "mscan" "mshow" "mlist" "mhdr" "mdirs" ];
+
+  # `send-email`: the generic actions/send-email script wrapped so the sender
+  # identity ($MAIL_FROM, from cfg.mail.fromAddress) and the sendmail path are
+  # pinned by nix — the script itself stays identity-agnostic. Immutable in the
+  # store, and the wrapper --set overrides any inherited env, so the agent can
+  # neither swap the code nor change the sender. The bin name carries no agent
+  # name.
+  mailSendBin = pkgs.runCommandLocal "openclaw-send-email"
+    { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+      install -Dm0755 ${./actions/send-email} $out/libexec/send-email
+      makeWrapper $out/libexec/send-email $out/bin/send-email \
+        --set SENDMAIL /run/wrappers/bin/sendmail \
+        ${lib.optionalString (cfg.mail.fromAddress != null)
+          "--set MAIL_FROM ${lib.escapeShellArg cfg.mail.fromAddress}"}
+    '';
+
+  # One exact allowlist rule per pre-blessed recipient: `send-email <addr>`. Any
+  # other recipient (or more than one in a single send) fails to match and falls
+  # through to the exec `ask` gate — the data-exfiltration guard.
+  mailAllowlist = map (addr: "send-email ${addr}") cfg.mail.unpromptedRecipients;
+
+  mailFromDisplay =
+    if cfg.mail.fromAddress == null then "the agent's configured address" else cfg.mail.fromAddress;
+
+  # The check-email skill, rendered immutably into the store and loaded via
+  # skills.load.extraDirs.
+  mailSkillsDir = pkgs.writeTextDir "check-email/SKILL.md" ''
+    ---
+    name: check-email
+    description: Read and reply to the agent's own email. Use whenever the owner asks to check the inbox, read a forwarded message, or send/reply to an email. The mailbox is a local Maildir at ${homeDir}/Maildir; outgoing mail is sent with the `send-email` command.
+    ---
+
+    # Email
+
+    Incoming mail is delivered into a local Maildir you own at
+    `${homeDir}/Maildir`:
+
+    - `${homeDir}/Maildir/new/` — unread
+    - `${homeDir}/Maildir/cur/` — already seen
+
+    ## Read
+
+    List unread messages, newest first:
+
+        ls -t ${homeDir}/Maildir/new/
+
+    Read one, fully decoded to plain text (headers + body):
+
+        mshow <path-to-message-file>
+
+    Use `mhdr <file>` for just the headers (From / Subject / Date / Message-ID).
+    Never `cat` a raw message — it is MIME/quoted-printable encoded and unreadable.
+
+    ## Reply / send
+
+    Compose the whole message (`To:`, `Subject:` and a body) on stdin, and pass
+    the recipient address as an ARGUMENT to `send-email` — the argument is what
+    actually receives it; the headers are display only. The `From:` identity is
+    fixed for you (${mailFromDisplay}); you do not set it.
+
+        printf 'To: %s\nSubject: %s\nIn-Reply-To: %s\n\n%s\n' \
+          "''${to}" "''${subject}" "''${reply_to_message_id}" "''${body}" | send-email "''${to}"
+
+    Rules:
+    - When replying to a forwarded message, address the reply to the original
+      sender (their `From:` / `Reply-To:`, seen via `mhdr`).
+    - One recipient per call.${lib.optionalString (cfg.mail.unpromptedRecipients != [ ]) " These send immediately, no approval: ${lib.concatStringsSep ", " cfg.mail.unpromptedRecipients}."} Any other recipient needs the
+      owner to approve the send in the origin channel first — expect a short
+      wait, and only mail other addresses when the task genuinely calls for it.
+    - Set `In-Reply-To:` to the original `Message-ID` (from `mhdr`) and quote
+      what you are answering, so threads stay intact.
+  '';
+
   # OpenClaw's bundled-plugin loader opens each plugin "public surface" through a
   # boundary check that REJECTS any file with st_nlink > 1 (openBoundaryFileSync
   # { rejectHardlinks: true }, enforced once in dist/safe-open-sync-*.js). That is
@@ -227,14 +303,22 @@ let
       security = cfg.exec.security;
       ask = cfg.exec.ask;
       strictInlineEval = cfg.exec.strictInlineEval;
-      safeBins = cfg.exec.safeBins;
+      safeBins = cfg.exec.safeBins ++ lib.optionals cfg.mail.enable mailReadBins;
     } // lib.optionalAttrs (cfg.exec.safeBinProfiles != { }) {
       safeBinProfiles = cfg.exec.safeBinProfiles;
     };
   };
 
+  # Load the check-email skill (when enabled) between the module defaults and the
+  # host's cfg.settings, so the host can still override but need not wire it.
+  mailConfig = lib.optionalAttrs cfg.mail.enable {
+    skills.load.extraDirs = [ "${mailSkillsDir}" ];
+  };
+
   fullConfig =
-    lib.recursiveUpdate (lib.recursiveUpdate defaultConfig cfg.settings) enforcedConfig;
+    lib.recursiveUpdate
+      (lib.recursiveUpdate (lib.recursiveUpdate defaultConfig mailConfig) cfg.settings)
+      enforcedConfig;
 
   # The config blueprint, rendered to the store as plain JSON. It holds NO
   # secrets — the bot token is a systemd credential and the allowlisted ID is
@@ -250,7 +334,9 @@ let
     version = 1;
     socket = { };
     defaults = { };
-    agents."*".allowlist = map (pattern: { inherit pattern; }) cfg.exec.allowlist;
+    agents."*".allowlist =
+      map (pattern: { inherit pattern; })
+        (cfg.exec.allowlist ++ lib.optionals cfg.mail.enable mailAllowlist);
   };
 
   # Fast, Node-free seed: union the declared globs into the agent's live
@@ -554,6 +640,42 @@ in
       '';
     };
 
+    mail = {
+      enable = lib.mkEnableOption "email for the agent: read its own Maildir, plus a constrained, recipient-gated `send-email` helper";
+
+      fromAddress = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "e.lebbot@example.com";
+        description = ''
+          Optional sender identity. When set, the generated `send-email` helper
+          forces it as the envelope sender (via a nix-pinned wrapper), so the
+          agent can only ever send as this address; when null, the system default
+          (Postfix myorigin) is used. The address is a nix parameter — it is NOT
+          baked into the action script; actions/send-email stays generic.
+
+          Inbound delivery to the agent's ~/Maildir is arranged separately (an
+          MX/alias pointing here); this option only concerns outbound identity,
+          tooling and the skill.
+        '';
+      };
+
+      unpromptedRecipients = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "me@example.com" ];
+        description = ''
+          Recipient addresses the agent may email WITHOUT an approval prompt, one
+          recipient per send. Each becomes an exact exec-allowlist rule
+          (`send-email <addr>`). Any other recipient — or more than one recipient
+          in a single send — does not match and falls through to the exec `ask`
+          gate, so the owner approves it in the origin channel. This is the data-
+          exfiltration guard: a prompt-injected agent cannot silently mail data to
+          an arbitrary address. Empty (default) gates every send.
+        '';
+      };
+    };
+
     # WHAT IT CAN DO TO THE HOST. The options below are the deliberate, narrow
     # exceptions to the "no host access" posture described in the header: the
     # shell-exec policy, plus ways to hand the agent specific files and specific
@@ -751,7 +873,8 @@ in
     # pipeline resolves it via requireSystemBin, which only trusts fixed dirs
     # like /run/current-system/sw/bin — the system profile, i.e. this list.
     environment.systemPackages = [ openclawPatched pkgs.claude-code ]
-      ++ lib.optionals cfg.stt.enable [ pkgs.ffmpeg-headless ];
+      ++ lib.optionals cfg.stt.enable [ pkgs.ffmpeg-headless ]
+      ++ lib.optionals cfg.mail.enable [ mailSendBin pkgs.mblaze ];
 
     users.users.${cfg.user} = {
       isNormalUser = true;

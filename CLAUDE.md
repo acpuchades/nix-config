@@ -46,7 +46,7 @@ config = lib.mkIf config.my.<module>.enable { ... };
 
 **Development modules**: `python-dev` (Python 3, Jupyter, ruff, uv, pyright, conda/mamba), `r-dev` (R + devtools/renv/rix, uses rstats-on-nix cachix cache).
 
-**Server modules** (homeserver only): `cloud-suite` (NextCloud, Collabora, Vaultwarden), `dns-filtering` (AdGuard Home + DNSCrypt), `web-server` (nginx + ACME), `vpn-server` (WireGuard + hostapd WiFi hotspot), `mail-relay` (Postfix SMTP relay).
+**Server modules** (homeserver only): `cloud-suite` (NextCloud, Collabora, Vaultwarden), `dns-filtering` (AdGuard Home + DNSCrypt), `web-server` (nginx + ACME), `vpn-server` (WireGuard + hostapd WiFi hotspot), `mail-server` (Postfix inbound receive → eva's Maildir + Mailjet relay for outbound, rspamd, ACME STARTTLS).
 
 ### User Configuration (`users/alex/`)
 
