@@ -48,6 +48,7 @@
     "signal"
     "spotify"
     "syntax-highlight"
+    "telegram"
     "the-unarchiver"
     "utm"
     "veracrypt"
