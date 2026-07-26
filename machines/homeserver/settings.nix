@@ -101,6 +101,9 @@
 
   security.sudo.wheelNeedsPassword = true;
 
+  # eva's passwordless sudo grants now live in machines/homeserver/default.nix
+  # under my.openclaw.sudoCommands, kept alongside the rest of her config.
+
   # Enable Mesa userspace drivers (VAAPI) for hardware-accelerated transcoding
   hardware.graphics.enable = true;
 
