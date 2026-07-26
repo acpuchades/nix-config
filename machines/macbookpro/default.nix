@@ -62,15 +62,6 @@ in
 
       (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
 
-      {
-        # WORKAROUND: disable direnv failing test suite on macos
-        nixpkgs.overlays = [
-          (final: prev: {
-            direnv = prev.direnv.overrideAttrs (_: { doCheck = false; });
-          })
-        ];
-      }
-
       ./settings.nix
 
       configuration
