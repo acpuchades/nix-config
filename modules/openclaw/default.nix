@@ -34,6 +34,10 @@
 let
   cfg = config.my.openclaw;
 
+  # Freeform JSON so my.openclaw.settings can express any key in openclaw.json
+  # (see `openclaw config schema`) without the module having to model each one.
+  settingsFormat = pkgs.formats.json { };
+
   # The agent is a person on this host, not just a daemon: it runs as a real
   # account (`user`, named after the bot) with a real home under /home, where
   # its workspace and its Claude CLI login live. Service-owned state — the
@@ -58,19 +62,28 @@ let
   # with openclaw/telegram-userid when the config template is rendered.
   telegramIdPlaceholder = config.sops.placeholder."openclaw/telegram-userid";
 
-  # Declarative base config. Access is locked to an explicit numeric-ID
-  # allowlist; groups disabled.
-  baseConfig = {
-    gateway = {
-      # This build of OpenClaw takes a bind *mode* keyword, not an IP, and
-      # refuses to start unless gateway.mode is set. "local" + "loopback" is
-      # the 127.0.0.1-only posture we want; an IP string here is rejected.
-      mode = "local";
-      bind = "loopback";
-      port = cfg.port;
-    };
+  # The config file is re-seeded from Nix on every start, so it is assembled
+  # here in three layers with a clear precedence:
+  #
+  #   defaultConfig  <  cfg.settings  <  enforcedConfig
+  #
+  # i.e. the module's defaults can be overridden by the user's declarative
+  # settings, but the security-critical keys are forced on top and cannot be
+  # overridden by settings (or by anything the agent writes at runtime, since
+  # the whole file is rebuilt from this each start).
+
+  # Sensible defaults the user may override via my.openclaw.settings.
+  defaultConfig = {
+    gateway.port = cfg.port;
     agents.defaults = {
-      model.primary = cfg.model;
+      model = {
+        primary = cfg.model;
+      } // lib.optionalAttrs (cfg.fallbackModels != [ ]) {
+        # Ordered failover: OpenClaw tries these in turn when the primary model
+        # errors. This is failover, not on-demand escalation — a stronger model
+        # here only runs when the primary call fails.
+        fallbacks = cfg.fallbackModels;
+      };
       workspace = "${homeDir}/workspace";
     } // lib.optionalAttrs (cfg.agentRuntime != null) {
       agentRuntime.id = cfg.agentRuntime;
@@ -78,12 +91,30 @@ let
     channels.telegram = {
       enabled = true;
       tokenFile = "${credDir}/telegram-token"; # real file (symlinks rejected)
+    };
+  };
+
+  # Non-negotiable security invariants. Access is locked to an explicit
+  # numeric-ID allowlist and groups are disabled; the gateway stays loopback.
+  # Merged LAST so a stray value in cfg.settings can never open access.
+  enforcedConfig = {
+    gateway = {
+      # This build of OpenClaw takes a bind *mode* keyword, not an IP, and
+      # refuses to start unless gateway.mode is set. "local" + "loopback" is
+      # the 127.0.0.1-only posture we want; an IP string here is rejected.
+      mode = "local";
+      bind = "loopback";
+    };
+    channels.telegram = {
       dmPolicy = "allowlist";
       allowFrom = [ telegramIdPlaceholder ];
       groupPolicy = "disabled";
     };
     commands.ownerAllowFrom = [ telegramIdPlaceholder ];
   };
+
+  fullConfig =
+    lib.recursiveUpdate (lib.recursiveUpdate defaultConfig cfg.settings) enforcedConfig;
 
   # Rendered by sops-nix (real ID substituted) to a /run path owned by openclaw.
   configTemplateName = "openclaw/config.json";
@@ -117,6 +148,19 @@ in
       description = "Primary model, as provider/model.";
     };
 
+    fallbackModels = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "anthropic/claude-opus-4-8" ];
+      description = ''
+        Ordered failover models (each as provider/model) tried in turn when the
+        primary model errors. This is failover, NOT on-demand escalation: a more
+        powerful model here runs only when the primary call fails, not because a
+        task looks hard. Defaults to Opus 4.8 behind the Sonnet 4.6 primary — the
+        strong model catches outages/rate-limits on the everyday one. Set to [ ]
+        to disable fallbacks.
+      '';
+    };
+
     agentRuntime = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = "claude-cli";
@@ -135,6 +179,39 @@ in
       description = ''
         Loopback port for the gateway / control UI. Bound to 127.0.0.1 only —
         never opened in the firewall. Reach it locally (e.g. via SSH tunnel).
+      '';
+    };
+
+    settings = lib.mkOption {
+      type = settingsFormat.type;
+      default = { };
+      example = lib.literalExpression ''
+        {
+          agents.defaults.model.primary = "anthropic/claude-opus-4-8";
+          # extra skill directories loaded alongside the workspace
+          skills.load.extraDirs = [ "/etc/openclaw/skills" ];
+          # register an MCP tool server
+          mcp.servers.fetch.command = "''${pkgs.mcp-fetch}/bin/mcp-fetch";
+          # widen/narrow the agent's tool + exec policy
+          tools.alsoAllow = [ "web.search" ];
+        }
+      '';
+      description = ''
+        Authoritative, declarative OpenClaw configuration, deep-merged into
+        openclaw.json. Because the config file is re-seeded from Nix on every
+        start, THIS is where persistent configuration goes — `openclaw
+        configure` / `config set` and any config the agent writes at runtime are
+        overwritten on the next restart. Run `openclaw config schema` to see the
+        full key set.
+
+        Precedence: module defaults < this < enforced security keys. The
+        security-critical keys (gateway.bind/mode, the Telegram allowlist,
+        dmPolicy/groupPolicy, ownerAllowFrom) are forced on top and cannot be
+        overridden here, so a mistaken value cannot open access.
+
+        Note: agent *skills* live in the workspace (and any skills.load.extraDirs
+        above) and persist independently of this file — the agent can still add
+        its own skills; only openclaw.json is Nix-authoritative.
       '';
     };
 
@@ -198,7 +275,7 @@ in
     sops.templates.${configTemplateName} = {
       owner = cfg.user;
       mode = "0400";
-      content = builtins.toJSON baseConfig;
+      content = builtins.toJSON fullConfig;
     };
 
     systemd.services.openclaw = {
