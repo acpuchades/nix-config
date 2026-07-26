@@ -477,12 +477,15 @@ let
         # when eva delegates a heavy task, never just because a Sonnet call
         # errored. NB: this is task-delegation routing, not per-message
         # auto-escalation; it applies when eva spawns a subagent.
-        # Failover to Gemini Flash (google provider, its own API key) when the
-        # Claude subscription hits its usage cap — a DIFFERENT provider, so eva
-        # stays responsive during Claude outages. Not Opus (same subscription =
-        # same cap). GEMINI_API_KEY is injected via an EnvironmentFile on the
-        # service (see systemd.services.openclaw below), never in this public repo.
-        fallbackModels = [ "google/gemini-2.5-flash" ];
+        # No model failover. A Gemini Flash fallback lived here for Claude
+        # usage-cap outages, but the key's Google project never had Generative-
+        # Language-API access to gemini-2.5-flash (persistent 404s), so in
+        # practice it only turned transient Claude timeouts into Gemini 404 error
+        # replies. Dropped 2026-07-26; when Claude fails, eva now surfaces the
+        # Claude error instead of bouncing onto a broken fallback. Re-add via
+        # fallbackModels + the openclaw/gemini-env secret if a working
+        # key/project is ever provisioned.
+        fallbackModels = [ ];
         settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
 
         # Exec policy: allowlist + confirm-on-miss, via the module's first-class
@@ -643,13 +646,10 @@ let
 
       # Provider API keys reaching the service via my.openclaw.environmentFiles —
       # the token comes in from outside the module, next to the model/voice that
-      # needs it. Both are SOPS-rendered env files (openclaw/*-env), so no key is
-      # in this public repo or the store:
-      #   * Gemini (model failover, fallbackModels above) — GEMINI_API_KEY /
-      #     GOOGLE_API_KEY.
+      # needs it. SOPS-rendered env file (openclaw/*-env), so no key is in this
+      # public repo or the store:
       #   * ElevenLabs (reply TTS) — ELEVENLABS_API_KEY.
       my.openclaw.environmentFiles = [
-        config.sops.templates."openclaw/gemini-env".path
         config.sops.templates."openclaw/elevenlabs-env".path
       ];
 
