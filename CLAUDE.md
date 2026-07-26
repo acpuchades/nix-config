@@ -80,3 +80,14 @@ Defined in `machines/homeserver/services.nix` and modules:
 - DDClient (dynamic DNS)
 - Fail2ban
 - WireGuard server with 5 peers (`machines/homeserver/networking.nix`)
+
+## Upstream-Tracked Workarounds (check periodically; drop when possible)
+
+These carry ongoing bookkeeping tied to external state. On each `nix flake update` (or every few months), re-check each one and remove it once its drop condition is met. Last reviewed: 2026-07-26.
+
+| Workaround | Location | Drop condition | Status (2026-07-26) |
+|---|---|---|---|
+| Caddy Cloudflare-DNS plugin hash pin (`caddy.withPlugins`) | `modules/acme-cloudflare/default.nix` (~L21-26) | Intrinsic to `withPlugins`; no clean removal. Hash must be re-pinned (`lib.fakeHash` → copy real hash) on every caddy/nixpkgs/Go bump — has churned ~4× in 3 months. nixpkgs#450289 closed with community FOD tooling (`vincentbernat/caddy-nix`, `MichailiK/nix-caddy-withplugins`) that ends the churn — migrate to drop the manual hash. | **Keep** — churn ongoing; migration is the only real fix |
+| OpenClaw hardlink-guard patch (`openclawPatched`) | `modules/openclaw/default.nix` (~L62-102) | Structural: fights `nix.settings.auto-optimise-store` store dedup vs upstream's `rejectHardlinks` boundary check. Drop only if upstream makes `rejectHardlinks` off/configurable for store files. `--replace-fail` fails loudly on version bumps. | **Keep** — not an upstream bug; no drop path |
+| OpenClaw `permittedInsecurePackages` pin | `modules/openclaw/default.nix` (~L622) | Upstream's deliberate `knownVulnerabilities` (LLM prompt-injection). Won't be lifted; just **bump the `openclaw-<version>` suffix** on each package update. | **Keep** — pinned `openclaw-2026.5.7`, matches current nixpkgs |
+| Vaultwarden 1.37.0 `overrideAttrs` | `modules/cloud-suite/default.nix` (~L375-395) | Drop once `pkgs.vaultwarden >= 1.37.0`. | **Keep** — pinned nixpkgs still ships 1.36.0 |
