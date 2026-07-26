@@ -168,6 +168,28 @@ let
         };
       };
     };
+  } // lib.optionalAttrs cfg.stt.enable {
+    # Inbound speech-to-text: transcribe voice notes so eva can act on them.
+    # A whisper.cpp CLI entry in the media-audio model list. OpenClaw special-
+    # cases `whisper-cli`: it transcodes the inbound Telegram OGG/Opus to
+    # 16 kHz mono WAV via ffmpeg and reads whisper's `.txt` sidecar, so no
+    # wrapper is needed; the transcript is then fed to the agent like a typed
+    # message. Lives in defaultConfig (a preference), so cfg.settings can tune it.
+    tools.media.audio = {
+      enabled = true;
+      models = [{
+        type = "cli";
+        command = "whisper-cli";
+        args = [
+          "-m" "${cfg.stt.model}"
+          "-l" cfg.stt.language
+          "-otxt" "-of" "{{OutputBase}}"
+          "-np" "-nt"
+          "{{MediaPath}}"
+        ];
+        timeoutSeconds = cfg.stt.timeoutSeconds;
+      }];
+    };
   };
 
   # Non-negotiable security invariants. Access is locked to an explicit
@@ -448,6 +470,52 @@ in
         type = lib.types.ints.positive;
         default = 15000;
         description = "Synthesis timeout in milliseconds.";
+      };
+    };
+
+    # Inbound speech-to-text (voice notes -> text the agent can read). Modelled
+    # as options because the claude-cli runtime can't ingest audio itself, so a
+    # local transcriber is the self-contained way to make voice messages work.
+    stt = {
+      enable = lib.mkEnableOption ''
+        inbound speech-to-text so eva understands voice messages. Wires a
+        whisper.cpp CLI entry into tools.media.audio and puts whisper-cli +
+        ffmpeg on the service PATH. OpenClaw transcodes the inbound OGG/Opus to
+        16 kHz WAV and reads whisper's .txt output; the transcript is handed to
+        the agent like a typed message. Needs stt.model set'';
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.whisper-cpp;
+        defaultText = lib.literalExpression "pkgs.whisper-cpp";
+        description = "whisper.cpp package providing the `whisper-cli` binary.";
+      };
+      model = lib.mkOption {
+        type = lib.types.path;
+        example = lib.literalExpression ''
+          pkgs.fetchurl {
+            url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+            hash = "sha256-...";
+          }'';
+        description = ''
+          GGML whisper model file used to transcribe voice notes. Supplied from
+          OUTSIDE the module (e.g. a fetchurl), so no hash is baked in here.
+          Multilingual models (ggml-small/medium/…) handle Spanish; larger =
+          more accurate but slower on CPU.
+        '';
+      };
+      language = lib.mkOption {
+        type = lib.types.str;
+        default = "auto";
+        example = "es";
+        description = ''
+          whisper `-l` language: an ISO code like "es" to pin the language, or
+          "auto" to detect per clip (handles a Spanish/English mix).
+        '';
+      };
+      timeoutSeconds = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 300;
+        description = "Max seconds for a single transcription before it is aborted.";
       };
     };
 
@@ -765,8 +833,11 @@ in
       wants = [ "network-online.target" ];
 
       # `claude` must be on PATH for the claude-cli runtime (subscription auth);
-      # the rest is what the agent's own shell tooling generally expects.
-      path = [ pkgs.claude-code pkgs.git pkgs.bash pkgs.coreutils ];
+      # the rest is what the agent's own shell tooling generally expects. When
+      # STT is on, whisper-cli + ffmpeg join the PATH — OpenClaw invokes both by
+      # name (ffmpeg for the OGG->WAV transcode, whisper-cli for transcription).
+      path = [ pkgs.claude-code pkgs.git pkgs.bash pkgs.coreutils ]
+        ++ lib.optionals cfg.stt.enable [ cfg.stt.package pkgs.ffmpeg-headless ];
 
       environment = {
         HOME = homeDir;

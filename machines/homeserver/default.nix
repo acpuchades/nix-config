@@ -576,6 +576,20 @@ let
           timeoutMs = 15000;
         };
 
+        # Inbound speech-to-text: local whisper.cpp so eva understands voice
+        # notes (the claude-cli runtime can't ingest audio itself). The
+        # multilingual "small" GGML model balances Spanish accuracy against CPU
+        # speed; on this 16-core box a short clip transcribes in a few seconds.
+        # The model is fetched here with a pinned hash and handed to the module;
+        # language stays "auto" (module default) to handle a Spanish/English mix.
+        stt = {
+          enable = true;
+          model = pkgs.fetchurl {
+            url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin";
+            hash = "sha256-G+OpsgY4Z7k35k4ux0gzZKeZF+FX+pjF2UtcH//qmHs=";
+          };
+        };
+
         # Passwordless sudo for host, service and power management. Bare paths,
         # so any arguments are allowed — a broad grant (an injected agent could
         # rebuild the system, stop any unit, or power off the box); deliberate,
