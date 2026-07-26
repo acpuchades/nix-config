@@ -76,13 +76,20 @@ let
   # provider's surface up front. That is what silently broke all of eva's traffic
   # the moment a gemini fallback was configured.
   #
-  # Neutralize the single enforcement site so hardlinked store files are accepted.
-  # The realpath / allowed-type / symlink / max-bytes checks around it are left
-  # intact; only the nlink>1 rejection is disabled. This is safe here: the files
-  # are our own read-only /nix/store, and this is a single-tenant host — the guard
-  # buys nothing against a hardlink attack and only fights the store's own dedup.
-  # --replace-fail makes a version bump that moves/renames this expression fail
-  # the build loudly rather than silently shipping the broken (unpatched) loader.
+  # Neutralize BOTH nlink>1 enforcement sites so hardlinked store files are
+  # accepted. openBoundaryFileSync (in safe-open-sync-*.js) rejects hardlinks
+  # TWICE: once on the pre-open lstat (preOpenStat) and again on the post-open
+  # fstat (openedStat) — an open-then-verify pair guarding against a TOCTOU swap.
+  # The store dedups identical files to nlink>=2, so both fire. The original
+  # patch disabled only the preOpenStat check, so google/gemini (and any native
+  # provider) surfaces STILL failed to load on every dispatch via the openedStat
+  # check — silently breaking all of eva's traffic once a gemini fallback was set.
+  # The realpath / allowed-type / symlink / max-bytes checks are left intact;
+  # only the two nlink>1 rejections are disabled. Safe here: the files are our own
+  # read-only /nix/store on a single-tenant host — the guard buys nothing against
+  # a hardlink attack and only fights the store's own dedup. Each --replace-fail
+  # makes a version bump that moves/renames either expression fail the build
+  # loudly rather than silently shipping the broken (unpatched) loader.
   openclawPatched = cfg.package.overrideAttrs (old: {
     postInstall = (old.postInstall or "") + ''
       patched=0
@@ -91,7 +98,10 @@ let
         substituteInPlace "$f" \
           --replace-fail \
             'params.rejectHardlinks && preOpenStat.isFile() && preOpenStat.nlink > 1' \
-            'false && preOpenStat.isFile() && preOpenStat.nlink > 1'
+            'false && preOpenStat.isFile() && preOpenStat.nlink > 1' \
+          --replace-fail \
+            'params.rejectHardlinks && openedStat.isFile() && openedStat.nlink > 1' \
+            'false && openedStat.isFile() && openedStat.nlink > 1'
         patched=1
       done
       if [ "$patched" != 1 ]; then
