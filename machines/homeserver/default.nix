@@ -489,13 +489,13 @@ let
         # ask=off nothing is ever prompted, so forwarding stays off (explicit).
         settings.approvals.exec.enabled = false;
 
-        # Web access: keyless DuckDuckGo search + lightweight HTTP fetch.
-        # DuckDuckGo search is a plugin, so enable the plugin AND select it as
-        # the web_search provider (it needs no API key, unlike brave/tavily/exa).
-        settings.tools.web.search.enabled = true;
-        settings.tools.web.search.provider = "duckduckgo";
+        # Web access: lightweight HTTP fetch only, for now. The DuckDuckGo
+        # search plugin exists in the config schema, but its bundled runtime
+        # surface (duckduckgo/web-search-contract-api.js) fails to load in this
+        # nixpkgs build of OpenClaw 2026.5.7 — enabling it crash-loops the
+        # gateway at startup ("required secrets are unavailable"). Left disabled
+        # until that packaging gap is resolved; web_fetch needs no plugin.
         settings.tools.web.fetch.enabled = true;
-        settings.plugins.entries.duckduckgo.enabled = true;
 
         # Passwordless sudo for host, service and power management. Bare paths,
         # so any arguments are allowed — a broad grant (an injected agent could
