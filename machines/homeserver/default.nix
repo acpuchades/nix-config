@@ -465,6 +465,16 @@ let
         # Telegram allowlist ID is a SOPS secret (openclaw/telegram-userid),
         # not a plaintext option — this repo is public.
 
+        # Two-tier model use. Everyday chat runs on the Sonnet 4.6 primary
+        # (my.openclaw.model), with Opus 4.8 wired as *failover* behind it
+        # (my.openclaw.fallbackModels) for outages/timeouts. On top of that,
+        # route delegated *subagents* to Opus so genuinely heavy work (e.g. the
+        # coding-agent skill spawning a background agent) gets the stronger
+        # model while everyday turns stay fast/cheap on Sonnet. NB: this is
+        # task-delegation routing, not per-message auto-escalation — it applies
+        # when eva spawns a subagent, not to every "hard-looking" message.
+        settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
+
         # Passwordless sudo for host, service and power management. Bare paths,
         # so any arguments are allowed — a broad grant (an injected agent could
         # rebuild the system, stop any unit, or power off the box); deliberate,
