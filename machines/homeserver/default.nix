@@ -569,6 +569,7 @@ let
           voiceId = "dNjJKg63Fr5AXwIdkATa";
           modelId = "eleven_multilingual_v2";
           label = "Eva (español)";
+          speed = 1.1;
           auto = "inbound";
           mode = "final";
           maxTextLength = 800;
