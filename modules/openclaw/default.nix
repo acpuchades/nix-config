@@ -62,7 +62,11 @@ let
   # allowlist; groups disabled.
   baseConfig = {
     gateway = {
-      bind = "127.0.0.1";
+      # This build of OpenClaw takes a bind *mode* keyword, not an IP, and
+      # refuses to start unless gateway.mode is set. "local" + "loopback" is
+      # the 127.0.0.1-only posture we want; an IP string here is rejected.
+      mode = "local";
+      bind = "loopback";
       port = cfg.port;
     };
     agents.defaults = {
