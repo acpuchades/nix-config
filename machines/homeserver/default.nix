@@ -473,7 +473,12 @@ let
         # when eva delegates a heavy task, never just because a Sonnet call
         # errored. NB: this is task-delegation routing, not per-message
         # auto-escalation; it applies when eva spawns a subagent.
-        fallbackModels = [ ]; # no failover; Opus is for complex tasks only
+        # Failover to Gemini Flash (google provider, its own API key) when the
+        # Claude subscription hits its usage cap — a DIFFERENT provider, so eva
+        # stays responsive during Claude outages. Not Opus (same subscription =
+        # same cap). GEMINI_API_KEY is injected via an EnvironmentFile on the
+        # service (see systemd.services.openclaw below), never in this public repo.
+        fallbackModels = [ "google/gemini-2.5-flash" ];
         settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
 
         # TEMPORARY wide-open tool/exec policy — full access, never prompt.
@@ -571,6 +576,12 @@ let
           };
         };
       };
+
+      # Gemini API key for eva's model failover (fallbackModels above). The
+      # google provider reads GEMINI_API_KEY / GOOGLE_API_KEY from the env; this
+      # EnvironmentFile lives in eva's home (0600), so the key never enters this
+      # public repo. Leading "-" makes it optional (missing file won't fail start).
+      systemd.services.openclaw.serviceConfig.EnvironmentFile = "-/home/eva/.config/eva/gemini.env";
 
       # Eva's daily self-portrait. A oneshot that runs each morning as eva and
       # generates one present-day photo into her personal album, named by date
