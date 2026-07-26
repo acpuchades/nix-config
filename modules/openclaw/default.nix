@@ -9,9 +9,12 @@
 #
 #   * WHO CAN TALK TO IT — kept and declarative. The gateway binds 127.0.0.1,
 #     Telegram DMs are locked to an explicit numeric-ID allowlist, groups are
-#     disabled, and the bot token never touches the store or the repo. OpenClaw
-#     rewrites its own config file at runtime, so it is re-seeded (overwritten)
-#     on every start to keep this authoritative.
+#     disabled, and neither the bot token nor the allowed ID ever touches the
+#     store or the repo — both arrive as runtime files (telegram.tokenFile /
+#     telegram.allowedIdFile), so the module stays agnostic about the secret
+#     system behind them (sops-nix, agenix, plain files, …). OpenClaw rewrites
+#     its own config at runtime, so it is re-seeded on every start — including
+#     re-patching the allowlist from the ID file — to keep this authoritative.
 #
 #   * WHAT IT CAN DO TO THE HOST — deliberately absent. No systemd sandbox, no
 #     polkit rules, no capability grants. Upstream marks this package
@@ -56,11 +59,47 @@ let
   configFile = "${stateDir}/openclaw.json";
   credDir = "/run/credentials/openclaw.service";
 
-  # Opsec: the allowed Telegram ID is treated as a secret even though it isn't a
-  # credential — it's rendered from SOPS at activation, so it never appears in
-  # the repo or the world-readable /nix/store. This placeholder is substituted
-  # with openclaw/telegram-userid when the config template is rendered.
-  telegramIdPlaceholder = config.sops.placeholder."openclaw/telegram-userid";
+  # OpenClaw's bundled-plugin loader opens each plugin "public surface" through a
+  # boundary check that REJECTS any file with st_nlink > 1 (openBoundaryFileSync
+  # { rejectHardlinks: true }, enforced once in dist/safe-open-sync-*.js). That is
+  # a hardening against a surface file being hardlinked in from outside the
+  # package boundary — but on NixOS with nix.settings.auto-optimise-store = true
+  # the store hardlink-dedupes identical files, so EVERY bundled surface lands at
+  # nlink >= 2 and the loader throws "Unable to open bundled plugin public surface
+  # <plugin>/<file>".
+  #
+  # It bites selectively: the Claude path never trips it, because the claude-cli
+  # agentRuntime shells out to the `claude` binary and never loads an internal
+  # provider surface. Any NATIVE provider does load one — so a google/gemini
+  # failover (or the duckduckgo web-search plugin) fails on EVERY dispatch, not
+  # just when the failover fires, because the model-routing setup loads the
+  # provider's surface up front. That is what silently broke all of eva's traffic
+  # the moment a gemini fallback was configured.
+  #
+  # Neutralize the single enforcement site so hardlinked store files are accepted.
+  # The realpath / allowed-type / symlink / max-bytes checks around it are left
+  # intact; only the nlink>1 rejection is disabled. This is safe here: the files
+  # are our own read-only /nix/store, and this is a single-tenant host — the guard
+  # buys nothing against a hardlink attack and only fights the store's own dedup.
+  # --replace-fail makes a version bump that moves/renames this expression fail
+  # the build loudly rather than silently shipping the broken (unpatched) loader.
+  openclawPatched = cfg.package.overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      patched=0
+      for f in "$out"/lib/openclaw/dist/safe-open-sync-*.js; do
+        [ -e "$f" ] || continue
+        substituteInPlace "$f" \
+          --replace-fail \
+            'params.rejectHardlinks && preOpenStat.isFile() && preOpenStat.nlink > 1' \
+            'false && preOpenStat.isFile() && preOpenStat.nlink > 1'
+        patched=1
+      done
+      if [ "$patched" != 1 ]; then
+        echo "openclaw: hardlink-guard patch matched no safe-open-sync-*.js" >&2
+        exit 1
+      fi
+    '';
+  });
 
   # The config file is re-seeded from Nix on every start, so it is assembled
   # here in three layers with a clear precedence:
@@ -92,6 +131,31 @@ let
       enabled = true;
       tokenFile = "${credDir}/telegram-token"; # real file (symlinks rejected)
     };
+  } // lib.optionalAttrs cfg.tts.enable {
+    # Reply text-to-speech, assembled from the my.openclaw.tts options. Lives in
+    # defaultConfig (a preference, not a security invariant), so cfg.settings can
+    # still fine-tune it. The provider's voice/model go under the persona's
+    # open-additionalProps providers.<provider> slot; the provider API key is
+    # NOT put here — it is read from the environment (e.g. ELEVENLABS_API_KEY),
+    # so no secret enters the store.
+    messages.tts = {
+      enabled = true;
+      auto = cfg.tts.auto;
+      mode = cfg.tts.mode;
+      provider = cfg.tts.provider;
+      maxTextLength = cfg.tts.maxTextLength;
+      timeoutMs = cfg.tts.timeoutMs;
+      persona = "default";
+      personas.default = {
+        label = cfg.tts.label;
+        provider = cfg.tts.provider;
+        providers.${cfg.tts.provider} = {
+          voiceId = cfg.tts.voiceId;
+        } // lib.optionalAttrs (cfg.tts.modelId != null) {
+          modelId = cfg.tts.modelId;
+        };
+      };
+    };
   };
 
   # Non-negotiable security invariants. Access is locked to an explicit
@@ -107,17 +171,50 @@ let
     };
     channels.telegram = {
       dmPolicy = "allowlist";
-      allowFrom = [ telegramIdPlaceholder ];
+      # The allowlisted ID is a runtime secret from cfg.telegram.allowedIdFile,
+      # not known at eval time — so the store config is written FAIL-CLOSED
+      # (nobody allowed) and the seed script patches the real ID(s) over these
+      # two keys on every start (see ExecStartPre). If the file is missing/empty,
+      # these stay [] and the bot answers no one, rather than opening up.
+      allowFrom = [ ];
       groupPolicy = "disabled";
     };
-    commands.ownerAllowFrom = [ telegramIdPlaceholder ];
+    commands.ownerAllowFrom = [ ];
+
+    # Exec policy is operator-authoritative, not agent-writable: it is forced on
+    # here from the my.openclaw.exec options and re-patched every start, so a
+    # prompt-injected agent cannot flip itself to security="full", turn off the
+    # approval prompt, or slip extra binaries into the safe list at runtime. The
+    # per-agent approvals allowlist (path globs) is separate mutable state and is
+    # deliberately NOT pinned here — that is the human-gated approve-and-remember
+    # surface. Other tools.exec.* keys (timeouts, backgroundMs, …) stay settable
+    # via cfg.settings; only these safety keys are pinned.
+    tools.exec = {
+      security = cfg.exec.security;
+      ask = cfg.exec.ask;
+      strictInlineEval = cfg.exec.strictInlineEval;
+      safeBins = cfg.exec.safeBins;
+    } // lib.optionalAttrs (cfg.exec.safeBinProfiles != { }) {
+      safeBinProfiles = cfg.exec.safeBinProfiles;
+    };
   };
 
   fullConfig =
     lib.recursiveUpdate (lib.recursiveUpdate defaultConfig cfg.settings) enforcedConfig;
 
-  # Rendered by sops-nix (real ID substituted) to a /run path owned by openclaw.
-  configTemplateName = "openclaw/config.json";
+  # The config blueprint, rendered to the store as plain JSON. It holds NO
+  # secrets — the bot token is a systemd credential and the allowlisted ID is
+  # patched in at start from cfg.telegram.allowedIdFile — so the store is a safe
+  # home for it, and the module needs no knowledge of sops/agenix/etc.
+  configTemplate = settingsFormat.generate "openclaw.json" fullConfig;
+
+  # Shell lines that seed cfg.exec.allowlist into the exec-approval allowlist at
+  # start (for all agents). Merges, so the agent's own runtime additions survive;
+  # a failure warns but does not abort the unit.
+  allowlistSeedLines = lib.concatMapStringsSep "\n" (glob:
+    ''${lib.getExe openclawPatched} approvals allowlist add --agent '*' ${lib.escapeShellArg glob} >/dev/null 2>&1 \
+      || echo "[openclaw] WARN: exec-allowlist seed failed for: ${glob}" >&2''
+  ) cfg.exec.allowlist;
 in
 {
   options.my.openclaw = {
@@ -161,6 +258,27 @@ in
       '';
     };
 
+    environmentFiles = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = lib.literalExpression ''
+        [
+          "-/run/secrets/openclaw-gemini-env"   # GEMINI_API_KEY for a google/* fallback
+          "/run/secrets/openclaw-elevenlabs-env" # ELEVENLABS_API_KEY for TTS
+        ]
+      '';
+      description = ''
+        Extra systemd EnvironmentFile paths for the service — the place to supply
+        provider API keys the agent needs, so a token comes in from OUTSIDE the
+        module just like the model it belongs to: a google/* fallbackModel needs
+        GEMINI_API_KEY, an elevenlabs TTS voice needs ELEVENLABS_API_KEY, etc.
+        Kept as plain paths so the module stays agnostic about the secret system;
+        prefix a path with "-" to make it optional (a missing file won't fail
+        start). These are read only at runtime, never as Nix values, so no key
+        enters the store or the config.
+      '';
+    };
+
     agentRuntime = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = "claude-cli";
@@ -180,6 +298,99 @@ in
         Loopback port for the gateway / control UI. Bound to 127.0.0.1 only —
         never opened in the firewall. Reach it locally (e.g. via SSH tunnel).
       '';
+    };
+
+    telegram = {
+      # Both inputs are secrets and this repo is public, so the module takes
+      # runtime FILE PATHS rather than the values — and it is agnostic about what
+      # produces those files. Point them at sops-nix (config.sops.secrets.<x>.path),
+      # agenix, or any out-of-band file; the module only ever reads them at run
+      # time, never at eval, so the secrets never enter the store or the repo.
+      # NB: use str, not path — a `path` value would copy the secret INTO the
+      # store, which is exactly what we are avoiding.
+      tokenFile = lib.mkOption {
+        type = lib.types.str;
+        example = "/run/secrets/openclaw-telegram-token";
+        description = ''
+          Path to a file containing the BotFather bot token (single line). Loaded
+          as a systemd credential and referenced by channels.telegram.tokenFile;
+          it is never read at eval time, so it never lands in the store or repo.
+        '';
+      };
+      allowedIdFile = lib.mkOption {
+        type = lib.types.str;
+        example = "/run/secrets/openclaw-telegram-userid";
+        description = ''
+          Path to a file containing the numeric Telegram user ID(s) allowlisted
+          for DMs and command ownership — one ID per line (blank lines and lines
+          starting with `#` are ignored). Read at service START and patched into
+          the config's allowlist; if the file is missing or empty the allowlist
+          stays empty and the bot answers no one (fail-closed). Get your ID from
+          @userinfobot.
+        '';
+      };
+    };
+
+    tts = {
+      # Reply text-to-speech, modelled as options rather than a raw settings blob
+      # so voice/provider/etc. are configured from outside the module. Assembled
+      # into messages.tts (see defaultConfig). The provider API key is never a
+      # Nix value — it is read from the service environment (e.g. wire an
+      # EnvironmentFile setting ELEVENLABS_API_KEY on the host).
+      enable = lib.mkEnableOption "reply text-to-speech";
+      provider = lib.mkOption {
+        type = lib.types.str;
+        default = "elevenlabs";
+        description = ''
+          TTS provider id (e.g. "elevenlabs", "microsoft"). The voiceId/modelId
+          below are placed under this provider in the reply persona.
+        '';
+      };
+      voiceId = lib.mkOption {
+        type = lib.types.str;
+        example = "dNjJKg63Fr5AXwIdkATa";
+        description = ''
+          Provider voice identifier for replies (for ElevenLabs, the voice ID).
+        '';
+      };
+      modelId = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = "eleven_multilingual_v2";
+        description = ''
+          Provider TTS model id, or null to leave it to the provider default.
+          ElevenLabs "eleven_multilingual_v2" handles non-English (e.g. Spanish);
+          "eleven_turbo_v2_5" trades some quality for latency.
+        '';
+      };
+      auto = lib.mkOption {
+        type = lib.types.enum [ "off" "always" "inbound" "tagged" ];
+        default = "inbound";
+        description = ''
+          When to speak. "inbound" = only reply with voice when the user sent a
+          voice message (talk→talk); "always" speaks every reply; "tagged" only
+          when explicitly requested; "off" disables auto-speech.
+        '';
+      };
+      mode = lib.mkOption {
+        type = lib.types.enum [ "final" "all" ];
+        default = "final";
+        description = "Synthesize only the final reply (\"final\") or every streamed chunk (\"all\").";
+      };
+      label = lib.mkOption {
+        type = lib.types.str;
+        default = "default";
+        description = "Human label for the reply TTS persona.";
+      };
+      maxTextLength = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 800;
+        description = "Cap on characters synthesized per reply, so a huge message can't spawn a giant/slow render.";
+      };
+      timeoutMs = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 15000;
+        description = "Synthesis timeout in milliseconds.";
+      };
     };
 
     settings = lib.mkOption {
@@ -217,10 +428,107 @@ in
       '';
     };
 
-    # WHAT IT CAN DO TO THE HOST. The two options below are the deliberate,
-    # narrow exceptions to the "no host access" posture described in the header:
-    # a way to hand the agent specific files and specific root commands, and
-    # nothing more. Both are prompt-injectable surface — grant the minimum.
+    # WHAT IT CAN DO TO THE HOST. The options below are the deliberate, narrow
+    # exceptions to the "no host access" posture described in the header: the
+    # shell-exec policy, plus ways to hand the agent specific files and specific
+    # root commands, and nothing more. All are prompt-injectable surface — grant
+    # the minimum.
+
+    exec = {
+      # Shell-exec policy. These map to tools.exec.* and are pinned in the
+      # enforced config layer (re-asserted every start), so the agent cannot
+      # relax them at runtime; the host tunes them here. Everyday chat is
+      # unaffected — this only gates the exec (shell) tool.
+      security = lib.mkOption {
+        type = lib.types.enum [ "deny" "allowlist" "full" ];
+        default = "allowlist";
+        description = ''
+          Exec security posture. "deny" blocks the shell tool entirely,
+          "allowlist" runs only allowlisted commands unprompted (everything else
+          is a miss, gated by `ask`), and "full" runs anything without gating.
+          Keep "allowlist" for a prompt-injectable agent.
+        '';
+      };
+      ask = lib.mkOption {
+        type = lib.types.enum [ "off" "on-miss" "always" ];
+        default = "on-miss";
+        description = ''
+          When to ask for human confirmation before running an exec command.
+          "on-miss" prompts for anything not on the allowlist (`safeBins` plus
+          the per-agent runtime allowlist), "always" prompts for everything, and
+          "off" never prompts. The prompt surfaces in the originating channel
+          (e.g. the Telegram DM) and is answered inline.
+        '';
+      };
+      strictInlineEval = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Require explicit approval for interpreter inline-eval forms (`python
+          -c`, `node -e`, `ruby -e`, `osascript -e`), even if the interpreter is
+          otherwise allowlisted — so an allowed interpreter cannot smuggle
+          arbitrary code past the gate. Leave on unless it is too much friction.
+        '';
+      };
+      safeBins = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          # Read-only inspection commands: no filesystem mutation, no exec of
+          # other programs, no network. These run unprompted under "allowlist".
+          # Anything that writes, deletes, forks a shell, evaluates code, or hits
+          # the network is DELIBERATELY absent (sed -i / awk system() / find
+          # -exec / xargs / tee / cp / mv / rm / env / curl / git / interpreters
+          # …) — those stay gated by `ask`. Append project-specific safe commands
+          # in the host config rather than editing this default.
+          "cat" "head" "tail" "nl" "wc" "ls" "pwd" "stat" "file" "tree"
+          "du" "df" "free" "uptime" "date" "uname" "hostname" "whoami" "id"
+          "groups" "which" "printenv" "echo" "grep" "egrep" "fgrep" "rg" "jq"
+          "cut" "sort" "uniq" "column" "basename" "dirname" "realpath"
+          "readlink" "diff" "comm" "sha256sum" "md5sum" "cksum"
+        ];
+        description = ''
+          Binaries allowed to run WITHOUT an explicit per-agent allowlist entry
+          under `security = "allowlist"` — the declarative "what's safe to run"
+          list. Defaults to a conservative read-only set; the host replaces or
+          extends it (e.g. `safeBins = options.my.openclaw.exec.safeBins.default
+          ++ [ "Rscript" ];`). Pinned authoritatively, so the agent cannot add to
+          it at runtime. For arg/flag-level constraints on a binary, use
+          `safeBinProfiles`.
+        '';
+      };
+      safeBinProfiles = lib.mkOption {
+        type = settingsFormat.type;
+        default = { };
+        example = lib.literalExpression ''
+          {
+            # allow `git` only with read-only subcommands, no flags that write
+            git = { maxPositional = 3; allowedValueFlags = [ ]; deniedFlags = [ "--exec" ]; };
+          }
+        '';
+        description = ''
+          Optional per-binary safe-bin profiles (positional-argument limits plus
+          allowed/denied flags), mapped straight to tools.exec.safeBinProfiles.
+          Use this to admit a binary to `safeBins` only in a constrained form.
+          Freeform to track the upstream schema; run `openclaw config schema`.
+        '';
+      };
+      allowlist = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "git status*" "git diff*" "systemctl status*" ];
+        description = ''
+          Glob patterns pre-seeded into the agent's exec-approval allowlist at
+          service start (via `openclaw approvals allowlist add`, for all agents).
+          Unlike safeBins (whole-binary), these match the FULL command line, so
+          you can bless a read-only SUBCOMMAND — e.g. "git status*" without
+          blessing every git invocation. Seeding MERGES (the agent's own
+          approve-and-remember additions are preserved) and is idempotent, so it
+          is safely re-applied every start. Prefer forms that cannot mutate:
+          "git branch*" would also match `git branch -D`, so bless specific
+          read-only subcommands, not whole verbs with mutating flags.
+        '';
+      };
+    };
 
     access = lib.mkOption {
       type = lib.types.attrsOf (lib.types.submodule {
@@ -303,9 +611,9 @@ in
       '';
     };
 
-    # The allowed Telegram user ID is NOT a Nix option — public repo, so it is
-    # sourced from SOPS (openclaw/telegram-userid) and rendered into the config
-    # at activation. Get your ID from @userinfobot.
+    # The bot token and the allowed ID are never Nix VALUES (public repo) — they
+    # come in as runtime files via my.openclaw.telegram.{tokenFile,allowedIdFile}
+    # above, sourced from whatever secret system the host uses.
   };
 
   config = lib.mkIf cfg.enable {
@@ -313,7 +621,7 @@ in
     # bump the version suffix when the packaged OpenClaw is updated.
     nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.5.7" ];
 
-    environment.systemPackages = [ cfg.package pkgs.claude-code ];
+    environment.systemPackages = [ openclawPatched pkgs.claude-code ];
 
     users.users.${cfg.user} = {
       isNormalUser = true;
@@ -392,22 +700,6 @@ in
         '') cfg.access);
     };
 
-    # Populate before switching:  sops machines/homeserver/secrets/default.yml
-    #   openclaw/telegram-token  -> BotFather token
-    #   openclaw/telegram-userid -> your numeric Telegram user ID (allowlist)
-    sops.secrets = {
-      "openclaw/telegram-token" = { mode = "0400"; };
-      "openclaw/telegram-userid" = { mode = "0400"; };
-    };
-
-    # openclaw.json rendered with the real Telegram ID substituted in, to a
-    # /run path readable only by the agent — never the store, never the repo.
-    sops.templates.${configTemplateName} = {
-      owner = cfg.user;
-      mode = "0400";
-      content = builtins.toJSON fullConfig;
-    };
-
     systemd.services.openclaw = {
       description = "OpenClaw agent gateway (Telegram-only)";
       wantedBy = [ "multi-user.target" ];
@@ -428,33 +720,66 @@ in
         User = cfg.user;
         Group = cfg.user;
 
-        # Config seeding is a BLUEPRINT merge, not a hard overwrite. First boot
-        # (file absent) lays down the full Nix-rendered config, created fresh
-        # inside the setgid state dir so it lands in the openclaw group. Every
-        # subsequent start recursively patches the Nix-declared keys back on top
-        # of whatever the agent has written — so declared keys (incl. the
-        # enforced security keys) are re-asserted, while keys Nix does NOT
+        # Config seeding is a BLUEPRINT merge, not a hard overwrite, in three
+        # steps: (1) apply the config blueprint, (2) patch in the Telegram
+        # allowlist from the secret file, (3) seed the exec-approval globs.
+        #
+        # (1) First boot (file absent) lays down the full Nix-rendered config,
+        # created fresh inside the setgid state dir so it lands in the openclaw
+        # group. Every subsequent start recursively patches the Nix-declared keys
+        # back on top of whatever the agent has written — so declared keys (incl.
+        # the enforced security keys) are re-asserted, while keys Nix does NOT
         # declare survive as the agent's own. A corrupt existing file / failed
         # merge falls back to a clean reseed so the gateway always starts valid.
+        #
+        # (2) Patch the allowlisted Telegram ID(s) in from the runtime secret
+        # file (one ID per line; blanks and #comments ignored). The blueprint
+        # wrote the allowlist FAIL-CLOSED (empty), so THIS is what opens access —
+        # and only to these IDs, re-asserted every start. A missing/empty/
+        # unreadable file leaves the allowlist empty, so the bot answers no one.
         ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
           set -euo pipefail
-          tmpl=${config.sops.templates.${configTemplateName}.path}
+          tmpl=${configTemplate}
           if [ -f ${configFile} ]; then
-            ${lib.getExe cfg.package} config patch --file "$tmpl" || {
+            ${lib.getExe openclawPatched} config patch --file "$tmpl" || {
               rm -f ${configFile}
               install -m 0640 "$tmpl" ${configFile}
             }
           else
             install -m 0640 "$tmpl" ${configFile}
           fi
+
+          ids=""
+          if [ -r ${lib.escapeShellArg cfg.telegram.allowedIdFile} ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+              line=''${line//[[:space:]]/}
+              [ -z "$line" ] && continue
+              case "$line" in \#*) continue ;; esac
+              ids="$ids''${ids:+,}\"$line\""
+            done < ${lib.escapeShellArg cfg.telegram.allowedIdFile}
+          fi
+          if [ -z "$ids" ]; then
+            echo "[openclaw] WARN: no Telegram ID in ${cfg.telegram.allowedIdFile}; allowlist stays empty (bot answers no one)" >&2
+          fi
+          printf '{"channels":{"telegram":{"allowFrom":[%s]}},"commands":{"ownerAllowFrom":[%s]}}' "$ids" "$ids" \
+            | ${lib.getExe openclawPatched} config patch --stdin
+
+          # (3) Seed the operator-declared exec-approval allowlist globs into
+          # ~/.openclaw/exec-approvals.json. Merges with the agent's own
+          # approve-and-remember entries; each add warns on failure, never aborts.
+          ${allowlistSeedLines}
         '';
-        ExecStart = "${lib.getExe cfg.package} gateway";
+        ExecStart = "${lib.getExe openclawPatched} gateway";
         Restart = "on-failure";
         RestartSec = 5;
 
         LoadCredential = [
-          "telegram-token:${config.sops.secrets."openclaw/telegram-token".path}"
+          "telegram-token:${cfg.telegram.tokenFile}"
         ];
+
+        # Extra env for provider API keys (Gemini fallback, ElevenLabs TTS, …),
+        # supplied as files from outside the module. Empty by default.
+        EnvironmentFile = cfg.environmentFiles;
 
         # No StateDirectory=: systemd would chown the tree to User:Group, i.e.
         # the agent's own group, and there is no way to ask it for a different
