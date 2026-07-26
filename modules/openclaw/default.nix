@@ -258,8 +258,17 @@ in
     # everything written below it inherits that group without the agent having
     # to be a member — with UMask=0027 below, that is what makes the state
     # actually readable to the group rather than just nominally owned by it.
+    #
+    # The Z line recursively enforces ownership across the whole tree on every
+    # activation. The service has changed its running user over its life, which
+    # left subdirs (agents/, logs/, devices/) owned by the previous user and
+    # unreadable to the current one — the agent then hit EACCES creating session
+    # dirs and every Telegram request failed. Mode "-" leaves file modes alone
+    # (OpenClaw manages its own 0700 dirs); only uid/gid are re-applied, so this
+    # self-heals a user change without fighting the app over permissions.
     systemd.tmpfiles.rules = [
       "d ${stateDir} 2750 ${cfg.user} openclaw -"
+      "Z ${stateDir} - ${cfg.user} openclaw -"
     ];
 
     # Populate before switching:  sops machines/homeserver/secrets/default.yml
