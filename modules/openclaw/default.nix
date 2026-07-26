@@ -197,21 +197,23 @@ in
         }
       '';
       description = ''
-        Authoritative, declarative OpenClaw configuration, deep-merged into
-        openclaw.json. Because the config file is re-seeded from Nix on every
-        start, THIS is where persistent configuration goes — `openclaw
-        configure` / `config set` and any config the agent writes at runtime are
-        overwritten on the next restart. Run `openclaw config schema` to see the
-        full key set.
+        Declarative OpenClaw configuration, deep-merged into openclaw.json. This
+        is a BLUEPRINT, not a hard overwrite: first boot writes the full config,
+        and every start thereafter recursively patches the keys declared here
+        back on top of whatever the agent has written. So anything set here
+        always wins (it is re-asserted each start), while keys NOT declared here
+        are the agent's own and persist across restarts — `openclaw config set`
+        / runtime writes to undeclared keys stick. Run `openclaw config schema`
+        to see the full key set.
 
-        Precedence: module defaults < this < enforced security keys. The
-        security-critical keys (gateway.bind/mode, the Telegram allowlist,
-        dmPolicy/groupPolicy, ownerAllowFrom) are forced on top and cannot be
-        overridden here, so a mistaken value cannot open access.
+        Precedence within the blueprint: module defaults < this < enforced
+        security keys. The security-critical keys (gateway.bind/mode, the
+        Telegram allowlist, dmPolicy/groupPolicy, ownerAllowFrom) are forced on
+        top and re-patched every start, so a mistaken value here — or anything
+        the agent writes at runtime — cannot durably open access.
 
         Note: agent *skills* live in the workspace (and any skills.load.extraDirs
-        above) and persist independently of this file — the agent can still add
-        its own skills; only openclaw.json is Nix-authoritative.
+        above) and persist independently of this file.
       '';
     };
 
@@ -367,28 +369,26 @@ in
       "Z ${stateDir} - ${cfg.user} openclaw -"
     ];
 
-    # Grant the agent ACL access to cfg.access paths. A root oneshot (setfacl
-    # needs root) ordered before the service, reapplied on every activation so a
-    # newly added path is picked up on the next switch. It is `before` but not
-    # required by openclaw, so a bad path here logs a failure without blocking
-    # the agent from starting.
-    systemd.services.openclaw-grant-access = lib.mkIf (cfg.access != { }) {
-      description = "Grant the OpenClaw agent ACL access to configured paths";
-      wantedBy = [ "multi-user.target" ];
-      before = [ "openclaw.service" ];
-      path = [ pkgs.acl ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      script = ''
-        set -euo pipefail
-      '' + lib.concatStrings (lib.mapAttrsToList (path: opts:
+    # Grant the agent ACL access to cfg.access paths. This is an ACTIVATION
+    # SCRIPT, not a oneshot service, and it matters: activation scripts run on
+    # EVERY `nixos-rebuild switch` and boot, whereas NixOS only re-runs an
+    # unchanged oneshot on reboot — so with a service, a switch would leave a
+    # broken grant unrepaired. `deps = [ "users" ]` orders it AFTER the users
+    # activation, which chmods home dirs to their homeMode (e.g. /home/alex to
+    # 0700) and in doing so recomputes any POSIX ACL mask to `---`, silently
+    # neutering a `u:<agent>:X` traversal grant (the entry stays, effective
+    # becomes ---). Re-running setfacl here restores both the entry and the
+    # mask on every switch. A bad path just logs and does not abort activation.
+    system.activationScripts.openclaw-grant-access = lib.mkIf (cfg.access != { }) {
+      deps = [ "users" ];
+      text = lib.concatStrings (lib.mapAttrsToList (path: opts:
         let rec' = lib.optionalString opts.recursive "-R "; in
         ''
-          setfacl ${rec'}-m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path}
+          ${pkgs.acl}/bin/setfacl ${rec'}-m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path} \
+            || echo "[openclaw] WARN: setfacl grant failed for ${path}" >&2
         '' + lib.optionalString opts.defaultAcl ''
-          setfacl ${rec'}-d -m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path}
+          ${pkgs.acl}/bin/setfacl ${rec'}-d -m u:${cfg.user}:${opts.permissions} ${lib.escapeShellArg path} \
+            || echo "[openclaw] WARN: default-ACL grant failed for ${path}" >&2
         '') cfg.access);
     };
 
@@ -428,13 +428,25 @@ in
         User = cfg.user;
         Group = cfg.user;
 
-        # Removed first so the file is always created fresh inside the setgid
-        # state dir, and therefore lands in the openclaw group — `install` would
-        # otherwise preserve an existing file's ownership.
+        # Config seeding is a BLUEPRINT merge, not a hard overwrite. First boot
+        # (file absent) lays down the full Nix-rendered config, created fresh
+        # inside the setgid state dir so it lands in the openclaw group. Every
+        # subsequent start recursively patches the Nix-declared keys back on top
+        # of whatever the agent has written — so declared keys (incl. the
+        # enforced security keys) are re-asserted, while keys Nix does NOT
+        # declare survive as the agent's own. A corrupt existing file / failed
+        # merge falls back to a clean reseed so the gateway always starts valid.
         ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
           set -euo pipefail
-          rm -f ${configFile}
-          install -m 0640 ${config.sops.templates.${configTemplateName}.path} ${configFile}
+          tmpl=${config.sops.templates.${configTemplateName}.path}
+          if [ -f ${configFile} ]; then
+            ${lib.getExe cfg.package} config patch --file "$tmpl" || {
+              rm -f ${configFile}
+              install -m 0640 "$tmpl" ${configFile}
+            }
+          else
+            install -m 0640 "$tmpl" ${configFile}
+          fi
         '';
         ExecStart = "${lib.getExe cfg.package} gateway";
         Restart = "on-failure";
