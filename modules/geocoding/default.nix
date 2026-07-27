@@ -83,6 +83,18 @@ let
 
   nominatimSettings = tablespaceSettings // replicationSettings;
 
+  # Upstream `pkgs.nominatim` ships without pyosmium — Nominatim declares it as
+  # the optional `[replication]` extra, so the CLI's `replication` subcommand
+  # aborts with "pyosmium not installed. Replication functions not available."
+  # and the daily nominatim-update unit fails on every run (the DB then freezes
+  # at whatever the initial import contained). Add it back so replication works
+  # for both the manual `--init` (via nominatim-admin) and the periodic `--once`
+  # (nominatim-update). pyosmium comes from the same python3Packages set the
+  # package is built with, so the interpreter versions match.
+  nominatimPkg = pkgs.nominatim.overridePythonAttrs (old: {
+    dependencies = (old.dependencies or []) ++ [ pkgs.python3Packages.pyosmium ];
+  });
+
   # The settings above only reach the systemd units. The initial import is run
   # by hand, and a bare `nominatim import` would inherit none of them — sending
   # the whole database to the default tablespace on the spinning disk, silently,
@@ -101,7 +113,7 @@ let
         }
       )
     )}
-    exec ${lib.getExe pkgs.nominatim} "$@"
+    exec ${lib.getExe nominatimPkg} "$@"
   '';
 in
 {
@@ -298,7 +310,7 @@ in
         User = config.services.nominatim.database.superUser;
         # Imports touch large temporary indexes; give them a real /tmp.
         PrivateTmp = true;
-        ExecStart = "${lib.getExe pkgs.nominatim} replication --once";
+        ExecStart = "${lib.getExe nominatimPkg} replication --once";
       };
       environment = {
         NOMINATIM_DATABASE_DSN =
