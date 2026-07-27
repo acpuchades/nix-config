@@ -473,8 +473,8 @@ let
         # turn until the watchdog killed it — no Telegram approve/deny prompt ever
         # rendered. The native runtime runs the exec tool in-process, so the
         # approval surface below is actually live. Billing moves from the flat
-        # subscription to per-token API spend; at eva's volume that is a few
-        # dollars/month at most on the Haiku primary.
+        # subscription to per-token API spend; at eva's volume that is a modest
+        # amount per month on the Sonnet primary.
         agentRuntime = null;
 
         # The module is secret-system agnostic and takes runtime FILES; on this
@@ -483,15 +483,11 @@ let
         telegram.tokenFile = config.sops.secrets."openclaw/telegram-token".path;
         telegram.allowedIdFile = config.sops.secrets."openclaw/telegram-userid".path;
 
-        # Two-tier model use. Everyday chat runs on the Haiku 4.5 primary — the
-        # cheapest capable tool-using tier, and at eva's message volume the API
-        # bill is a few dollars/month at most. Sonnet 4.6 is reserved for COMPLEX
-        # work only: delegated *subagents* run on Sonnet (e.g. the coding-agent
-        # skill spawning a background agent) while everyday turns stay fast/cheap
-        # on Haiku. Sonnet is deliberately NOT a failover for the primary — it
-        # runs when eva delegates a heavy task, never just because a Haiku call
-        # errored. NB: this is task-delegation routing, not per-message
-        # auto-escalation; it applies when eva spawns a subagent.
+        # Sonnet 4.6 primary. Haiku 4.5 was tried as the everyday tier to shave
+        # the API bill, but it is too weak for eva's tool-using turns, so the
+        # primary is back on Sonnet — the cheapest tier that actually holds up
+        # for her workload. Delegated *subagents* also run on Sonnet (see
+        # subagents.model below), so heavy delegated work stays on the same tier.
         # No model failover. A Gemini Flash fallback lived here for Claude
         # usage-cap outages, but the key's Google project never had Generative-
         # Language-API access to gemini-2.5-flash (persistent 404s), so in
@@ -500,7 +496,7 @@ let
         # Claude error instead of bouncing onto a broken fallback. Re-add via
         # fallbackModels + the openclaw/gemini-env secret if a working
         # key/project is ever provisioned.
-        model = "anthropic/claude-haiku-4-5";
+        model = "anthropic/claude-sonnet-4-6";
         fallbackModels = [ ];
         settings.agents.defaults.subagents.model = "anthropic/claude-sonnet-4-6";
 
@@ -617,12 +613,15 @@ let
         # ungated fetch. (The DuckDuckGo search plugin is likewise off.)
         settings.tools.web.fetch.enabled = false;
 
-        # Reply text-to-speech via ElevenLabs, through the module's tts options.
-        # auto="inbound" = she only speaks when YOU send a voice message
-        # (talk→talk); typed messages get typed replies. The multilingual model
-        # handles Spanish; the caps stop a huge reply from spawning a giant/slow
-        # synthesis. The ELEVENLABS_API_KEY reaches the service via the
-        # SOPS-rendered EnvironmentFile below — never a Nix value.
+        # Text-to-speech via ElevenLabs, through the module's tts options. The
+        # CAPABILITY stays on (enable = true) so eva can generate audio on demand
+        # — when you ask her to, or when she chooses to speak — but auto = "off"
+        # means she NEVER auto-converts a reply to voice. (Was "inbound", which
+        # spoke back to every voice message; that's the behavior we didn't want.)
+        # The multilingual model handles Spanish; the caps bound an on-demand
+        # synthesis so a huge text can't spawn a giant/slow clip. The
+        # ELEVENLABS_API_KEY reaches the service via the SOPS-rendered
+        # EnvironmentFile below.
         tts = {
           enable = true;
           provider = "elevenlabs";
@@ -630,7 +629,7 @@ let
           modelId = "eleven_multilingual_v2";
           label = "Eva (español)";
           speed = 1.1;
-          auto = "inbound";
+          auto = "off";
           mode = "final";
           maxTextLength = 800;
           timeoutMs = 15000;
