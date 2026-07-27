@@ -4,6 +4,7 @@
 {
   self,
   nixpkgs,
+  nixpkgs-unstable,
   home-manager,
   sops-nix,
   emacs-overlay,
@@ -15,6 +16,21 @@ let
   homeServerLocalAddress = "192.168.2.2";
   adminEmailAddress = "admin@acpuchades.com";
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
+
+  # The owner's own addresses eva may email without a per-send approval. Defined
+  # ONCE and shared by BOTH outbound mail wrappers so the two lists can never
+  # drift apart: send-trusted-mail (actions.trustedMail.trustedAddresses, which
+  # self-gates and hard-refuses anything else) and send-email
+  # (my.openclaw.mail.unpromptedRecipients, whose exec-allowlist rules let these
+  # send unprompted while any other recipient falls through to the approval gate).
+  evaTrustedMailRecipients = [
+    "acaravaca@bellvitgehospital.cat"
+    "acaravaca@idibell.cat"
+    "acp1337@proton.me"
+    "acaravacapuchades@gmail.com"
+    "acaravacapuchades@uoc.edu"
+    "acaravpu55@alumnes.ub.edu"
+  ];
 
   configuration =
     inputs@{ config, options, lib, pkgs, ... }:
@@ -463,30 +479,54 @@ let
         # her own workspace.
         user = "eva";
 
-        # Execution backend: OpenClaw's NATIVE agent runtime, authing against the
-        # Anthropic API with an out-of-band key (ANTHROPIC_API_KEY, from the SOPS
-        # env file in my.openclaw.environmentFiles below). This replaced the
-        # "claude-cli" backend (which reused a Claude Code subscription login):
-        # that backend delegated command execution to a Claude Code subprocess,
-        # so OpenClaw's own exec-approval gate (tools.exec + channels.telegram.
-        # execApprovals) never governed anything and a missed command hung the
-        # turn until the watchdog killed it — no Telegram approve/deny prompt ever
-        # rendered. The native runtime runs the exec tool in-process, so the
-        # approval surface below is actually live. Billing moves from the flat
-        # subscription to per-token API spend; at eva's volume that is a modest
-        # amount per month on the Sonnet primary.
-        # "pi" is OpenClaw's built-in native runtime — set EXPLICITLY, not null.
-        # `agentRuntime = null` only OMITS the key from the config template, and
-        # the ExecStartPre seed applies it with `openclaw config patch` (a
-        # recursive MERGE, not an overwrite). A merge never deletes a key absent
-        # from the template, so a live config first written under the old
-        # `agentRuntime.id = "claude-cli"` KEEPS that value forever and eva stays
-        # on the claude-cli backend no matter how many times we rebuild. Emitting
-        # `agentRuntime.id = "pi"` makes the merge REPLACE the stale scalar (patch
-        # semantics: objects merge, scalars replace, null deletes), which is what
-        # actually flips her onto the native runtime. It also validates on a fresh
-        # install, where a literal null would not.
-        agentRuntime = "pi";
+        # OpenClaw from nixpkgs-unstable (2026.6.33), NOT nixpkgs-26.05's 2026.5.7.
+        # Why: 2026.5.7's claude-cli runtime has no handler for Claude Code's
+        # permission protocol (control_request/can_use_tool), so a non-allowlisted
+        # command hangs ~180s then dies with no Telegram prompt. 2026.6.33 adds the
+        # responder (claude-live-session answers can_use_tool → allow under YOLO
+        # else a clean deny) AND fixes the bundled-surface hardlink guard upstream
+        # (plugin loaders now pass rejectHardlinks:false), which is what our
+        # openclawPatched workaround exists to paper over. A separate unstable pkgs
+        # instance is imported with an openclaw-only insecure permit (openclaw is
+        # marked knownVulnerabilities upstream); the predicate is version-agnostic
+        # so it survives unstable's openclaw bumps without editing a version string.
+        package = (import nixpkgs-unstable {
+          inherit (pkgs.stdenv.hostPlatform) system;
+          config.allowInsecurePredicate = p: (pkgs.lib.getName p) == "openclaw";
+        }).openclaw;
+
+        # Execution backend: the "claude-cli" runtime, which reuses a Claude Code
+        # subscription login on this host (`claude -p`) so the flat subscription
+        # pays instead of per-token API spend — switched back 2026-07-27 to cut
+        # the API bill the native runtime was running up.
+        #
+        # KNOWN TRADEOFF (see the openclaw-execperms notes): under claude-cli,
+        # OpenClaw delegates command execution to a Claude Code subprocess, so its
+        # OWN exec-approval gate (everything under tools.exec + channels.telegram.
+        # execApprovals below) is INERT — those keys configure OpenClaw's in-process
+        # exec tool, which this runtime never uses. Net interim behavior with the
+        # current allowlist+on-miss config: allowlisted / read-only commands run
+        # fine, but a NON-allowlisted command has no approval path — Claude Code
+        # waits on a stdio permission prompt OpenClaw can't answer, so the turn
+        # HANGS ~180s then dies ("Something went wrong"). Nothing unsafe RUNS (it's
+        # effectively fail-closed), the UX is just bad. The deliberate posture
+        # (YOLO bypassPermissions = subscription + no gate but unsafe, vs a proper
+        # fail-closed path via the acpx ACP bridge) is STILL TBD — decide later.
+        #
+        # REQUIRES a valid Claude login for the eva user, or she can't auth at all:
+        #   sudo -u eva -H claude          # /login, then quit
+        #   systemctl restart openclaw
+        # And ANTHROPIC_API_KEY must NOT be in the service env, or Claude Code
+        # prefers the API key and bills per-token anyway — so openclaw/anthropic-env
+        # is dropped from environmentFiles below.
+        #
+        # Scalar note: the ExecStartPre seed applies this template with
+        # `openclaw config patch` (recursive MERGE — objects merge, scalars
+        # replace, null deletes). The live config currently holds
+        # agents.defaults.agentRuntime.id = "pi"; emitting "claude-cli" here
+        # REPLACES that scalar cleanly. (A literal null would only OMIT the key and
+        # the merge would keep "pi" forever — so set the string explicitly.)
+        agentRuntime = "claude-cli";
 
         # The module is secret-system agnostic and takes runtime FILES; on this
         # host they are the sops-nix secret paths. The token/ID values live only
@@ -510,6 +550,27 @@ let
         model = "anthropic/claude-sonnet-4-6";
         fallbackModels = [ ];
         settings.agents.defaults.subagents.model = "anthropic/claude-sonnet-4-6";
+
+        # Memory-search embeddings: a LOCAL, keyless embedder. openclaw's default
+        # embedding provider is "openai" (needs an OPENAI_API_KEY we do not put on
+        # the box — `openclaw memory index` failed "No API key found for provider
+        # openai"), and Anthropic has no embeddings API so the subscription doesn't
+        # help. "local" runs a GGUF on-box via node-llama-cpp: no key, no per-token
+        # cost, memory text stays on the host. The GGUF is supplied here (not baked
+        # into the module), same as stt.model — nomic-embed-text v1.5 Q4_K_M is
+        # ~84MB and CPU-friendly; swap url+hash for a multilingual model if Spanish
+        # recall needs it. After deploy, (re)index as eva with the service env:
+        #   sudo -u eva env HOME=/home/eva OPENCLAW_STATE_DIR=/var/lib/openclaw \
+        #     OPENCLAW_CONFIG_PATH=/var/lib/openclaw/openclaw.json \
+        #     openclaw memory index --force --verbose
+        memorySearch = {
+          enable = true;
+          provider = "local";
+          localModelPath = pkgs.fetchurl {
+            url = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf";
+            hash = "sha256-1OOIiU4JzzgW6LCJbYHSZbVeep//mrA/6L9O9eESlaw=";
+          };
+        };
 
         # Heartbeat: eva takes an autonomous turn every 2h, but only during
         # waking hours (08:00–22:00 Europe/Madrid, matching the host timezone) so
@@ -562,12 +623,10 @@ let
           enable = true;
           manageMaildir = true;
           fromAddress = "e.lebbot@acpuchades.com";
-          unpromptedRecipients = [
-            "acp1337@proton.me"
-            "acaravaca@idibell.cat"
-            "acaravaca@bellvitgehospital.cat"
-            "acaravacapuchades@uoc.edu"
-          ];
+          # Shared with send-trusted-mail (see evaTrustedMailRecipients) so the
+          # two outbound wrappers never drift. These send unprompted; any other
+          # recipient falls through to the approval gate.
+          unpromptedRecipients = evaTrustedMailRecipients;
         };
 
         # Sanctioned self-gating action wrappers (see my.openclaw.actions). These
@@ -582,14 +641,7 @@ let
           };
           trustedMail = {
             enable = true;
-            trustedAddresses = [
-              "acaravaca@bellvitgehospital.cat"
-              "acaravaca@idibell.cat"
-              "acp1337@proton.me"
-              "acaravacapuchades@gmail.com"
-              "acaravacapuchades@uoc.edu"
-              "acaravpu55@alumnes.ub.edu"
-            ];
+            trustedAddresses = evaTrustedMailRecipients;
           };
         };
 
@@ -720,14 +772,15 @@ let
           netIsolatedBins = [ "ffmpeg" "ffprobe" "pandoc" "xmllint" ];
         };
         settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
-        # Outbound Telegram attachments are gated to an allowlist of filesystem
-        # roots (channels.telegram.attachmentRoots). Eva's workspace is NOT a
-        # default root, so files she creates there (reports, converted media,
-        # generated docs) couldn't be sent — the "media folder restriction" she
-        # hit. Bless her workspace so she can attach anything she produces. The
-        # DM surface is locked to the single owner ID, so widening the send-from
-        # scope only ever delivers to the owner — not an exfil vector.
-        settings.channels.telegram.attachmentRoots = [ "/home/eva/workspace" ];
+        # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
+        # under channels.imessage, so putting it on the telegram channel tripped
+        # the strict schema ("channels.telegram: must NOT have additional
+        # properties") and crash-looped the config seed, taking eva down (fixed
+        # 2026-07-27). It was an attempt to fix a "media folder restriction" on
+        # outbound attachments, but the key doesn't exist for telegram. If eva
+        # genuinely can't attach files from her workspace, revisit with a key
+        # that actually validates for this channel — it is NOT an exfil concern,
+        # since the DM is locked to the single owner ID.
         # Exec approval prompts: make Telegram a NATIVE approval client so a
         # missed command raises an inline approve/deny prompt in the owner DM
         # (tap to allow-once / allow-always / deny) instead of blocking silently
@@ -851,10 +904,15 @@ let
       # the token comes in from outside the module, next to the model/voice that
       # needs it. SOPS-rendered env file (openclaw/*-env), so no key is in this
       # public repo or the store:
-      #   * Anthropic (native agent runtime, agentRuntime = null) — ANTHROPIC_API_KEY.
       #   * ElevenLabs (reply TTS) — ELEVENLABS_API_KEY.
+      #
+      # NB: openclaw/anthropic-env (ANTHROPIC_API_KEY) is DELIBERATELY NOT here.
+      # Under the claude-cli runtime (see agentRuntime above) Claude Code prefers
+      # an ANTHROPIC_API_KEY in its environment over the subscription login and
+      # would bill per-token — defeating the point of the subscription switch. The
+      # SOPS secret/template still exist (sops.nix) so re-adding this line is all
+      # it takes to restore the native runtime's API auth.
       my.openclaw.environmentFiles = [
-        config.sops.templates."openclaw/anthropic-env".path
         config.sops.templates."openclaw/elevenlabs-env".path
       ];
 
