@@ -37,6 +37,12 @@
 let
   cfg = config.my.openclaw;
 
+  # Provider half of `provider/model` (e.g. "anthropic" from
+  # "anthropic/claude-sonnet-4-6"). openclaw 2026.6.x scopes the agent runtime to
+  # a provider/model rather than the whole agent, so the runtime backend is pinned
+  # on this provider (see defaultConfig).
+  runtimeProvider = builtins.head (lib.splitString "/" cfg.model);
+
   # Freeform JSON so my.openclaw.settings can express any key in openclaw.json
   # (see `openclaw config schema`) without the module having to model each one.
   settingsFormat = pkgs.formats.json { };
@@ -205,100 +211,123 @@ let
       what you are answering, so threads stay intact.
   '';
 
-  # Always-on policy skill (in Spanish — the agent's working language). Tells the
-  # agent, in its own terms, where the security boundary sits: what runs without
-  # approval, what always asks, and the strong preference for the sanctioned
-  # action wrappers over raw tools. Rendered immutably and loaded via
+  # Always-on policy skill. Kept in ENGLISH (even though eva converses in
+  # Spanish) so the security-critical wording stays precise and unambiguous — the
+  # conversation language and the policy language need not match, and security
+  # instructions are least ambiguous in the better-represented language. Tells
+  # the agent, in its own terms, where the security boundary sits: what runs
+  # without approval, what always asks, and the strong preference for the
+  # sanctioned action wrappers over raw tools. Rendered immutably and loaded via
   # skills.load.extraDirs like the mail skill.
   policySkillsDir = pkgs.writeTextDir "policy/SKILL.md" ''
     ---
     name: policy
-    description: Política de seguridad y capacidades del agente — qué puedes hacer sin aprobación, qué requiere autorización, y la preferencia por usar los wrappers habilitados (request-trusted-url, send-trusted-mail, send-email) en lugar de herramientas crudas (curl, wget, sendmail). Consúltala siempre que dudes si una acción está permitida, cuando vayas a acceder a la red o enviar correo, o cuando una tarea repetitiva provoque peticiones de aprobación.
+    description: Agent security policy and capabilities — what you may do without approval, what needs authorization, and the preference for the enabled wrappers (request-trusted-url, send-trusted-mail, send-email) over raw tools (curl, wget, sendmail). Consult it whenever you are unsure whether an action is allowed, before you access the network or send mail, or when a repetitive task keeps triggering approval requests.
     ---
 
-    # Política y capacidades
+    # Policy and capabilities
 
-    Corres como el usuario `${cfg.user}`, sin confinamiento de sandbox pero SÍ con
-    una política de ejecución estricta: bajo `security = "allowlist"` solo se
-    ejecutan sin aprobación los comandos de la lista de permitidos; cualquier otro
-    abre una petición de aprobación en el Telegram del propietario. Tu superficie
-    de escritura está limitada por permisos del sistema de ficheros a tu propio
-    árbol y a un único repositorio; el resto de ficheros del propietario no son
-    accesibles.
+    You run as the user `${cfg.user}`, with no sandbox confinement but WITH a
+    strict execution policy: under `security = "allowlist"` only allowlisted
+    commands run without approval; any other command is gated and will NOT run
+    without the owner's authorization. Your write surface is limited by
+    filesystem permissions to your own tree and a single repository; the owner's
+    other files are not accessible.
 
-    ## Puedes hacer SIN aprobación
+    ## You MAY do WITHOUT approval
 
-    - **Leer y gestionar tu propio correo** (Maildir en `${homeDir}/Maildir`):
-      inspección (`mscan`, `mshow`, `mlist`, `mhdr`, …)${lib.optionalString (cfg.mail.enable && cfg.mail.manageMaildir) " y mutación local (`mflag`, `mrefile`, `mmkdir`, `minc`, `mdeliver`)"}.
-    - **Operar con ficheros** dentro de tu propio árbol (`${homeDir}`,
-      `/var/lib/openclaw`), en `/tmp`, y en el repositorio `acpuchades-site`:
-      crear, copiar, mover, borrar y cambiar permisos (`mkdir`, `cp`, `mv`, `rm`,
-      `chmod`, …). Todo queda acotado por permisos a esas rutas.
-    - **git LOCAL**: `add`, `commit`, `branch`, `merge`, `rebase`, `restore`,
-      `stash`, `tag`, … El límite es el REMOTO.
-    - **Herramientas locales de solo lectura**: `cat`, `ls`, `grep`, `rg`, `jq`,
-      `find`, … (no acceden a la red).${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
+    - **Read and manage your own mail** (Maildir at `${homeDir}/Maildir`):
+      inspection (`mscan`, `mshow`, `mlist`, `mhdr`, …)${lib.optionalString (cfg.mail.enable && cfg.mail.manageMaildir) " and local mutation (`mflag`, `mrefile`, `mmkdir`, `minc`, `mdeliver`)"}.
+    - **Operate on files** within your own tree (`${homeDir}`,
+      `/var/lib/openclaw`), in `/tmp`, and in the `acpuchades-site` repository:
+      create, copy, move, delete and change permissions (`mkdir`, `cp`, `mv`,
+      `rm`, `chmod`, …). All bounded by permissions to those paths.
+    - **LOCAL git**: `add`, `commit`, `branch`, `merge`, `rebase`, `restore`,
+      `stash`, `tag`, … The boundary is the REMOTE.
+    - **Read-only local tools**: `cat`, `ls`, `grep`, `rg`, `jq`, `find`, … (no
+      network access).${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
 
-    - **Conversores con capacidad de red** (${lib.concatMapStringsSep ", " (b: "`${b}`") cfg.exec.netIsolatedBins}):
-      anteponles `offline` para ejecutarlos SIN aprobación dentro de un espacio de
-      nombres SIN red, de modo que no puedan abrir una URL arbitraria (un canal de
-      exfiltración). La forma DESNUDA (sin `offline`) pide aprobación.
-          offline ffmpeg -i entrada.mp4 salida.webm
-          offline pandoc informe.md -o informe.pdf
-      Para LEER de la web usa `request-trusted-url`, no `offline curl`.''}${lib.optionalString cfg.actions.requestUrl.enable ''
+    - **Network-capable converters** (${lib.concatMapStringsSep ", " (b: "`${b}`") cfg.exec.netIsolatedBins}):
+      prefix them with `offline` to run them WITHOUT approval inside a network-
+      LESS namespace, so they cannot open an arbitrary URL (an exfiltration
+      channel). The BARE form (without `offline`) requires approval.
+          offline ffmpeg -i input.mp4 output.webm
+          offline pandoc report.md -o report.pdf
+      To READ from the web use `request-trusted-url`, not `offline curl`.''}${lib.optionalString cfg.actions.requestUrl.enable ''
 
-    - **Web de confianza (GET/HEAD)** con `request-trusted-url`: solo a
+    - **Trusted web (GET/HEAD)** with `request-trusted-url`: only to
       ${lib.concatStringsSep ", " cfg.actions.requestUrl.trustedSites}.
-          request-trusted-url https://ejemplo.acpuchades.com/recurso
-          request-trusted-url --head https://ejemplo.acpuchades.com/recurso''}${lib.optionalString cfg.actions.trustedMail.enable ''
+          request-trusted-url https://example.acpuchades.com/resource
+          request-trusted-url --head https://example.acpuchades.com/resource''}${lib.optionalString cfg.actions.trustedMail.enable ''
 
-    - **Correo a direcciones de confianza** con `send-trusted-mail` (mensaje por
-      stdin, destinatarios como argumentos): ${lib.concatStringsSep ", " cfg.actions.trustedMail.trustedAddresses}.''}
+    - **Mail to trusted addresses** with `send-trusted-mail` (message on stdin,
+      recipients as arguments): ${lib.concatStringsSep ", " cfg.actions.trustedMail.trustedAddresses}.''}
 
-    ## Requiere aprobación (o está prohibido)
+    ## Requires approval (or is forbidden)
 
-    - **`sudo`** (nixos-rebuild, systemctl, reboot, …): SIEMPRE pide aprobación.
-    - **Shells e intérpretes / evaluación en línea**: `bash -c`, `sh -c`,
-      `python -c`, `python3`, `R`, `node -e`, `awk`/`sed` con efectos… piden
-      aprobación. No los uses para envolver o esconder otro comando.
-    - **Red cruda**: `curl`, `wget` y cualquier acceso de red no envuelto piden
-      aprobación. Usa los wrappers (ver abajo).
-    - **`git push`** y cualquier verbo con el remoto (`pull`, `fetch`, `clone`,
-      `remote`): piden aprobación. Publicar es una acción humana.
-    - **Correo fuera de la lista de confianza**: `send-trusted-mail` lo RECHAZA.
-    - **Ficheros del propietario** fuera de `acpuchades-site`: sin acceso.
+    - **`sudo`** (nixos-rebuild, systemctl, reboot, …): ALWAYS requires approval.
+    - **Shells and interpreters / inline eval**: `bash -c`, `sh -c`, `python -c`,
+      `python3`, `R`, `node -e`, `awk`/`sed` with effects… require approval. Do
+      not use them to wrap or hide another command.
+    - **Raw network**: `curl`, `wget` and any unwrapped network access require
+      approval. Use the wrappers (see below).
+    - **`git push`** and any verb touching the remote (`pull`, `fetch`, `clone`,
+      `remote`): require approval. Publishing is a human action.
+    - **Mail outside the trusted list**: `send-trusted-mail` REJECTS it.
+    - **Owner files** outside `acpuchades-site`: no access.
 
-    ## Prefiere SIEMPRE los wrappers habilitados
+    ## ALWAYS prefer the enabled wrappers
 
-    Cuando necesites red o enviar correo, usa el wrapper correspondiente en lugar
-    de la herramienta cruda. Los wrappers están preaprobados y restringen su
-    propio destino, así que se ejecutan sin interrumpir; las herramientas crudas
-    provocarán una petición de aprobación o serán rechazadas.
+    When you need the network or to send mail, use the corresponding wrapper
+    instead of the raw tool. The wrappers are pre-approved and constrain their
+    own destination, so they run without interruption; the raw tools will trigger
+    an approval request or be rejected.
 
-    | Necesitas             | Usa                     | NO uses           |
-    |-----------------------|-------------------------|-------------------|
-    | Descargar / consultar | `request-trusted-url`   | `curl`, `wget`    |
-    | Enviar correo         | `send-trusted-mail`${lib.optionalString cfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`|${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
+    | You need           | Use                     | Do NOT use            |
+    |--------------------|-------------------------|-----------------------|
+    | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |
+    | Send mail          | `send-trusted-mail`${lib.optionalString cfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
 
-    | Convertir medios/docs | `offline <herramienta>` | `ffmpeg`/`pandoc` a secas |''}
+    | Convert media/docs | `offline <tool>`        | bare `ffmpeg`/`pandoc` |''}
 
-    ## Tareas repetitivas: crea "actions"
+    ## Minimize approval requests — prefer single commands over pipes
 
-    Si una tarea se repite y te obliga a pedir aprobación de comandos individuales
-    una y otra vez, NO sigas pidiendo autorizaciones sueltas. En su lugar,
-    implementa un script de **action** específico para esa tarea que **acote su
-    propio alcance** (como `request-trusted-url` acota el host, o
-    `send-trusted-mail` el destinatario). Un action bien diseñado:
+    The GOAL is to keep approval requests to a minimum: each one interrupts the
+    owner and may stall the turn. The exec gate splits a command line into
+    PIPELINE/CHAIN segments (`|`, `&&`, `;`) and clears each one INDEPENDENTLY —
+    the line runs unprompted only if EVERY segment is itself allowlisted or a
+    safe read-only tool. A single unlisted segment forces an approval request for
+    the WHOLE line, so a pipe is the easiest way to trip the gate by accident.
 
-    - fija por dentro sus destinos/parámetros permitidos y rechaza el resto;
-    - no evalúa código arbitrario ni acepta comandos como entrada;
-    - hace UNA cosa concreta, de forma que sea seguro añadirlo a la lista de
-      permitidos de manera **granular** (un único binario auto-limitado) en vez
-      de abrir un permiso amplio.
+    With the trusted wrappers (`send-email`, `send-trusted-mail`,
+    `request-trusted-url`) prefer a SINGLE command. When one needs data on stdin,
+    use input REDIRECTION from a file instead of piping another command into it —
+    redirection feeds one command without adding a segment:
 
-    Redacta el script en tu workspace y pide al propietario que lo incorpore como
-    action del módulo (o que lo añada al allowlist de forma granular). Así el
-    trabajo repetitivo deja de interrumpir sin ampliar la superficie de riesgo.
+        send-trusted-mail addr < message.txt      # one segment — runs unprompted
+        cat message.txt | send-trusted-mail addr  # two segments — avoid
+
+    So write intermediate output to a file in your workspace and redirect it in,
+    rather than building pipelines. If you genuinely must pipe, make sure every
+    upstream segment is itself a safe read-only tool (e.g. `cat`, `printf`, `jq`).
+
+    ## Repetitive tasks: create "actions"
+
+    If a task recurs and forces you to request approval for individual commands
+    over and over, do NOT keep asking for one-off authorizations. Instead,
+    implement an **action** script specific to that task that **constrains its
+    own scope** (as `request-trusted-url` constrains the host, or
+    `send-trusted-mail` the recipient). A well-designed action:
+
+    - fixes its allowed destinations/parameters internally and rejects the rest;
+    - does not evaluate arbitrary code or accept commands as input;
+    - does ONE concrete thing, so that it is safe to add to the allowlist
+      **granularly** (a single self-limiting binary) rather than opening a broad
+      permission.
+
+    Draft the script in your workspace and ask the owner to incorporate it as a
+    module action (or add it to the allowlist granularly). That way repetitive
+    work stops interrupting without widening the risk surface.
   '';
 
   # OpenClaw's bundled-plugin loader opens each plugin "public surface" through a
@@ -332,26 +361,19 @@ let
   # a hardlink attack and only fights the store's own dedup. Each --replace-fail
   # makes a version bump that moves/renames either expression fail the build
   # loudly rather than silently shipping the broken (unpatched) loader.
-  openclawPatched = cfg.package.overrideAttrs (old: {
-    postInstall = (old.postInstall or "") + ''
-      patched=0
-      for f in "$out"/lib/openclaw/dist/safe-open-sync-*.js; do
-        [ -e "$f" ] || continue
-        substituteInPlace "$f" \
-          --replace-fail \
-            'params.rejectHardlinks && preOpenStat.isFile() && preOpenStat.nlink > 1' \
-            'false && preOpenStat.isFile() && preOpenStat.nlink > 1' \
-          --replace-fail \
-            'params.rejectHardlinks && openedStat.isFile() && openedStat.nlink > 1' \
-            'false && openedStat.isFile() && openedStat.nlink > 1'
-        patched=1
-      done
-      if [ "$patched" != 1 ]; then
-        echo "openclaw: hardlink-guard patch matched no safe-open-sync-*.js" >&2
-        exit 1
-      fi
-    '';
-  });
+  # HARDLINK-GUARD WORKAROUND REMOVED 2026-07-27 — testing the upstream fix
+  # directly. 2026.5.x shipped a bundled-plugin loader that rejected any surface
+  # file with st_nlink > 1 (openBoundaryFileSync { rejectHardlinks:true } in
+  # safe-open-sync-*.js); with NixOS `auto-optimise-store` dedup (nlink>=2) that
+  # broke every bundled surface, so we used to `overrideAttrs` the two rejection
+  # sites to `false`. openclaw 2026.6.x FIXED it upstream — the loaders now pass
+  # `rejectHardlinks: false` (facade-loader / security-runtime in the 2026.6.33
+  # source) — so we now run the package UNMODIFIED to confirm the fix holds under
+  # our store settings. If bundled surfaces / native providers fail to load on
+  # dispatch again ("Unable to open bundled plugin public surface …"), restore the
+  # overrideAttrs patch from git history. Name kept (referenced throughout); it is
+  # now simply the unmodified package.
+  openclawPatched = cfg.package;
 
   # The config file is re-seeded from Nix on every start, so it is assembled
   # here in three layers with a clear precedence:
@@ -376,8 +398,19 @@ let
         fallbacks = cfg.fallbackModels;
       };
       workspace = "${homeDir}/workspace";
-    } // lib.optionalAttrs (cfg.agentRuntime != null) {
-      agentRuntime.id = cfg.agentRuntime;
+    } // lib.optionalAttrs cfg.memorySearch.enable {
+      # Embedding-backed recall over the agent's memory files. Provider is the
+      # host's choice (local keyless GGUF by default); the local model path and an
+      # optional remote model name are folded in only when set, so the emitted
+      # config matches whichever backend was picked.
+      memorySearch = {
+        enabled = true;
+        provider = cfg.memorySearch.provider;
+      } // lib.optionalAttrs (cfg.memorySearch.localModelPath != null) {
+        local.modelPath = "${cfg.memorySearch.localModelPath}";
+      } // lib.optionalAttrs (cfg.memorySearch.model != null) {
+        model = cfg.memorySearch.model;
+      };
     } // lib.optionalAttrs cfg.heartbeat.enable {
       # Periodic autonomous turns, assembled from my.openclaw.heartbeat. A
       # default (overridable via cfg.settings), not an enforced key.
@@ -395,6 +428,14 @@ let
       enabled = true;
       tokenFile = "${credDir}/telegram-token"; # real file (symlinks rejected)
     };
+  } // lib.optionalAttrs (cfg.agentRuntime != null) {
+    # Agent runtime backend, PROVIDER-scoped (openclaw 2026.6.x). 2026.5.x set
+    # agents.defaults.agentRuntime.id; that key is now REJECTED ("agents.defaults:
+    # Invalid input") — the runtime is pinned per provider/model instead. We pin it
+    # on the provider of the primary model (runtimeProvider), so e.g. "claude-cli"
+    # makes that provider's models run via the Claude Code subscription login;
+    # "openclaw" selects the built-in native runtime.
+    models.providers.${runtimeProvider}.agentRuntime.id = cfg.agentRuntime;
   } // lib.optionalAttrs cfg.tts.enable {
     # Reply text-to-speech, assembled from the my.openclaw.tts options. Lives in
     # defaultConfig (a preference, not a security invariant), so cfg.settings can
@@ -403,7 +444,12 @@ let
     # NOT put here — it is read from the environment (e.g. ELEVENLABS_API_KEY),
     # so no secret enters the store.
     messages.tts = {
-      enabled = true;
+      # NB: no `enabled` key. OpenClaw 2026.5.x treats messages.tts.enabled as a
+      # LEGACY key and rejects the config at load ("messages.tts.enabled is
+      # legacy; use messages.tts.auto") — emitting it alongside `auto` fails the
+      # ExecStartPre `config patch` validation and crash-loops the seed. `auto`
+      # is now the sole on/off + when-to-speak control ("off" = capability
+      # present but never auto-speaks).
       auto = cfg.tts.auto;
       mode = cfg.tts.mode;
       provider = cfg.tts.provider;
@@ -536,8 +582,16 @@ let
   # which overran the gateway's 90s start-pre timeout and crash-looped it). The
   # union is by pattern string, so the agent's own approve-and-remember entries
   # survive across restarts; a failed merge warns and leaves the file untouched.
+  #
+  # PATH (openclaw 2026.6.x): the live exec-approvals file lives in the STATE DIR
+  # (`${stateDir}/exec-approvals.json`), which is what the runtime reads —
+  # `resolveExecApprovalsFromFile` resolves `join(stateDir, "exec-approvals.json")`.
+  # 2026.5.x read it from `~/.openclaw/exec-approvals.json`; seeding the old path
+  # on 2026.6.x silently left the whole operator allowlist UNLOADED (every command
+  # missed → prompted/denied). Since the runtime reads this JSON each start, the
+  # reseed-every-start union still holds.
   allowlistSeedMerge = ''
-    approvalsFile=${homeDir}/.openclaw/exec-approvals.json
+    approvalsFile=${stateDir}/exec-approvals.json
     mkdir -p "$(dirname "$approvalsFile")"
     if [ -f "$approvalsFile" ]; then liveSrc="$approvalsFile"; else liveSrc=${execApprovalsSeed}; fi
     tmp="$(mktemp)"
@@ -851,6 +905,63 @@ in
         type = lib.types.ints.positive;
         default = 300;
         description = "Max seconds for a single transcription before it is aborted.";
+      };
+    };
+
+    # Semantic memory search (vector recall over MEMORY.md + memory/*.md).
+    # Modelled as options because the embedding backend is a real choice with a
+    # cost/privacy/keys tradeoff: openclaw's own default provider is "openai"
+    # (needs an API key), so a host that keeps no keys must opt into a local
+    # embedder or wire a remote key deliberately. Assembles
+    # agents.defaults.memorySearch.
+    memorySearch = {
+      enable = lib.mkEnableOption ''
+        semantic memory search. When off, the agent still has its memory FILES
+        (MEMORY.md + memory/*.md) — only vector recall is disabled. When on, an
+        embedding backend is required (see `provider`); reindex with
+        `openclaw memory index --force`'';
+      provider = lib.mkOption {
+        type = lib.types.str;
+        default = "local";
+        example = "voyage";
+        description = ''
+          Embedding backend (maps to agents.defaults.memorySearch.provider).
+          "local" runs a GGUF model on-box via node-llama-cpp — keyless, no
+          per-token cost, and memory text never leaves the host — and needs
+          `localModelPath`. Remote providers ("openai", "voyage", "gemini",
+          "mistral", "ollama", "lmstudio", …) instead need their API key in the
+          service environment (see `environmentFiles`) and optionally a `model`
+          name. openclaw's own default is "openai"; this module defaults to
+          "local" so memory search works with no keys out of the box.
+        '';
+      };
+      localModelPath = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        example = lib.literalExpression ''
+          pkgs.fetchurl {
+            url = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf";
+            hash = "sha256-...";
+          }'';
+        description = ''
+          GGUF embedding model file for `provider = "local"`, supplied from OUTSIDE
+          the module (e.g. a fetchurl) so no model is baked into the generic module
+          — the same pattern as `stt.model`. Maps to
+          agents.defaults.memorySearch.local.modelPath. Ignored by remote
+          providers. A small model (e.g. nomic-embed-text v1.5 Q4_K_M, ~84MB) is
+          CPU-friendly; pick a multilingual model if recall in other languages
+          matters. Required when `provider = "local"` and `enable` is set.
+        '';
+      };
+      model = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "voyage-3-lite";
+        description = ''
+          Embedding model NAME override for a REMOTE provider (maps to
+          agents.defaults.memorySearch.model). Null uses the provider default. Not
+          used by `provider = "local"` — that takes `localModelPath` instead.
+        '';
       };
     };
 
@@ -1182,9 +1293,20 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Fail at eval (not runtime) on a memory-search misconfig: the local embedder
+    # can't run without a GGUF model, and a remote provider can't run without its
+    # key — so at least require the model file for the local backend here.
+    assertions = [
+      {
+        assertion = cfg.memorySearch.enable && cfg.memorySearch.provider == "local"
+          -> cfg.memorySearch.localModelPath != null;
+        message = "my.openclaw.memorySearch: provider = \"local\" requires memorySearch.localModelPath (a GGUF embedding model, e.g. via pkgs.fetchurl).";
+      }
+    ];
+
     # Upstream flags this package insecure on purpose. Acknowledge explicitly;
     # bump the version suffix when the packaged OpenClaw is updated.
-    nixpkgs.config.permittedInsecurePackages = [ "openclaw-2026.5.7" ];
+    nixpkgs.config.permittedInsecurePackages = [ "openclaw-${cfg.package.version}" ];
 
     # ffmpeg must be a *system* package (not just on the service PATH): the STT
     # pipeline resolves it via requireSystemBin, which only trusts fixed dirs

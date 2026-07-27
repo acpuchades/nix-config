@@ -5,6 +5,14 @@
     # Nixpkgs
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
+    # Nixpkgs Unstable — pulled ONLY for a newer openclaw than nixpkgs-26.05
+    # ships. 26.05 freezes openclaw at 2026.5.7, whose claude-cli runtime cannot
+    # answer Claude's exec permission protocol (control_request/can_use_tool), so
+    # a non-allowlisted command hangs ~180s; unstable's 2026.6.33 adds the
+    # responder (and fixes the bundled-surface hardlink guard). Scoped to
+    # my.openclaw.package on the homeserver — nothing else consumes it.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+
     # Nix-Darwin
     nix-darwin.url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
     nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
@@ -35,6 +43,7 @@
       self,
       nix-darwin,
       nixpkgs,
+      nixpkgs-unstable,
       home-manager,
       sops-nix,
       better-zen,
