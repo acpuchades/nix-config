@@ -613,6 +613,12 @@ let
         # allowed on the DM surface (enum: off|dm|group|all|allowlist). The prior
         # "allowlist" value was ambiguous for approvals; "dm" allows it explicitly.
         settings.channels.telegram.capabilities.inlineButtons = "dm";
+        # Reply delivery: send each reply as ONE finished message, not streamed.
+        # OpenClaw's default streams the reply in "block" mode — repeatedly editing
+        # a growing Telegram message as tokens arrive, which is chatty and jitters
+        # on mobile. "off" (enum: off|partial|block|progress) buffers the turn and
+        # posts the complete reply once.
+        settings.channels.telegram.streaming.mode = "off";
 
         # Web access: DISABLED as a data-exfiltration guard. web_fetch runs
         # OUTSIDE the exec allowlist and its destination cannot be constrained the
