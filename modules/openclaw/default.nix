@@ -147,6 +147,29 @@ let
           "--set MAIL_FROM ${lib.escapeShellArg cfg.mail.fromAddress}"}
     '';
 
+  # `generate-image`: the generic actions/generate-image script wrapped so the
+  # model, token-file path, optional reference image, API base and tool paths are
+  # all pinned by nix — the script stays generic and the agent cannot swap the
+  # code, the model, or the endpoint. Destination-pinned (always the configured
+  # generateContent endpoint), so it is safe to bless whole-binary in safeBins:
+  # the only agent-controlled inputs are the prompt and the output path (in its
+  # own tree). NB: the API key stays a runtime FILE (tokenFile) — never a nix
+  # value — so it does not enter the store or this public repo.
+  generateImageBin = pkgs.runCommandLocal "openclaw-generate-image"
+    { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+      install -Dm0755 ${./actions/generate-image} $out/libexec/generate-image
+      makeWrapper $out/libexec/generate-image $out/bin/generate-image \
+        --prefix PATH : ${lib.makeBinPath [ pkgs.curl pkgs.jq pkgs.coreutils ]} \
+        --set GENIMG_MODEL ${lib.escapeShellArg cfg.actions.generateImage.model} \
+        --set GENIMG_TOKEN_FILE ${lib.escapeShellArg cfg.actions.generateImage.tokenFile} \
+        ${lib.optionalString (cfg.actions.generateImage.referenceImage != null)
+          "--set GENIMG_DEFAULT_REFERENCE ${lib.escapeShellArg cfg.actions.generateImage.referenceImage}"} \
+        ${lib.optionalString (cfg.actions.generateImage.referenceRoot != null)
+          "--set GENIMG_REFERENCE_ROOT ${lib.escapeShellArg cfg.actions.generateImage.referenceRoot}"} \
+        ${lib.optionalString (cfg.actions.generateImage.apiBase != null)
+          "--set GENIMG_API_BASE ${lib.escapeShellArg cfg.actions.generateImage.apiBase}"}
+    '';
+
   # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
   # network interfaces (only a down `lo`), so a network-capable tool cannot reach
   # anything off-box regardless of its arguments — the fail-safe way to bless
@@ -534,7 +557,10 @@ let
         # anything off the trusted list), so they are safe to bless whole-binary:
         # any invocation either targets a trusted destination or exits non-zero.
         ++ lib.optionals cfg.actions.requestUrl.enable [ "request-trusted-url" ]
-        ++ lib.optionals cfg.actions.trustedMail.enable [ "send-trusted-mail" ];
+        ++ lib.optionals cfg.actions.trustedMail.enable [ "send-trusted-mail" ]
+        # generate-image is likewise destination-pinned (fixed model/endpoint), so
+        # blessing the whole binary only ever hits the configured image endpoint.
+        ++ lib.optionals cfg.actions.generateImage.enable [ "generate-image" ];
     } // lib.optionalAttrs (cfg.exec.safeBinProfiles != { }) {
       safeBinProfiles = cfg.exec.safeBinProfiles;
     };
@@ -1086,6 +1112,69 @@ in
           '';
         };
       };
+      generateImage = {
+        enable = lib.mkEnableOption ''
+          the `generate-image` action: image generation via a Gemini-compatible
+          `generateContent` endpoint. The model, token file, optional reference
+          image and endpoint are all nix-pinned, so it is destination-fixed and
+          safe to bless whole-binary; the agent only supplies the prompt and the
+          output path. Needs `tokenFile` set'';
+        model = lib.mkOption {
+          type = lib.types.str;
+          default = "gemini-2.5-flash-image";
+          example = "gemini-2.5-flash-image";
+          description = ''
+            Image model id passed to `<apiBase>/models/<model>:generateContent`.
+          '';
+        };
+        tokenFile = lib.mkOption {
+          type = lib.types.str;
+          example = "/run/secrets/openclaw-gemini-token";
+          description = ''
+            Path to a file holding the API key (single line), read at RUNTIME —
+            like telegram.tokenFile, it is a `str` path (not a `path`) so the key
+            never enters the store or this public repo. Point it at a sops-nix
+            secret, an agenix file, or any out-of-band file the agent can read.
+          '';
+        };
+        referenceImage = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/var/lib/openclaw/avatars/reference.png";
+          description = ''
+            Optional DEFAULT reference image, used when the caller passes no
+            `--reference` (and did not pass `--no-reference`). The agent can
+            override it per call with `--reference <img>` or drop it with
+            `--no-reference`, and can also run prompt-only. Null means no default
+            (prompt-only unless a reference is given). A runtime path string.
+          '';
+        };
+        referenceRoot = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "/var/lib/openclaw/workspace";
+          description = ''
+            Optional directory that a runtime `--reference` must resolve under.
+            When set, the agent may only reference images inside this tree (so it
+            can pick among its own images but cannot feed an arbitrary file — e.g.
+            a secret — to the endpoint). Null leaves `--reference` unconstrained
+            (any readable image), which is fine for a trusted/uncontested host but
+            widens the input surface. Does not affect `referenceImage` (the pinned
+            default), which is always allowed.
+          '';
+        };
+        apiBase = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://generativelanguage.googleapis.com/v1beta";
+          description = ''
+            Override the API base URL (default: Google Generative Language
+            v1beta). Set this to target a compatible endpoint. NB: whatever host
+            this resolves to must also be reachable — the wrapper uses raw curl,
+            not request-trusted-url, so it is not bound by trustedSites.
+          '';
+        };
+      };
     };
 
     # WHAT IT CAN DO TO THE HOST. The options below are the deliberate, narrow
@@ -1324,6 +1413,7 @@ in
       ++ lib.optionals cfg.mail.enable [ mailSendBin pkgs.mblaze ]
       ++ lib.optionals cfg.actions.requestUrl.enable [ requestUrlBin ]
       ++ lib.optionals cfg.actions.trustedMail.enable [ trustedMailBin ]
+      ++ lib.optionals cfg.actions.generateImage.enable [ generateImageBin ]
       ++ lib.optional (cfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ cfg.extraPackages;
 

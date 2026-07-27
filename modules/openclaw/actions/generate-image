@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+#
+# generate-image — image generation via a Gemini-compatible `generateContent`
+# endpoint. Generic and identity-agnostic: model, endpoint, API-key file and the
+# reference-image policy are all injected by the nix wrapper (see the
+# my.openclaw.actions.generateImage options); nothing is hardcoded here.
+#
+# Usage:
+#   generate-image --out FILE [--prompt TEXT] [--reference IMG | --no-reference]
+#
+#   --out FILE          where to write the generated PNG            (required)
+#   --prompt TEXT       text instruction                           (optional)
+#   --reference IMG     image sent as a style/subject reference    (optional)
+#   --no-reference      suppress the configured default reference  (optional)
+#
+# At least one of a prompt or an (effective) reference is required. When
+# --reference is omitted, the configured default reference is used (unless
+# --no-reference). A runtime --reference must resolve under GENIMG_REFERENCE_ROOT
+# (a nix-pinned directory) — so the agent can pick among reference images there,
+# but cannot feed an arbitrary file (e.g. a secret) to the endpoint.
+#
+# Environment (all pinned by the wrapper):
+#   GENIMG_MODEL              model id, e.g. "gemini-2.5-flash-image"   (required)
+#   GENIMG_TOKEN_FILE         file with the API key (read at runtime)   (required)
+#   GENIMG_DEFAULT_REFERENCE  reference used when --reference omitted    (optional)
+#   GENIMG_REFERENCE_ROOT     dir a runtime --reference must sit under   (optional)
+#   GENIMG_API_BASE           API base URL (default: Google GL v1beta)   (optional)
+# The wrapper also puts curl/jq/coreutils on PATH.
+#
+set -euo pipefail
+
+: "${GENIMG_MODEL:?GENIMG_MODEL not set}"
+: "${GENIMG_TOKEN_FILE:?GENIMG_TOKEN_FILE not set}"
+API_BASE="${GENIMG_API_BASE:-https://generativelanguage.googleapis.com/v1beta}"
+
+PROMPT=""; HAVE_PROMPT=0
+REF_ARG=""; HAVE_REF=0; NO_REF=0
+OUTPUT=""
+
+usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --prompt)       PROMPT="${2?missing value for --prompt}"; HAVE_PROMPT=1; shift 2 ;;
+    --reference)    REF_ARG="${2?missing value for --reference}"; HAVE_REF=1; shift 2 ;;
+    --no-reference) NO_REF=1; shift ;;
+    --out|-o)       OUTPUT="${2?missing value for --out}"; shift 2 ;;
+    -h|--help)      usage; exit 0 ;;
+    *)              echo "generate-image: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$OUTPUT" ] || { echo "generate-image: --out is required" >&2; exit 2; }
+
+# Resolve the effective reference: explicit --reference (validated against the
+# allowed root), else the configured default, else none.
+REFERENCE=""
+if [ "$HAVE_REF" = 1 ]; then
+  real="$(realpath -e -- "$REF_ARG")" || { echo "generate-image: reference not found: $REF_ARG" >&2; exit 1; }
+  # If a reference root is configured, confine runtime references to it; otherwise
+  # any readable image is accepted (generally useful; set GENIMG_REFERENCE_ROOT to
+  # restrict).
+  root="${GENIMG_REFERENCE_ROOT:-}"
+  if [ -n "$root" ]; then
+    realroot="$(realpath -e -- "$root")" || { echo "generate-image: reference root missing: $root" >&2; exit 1; }
+    case "$real/" in
+      "$realroot"/*) ;;
+      *) echo "generate-image: reference must be under $realroot (got $real)" >&2; exit 1 ;;
+    esac
+  fi
+  REFERENCE="$real"
+elif [ "$NO_REF" != 1 ] && [ -n "${GENIMG_DEFAULT_REFERENCE:-}" ] && [ -f "${GENIMG_DEFAULT_REFERENCE}" ]; then
+  REFERENCE="$GENIMG_DEFAULT_REFERENCE"
+fi
+
+if [ "$HAVE_PROMPT" != 1 ] && [ -z "$REFERENCE" ]; then
+  echo "generate-image: need --prompt and/or --reference" >&2
+  exit 2
+fi
+
+[ -r "$GENIMG_TOKEN_FILE" ] || { echo "generate-image: token file not readable: $GENIMG_TOKEN_FILE" >&2; exit 1; }
+TOKEN="$(cat "$GENIMG_TOKEN_FILE")"
+API_URL="${API_BASE}/models/${GENIMG_MODEL}:generateContent"
+
+REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"
+cleanup() { rm -f "$REQ_FILE" "$RESP_FILE"; }
+trap cleanup EXIT
+
+# Build the request body with jq (so the prompt is JSON-escaped — a raw printf
+# would break or allow injection on quotes/newlines). Include text and/or the
+# reference image inline_data depending on what was supplied.
+if [ -n "$REFERENCE" ]; then
+  REF_B64="$(base64 -w0 "$REFERENCE")"
+  if [ "$HAVE_PROMPT" = 1 ]; then
+    jq -n --arg p "$PROMPT" --arg img "$REF_B64" \
+      '{contents:[{parts:[{text:$p},{inline_data:{mime_type:"image/png",data:$img}}]}]}' > "$REQ_FILE"
+  else
+    jq -n --arg img "$REF_B64" \
+      '{contents:[{parts:[{inline_data:{mime_type:"image/png",data:$img}}]}]}' > "$REQ_FILE"
+  fi
+else
+  jq -n --arg p "$PROMPT" \
+    '{contents:[{parts:[{text:$p}]}]}' > "$REQ_FILE"
+fi
+
+HTTP_CODE="$(curl -s --max-time 90 \
+  -X POST "${API_URL}?key=${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "@${REQ_FILE}" \
+  -o "$RESP_FILE" \
+  -w "%{http_code}")"
+
+DATA="$(jq -r '
+  [ .candidates[]?.content.parts[]? | (.inlineData.data // .inline_data.data) | select(. != null) ][0] // empty
+' "$RESP_FILE")"
+
+if [ -z "$DATA" ]; then
+  echo "generate-image: no image returned (HTTP $HTTP_CODE)" >&2
+  cat "$RESP_FILE" >&2
+  exit 1
+fi
+
+printf '%s' "$DATA" | base64 -d > "$OUTPUT"
+echo "OK: $OUTPUT ($(wc -c < "$OUTPUT") bytes)"
