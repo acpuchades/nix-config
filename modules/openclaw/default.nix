@@ -60,8 +60,23 @@ let
   credDir = "/run/credentials/openclaw.service";
 
   # --- optional email capability (see options.my.openclaw.mail) --------------
-  # Read-only Maildir viewers — no writes/network/exec, safe to run unprompted.
-  mailReadBins = [ "mscan" "mshow" "mlist" "mhdr" "mdirs" ];
+  # Read-only mblaze Maildir tools — display, inspect, search, sort/thread and
+  # navigate the message sequence; none write to the Maildir, send, or hit the
+  # network, so they are safe to run unprompted. DELIBERATELY EXCLUDED (they
+  # mutate, send, or aren't reads): mflag/minc/mmkdir/mdeliver/mrefile (mutate
+  # the Maildir), mcom/mrep/mfwd/mbnc/msuck/mblow (send or fetch over network),
+  # msed (edits messages), and mless/mquote (interactive pager / reply-compose
+  # helper) — those keep prompting. NB: the exec gate splits a command into
+  # pipeline/chain segments and clears each one independently (it must satisfy
+  # `segments.every(...)`), so a pipeline of these read bins — e.g. `mlist |
+  # mscan` — runs unprompted because every segment is a safeBin. A prompt is
+  # raised only when SOME segment is not itself a safeBin/allowlisted, or the
+  # command uses a form that fails analysis (inline-eval like `sh -c`/`python -c`
+  # under exec.strictInlineEval, line continuations, etc.).
+  mailReadBins = [
+    "mscan" "mshow" "mlist" "mhdr" "mdirs"
+    "mseq" "mthread" "msort" "maddr" "magrep" "mmime" "mpick" "mflow" "mdate"
+  ];
 
   # `send-email`: the generic actions/send-email script wrapped so the sender
   # identity ($MAIL_FROM, from cfg.mail.fromAddress) and the sendmail path are
