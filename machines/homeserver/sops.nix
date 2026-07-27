@@ -117,8 +117,8 @@
 
       # ElevenLabs API key for eva's reply TTS, rendered into the env file below
       # and read by the openclaw service as ELEVENLABS_API_KEY. Populate with:
-      #   sops machines/homeserver/secrets/default.yml   (openclaw/elevenlabs-token)
-      "openclaw/elevenlabs-token" = {
+      #   sops machines/homeserver/secrets/default.yml   (elevenlabs/token)
+      "elevenlabs/token" = {
         owner = "eva";
         mode = "0400";
       };
@@ -126,8 +126,8 @@
       # Anthropic API key for eva's native agent runtime (my.openclaw.agentRuntime
       # = null). Rendered into the env file below and read by the openclaw service
       # as ANTHROPIC_API_KEY. Populate with:
-      #   sops machines/homeserver/secrets/default.yml   (openclaw/anthropic-token)
-      "openclaw/anthropic-token" = {
+      #   sops machines/homeserver/secrets/default.yml   (anthropic/token)
+      "anthropic/token" = {
         owner = "eva";
         mode = "0400";
       };
@@ -136,8 +136,18 @@
       # (my.openclaw.actions.generateImage.tokenFile). Read at RUNTIME by the
       # generate-image wrapper, which runs AS eva, so it must be eva-readable.
       # Populate/rotate with:
-      #   sops machines/homeserver/secrets/default.yml   (openclaw/gemini-token)
-      "openclaw/gemini-token" = {
+      #   sops machines/homeserver/secrets/default.yml   (google/gemini-token)
+      "google/gemini-token" = {
+        owner = "eva";
+        mode = "0400";
+      };
+
+      # OpenWeatherMap API key for eva's check-weather action
+      # (my.openclaw.actions.checkWeather.tokenFile). Read at RUNTIME by the
+      # check-weather wrapper, which runs AS eva, so it must be eva-readable.
+      # Populate/rotate with:
+      #   sops machines/homeserver/secrets/default.yml   (openweather/token)
+      "openweather/token" = {
         owner = "eva";
         mode = "0400";
       };
@@ -245,7 +255,7 @@
         owner = "eva";
         mode = "0400";
         content = ''
-          ANTHROPIC_API_KEY=${config.sops.placeholder."openclaw/anthropic-token"}
+          ANTHROPIC_API_KEY=${config.sops.placeholder."anthropic/token"}
         '';
       };
 
@@ -255,7 +265,7 @@
         owner = "eva";
         mode = "0400";
         content = ''
-          ELEVENLABS_API_KEY=${config.sops.placeholder."openclaw/elevenlabs-token"}
+          ELEVENLABS_API_KEY=${config.sops.placeholder."elevenlabs/token"}
         '';
       };
 
