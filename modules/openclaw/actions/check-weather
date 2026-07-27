@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+#
+# check-weather — current weather via the OpenWeatherMap API. Generic and
+# identity-agnostic: the API key file, units, language, default location and
+# endpoint are all injected by the nix wrapper (see the
+# my.openclaw.actions.checkWeather options); nothing is hardcoded here.
+#
+# Usage:
+#   check-weather [LOCATION] [--location "City,CC"] [--lat LAT --lon LON] [--json]
+#
+#   LOCATION / --location   place query, e.g. "Barcelona,ES"       (optional)
+#   --lat LAT --lon LON      coordinates (take precedence)          (optional)
+#   --json                   print the raw JSON instead of a summary
+#
+# With no location and no coordinates, the configured default location is used
+# (if any). Destination-fixed (always the configured OpenWeatherMap endpoint),
+# so it is safe to bless whole-binary.
+#
+# Environment (pinned by the wrapper):
+#   WEATHER_TOKEN_FILE       file with the API key (read at runtime)  (required)
+#   WEATHER_UNITS            standard|metric|imperial (default metric)
+#   WEATHER_LANG             response language (default en)
+#   WEATHER_DEFAULT_LOCATION used when no location/coords are given   (optional)
+#   WEATHER_API_BASE         API base (default https://api.openweathermap.org/data/2.5)
+# The wrapper also puts curl/jq/coreutils on PATH.
+#
+set -euo pipefail
+
+: "${WEATHER_TOKEN_FILE:?WEATHER_TOKEN_FILE not set}"
+API_BASE="${WEATHER_API_BASE:-https://api.openweathermap.org/data/2.5}"
+UNITS="${WEATHER_UNITS:-metric}"
+LANGV="${WEATHER_LANG:-en}"
+DEFAULT_LOC="${WEATHER_DEFAULT_LOCATION:-}"
+
+LOCATION=""; LAT=""; LON=""; JSON=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --location|-l) LOCATION="${2?missing value for --location}"; shift 2 ;;
+    --lat)         LAT="${2?missing value for --lat}"; shift 2 ;;
+    --lon)         LON="${2?missing value for --lon}"; shift 2 ;;
+    --json)        JSON=1; shift ;;
+    -h|--help)     sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*)            echo "check-weather: unknown argument: $1" >&2; exit 2 ;;
+    *)             if [ -z "$LOCATION" ]; then LOCATION="$1"; shift; else echo "check-weather: unexpected argument: $1" >&2; exit 2; fi ;;
+  esac
+done
+
+[ -r "$WEATHER_TOKEN_FILE" ] || { echo "check-weather: token file not readable: $WEATHER_TOKEN_FILE" >&2; exit 1; }
+TOKEN="$(cat "$WEATHER_TOKEN_FILE")"
+
+# Coordinates win; else the location; else the configured default. curl -G with
+# --data-urlencode encodes each value, so spaces/accents in a place name are safe.
+if [ -n "$LAT" ] && [ -n "$LON" ]; then
+  QUERY=(--data-urlencode "lat=$LAT" --data-urlencode "lon=$LON")
+else
+  loc="${LOCATION:-$DEFAULT_LOC}"
+  [ -n "$loc" ] || { echo "check-weather: need a location or --lat/--lon (no default configured)" >&2; exit 2; }
+  QUERY=(--data-urlencode "q=$loc")
+fi
+
+RESP="$(curl -sS --max-time 30 -G "$API_BASE/weather" \
+  "${QUERY[@]}" \
+  --data-urlencode "appid=$TOKEN" \
+  --data-urlencode "units=$UNITS" \
+  --data-urlencode "lang=$LANGV")"
+
+# OpenWeatherMap returns a numeric/string "cod"; anything but 200 is an error.
+COD="$(printf '%s' "$RESP" | jq -r '.cod // empty' 2>/dev/null || true)"
+if [ -n "$COD" ] && [ "$COD" != "200" ]; then
+  echo "check-weather: API error ($COD): $(printf '%s' "$RESP" | jq -r '.message // "unknown"')" >&2
+  exit 1
+fi
+
+if [ "$JSON" = 1 ]; then
+  printf '%s\n' "$RESP" | jq .
+else
+  printf '%s' "$RESP" | jq -r '
+    "\(.name // "?")\(if .sys.country then ", " + .sys.country else "" end): " +
+    "\(.weather[0].description // "?"), \(.main.temp)° (feels \(.main.feels_like)°, " +
+    "min \(.main.temp_min)° / max \(.main.temp_max)°), humidity \(.main.humidity)%, " +
+    "wind \(.wind.speed)"'
+fi
