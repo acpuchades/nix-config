@@ -475,7 +475,18 @@ let
         # approval surface below is actually live. Billing moves from the flat
         # subscription to per-token API spend; at eva's volume that is a modest
         # amount per month on the Sonnet primary.
-        agentRuntime = null;
+        # "pi" is OpenClaw's built-in native runtime — set EXPLICITLY, not null.
+        # `agentRuntime = null` only OMITS the key from the config template, and
+        # the ExecStartPre seed applies it with `openclaw config patch` (a
+        # recursive MERGE, not an overwrite). A merge never deletes a key absent
+        # from the template, so a live config first written under the old
+        # `agentRuntime.id = "claude-cli"` KEEPS that value forever and eva stays
+        # on the claude-cli backend no matter how many times we rebuild. Emitting
+        # `agentRuntime.id = "pi"` makes the merge REPLACE the stale scalar (patch
+        # semantics: objects merge, scalars replace, null deletes), which is what
+        # actually flips her onto the native runtime. It also validates on a fresh
+        # install, where a literal null would not.
+        agentRuntime = "pi";
 
         # The module is secret-system agnostic and takes runtime FILES; on this
         # host they are the sops-nix secret paths. The token/ID values live only

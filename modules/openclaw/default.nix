@@ -959,13 +959,16 @@ in
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
 
-      # `claude` must be on PATH for the claude-cli runtime (subscription auth);
-      # the rest is what the agent's own shell tooling generally expects. When
-      # STT is on, whisper-cli joins the PATH so OpenClaw can exec the configured
-      # transcription command by name. (ffmpeg is NOT enough on PATH — OpenClaw
-      # resolves it via requireSystemBin/trusted dirs, so it goes in
-      # environment.systemPackages below instead.)
-      path = [ pkgs.claude-code pkgs.git pkgs.bash pkgs.coreutils ]
+      # `claude` is only on PATH for the claude-cli runtime (subscription auth) —
+      # the native runtime (agentRuntime = null) never shells out to it, so it is
+      # gated on the backend actually being claude-cli. The rest is what the
+      # agent's own shell tooling generally expects. When STT is on, whisper-cli
+      # joins the PATH so OpenClaw can exec the configured transcription command
+      # by name. (ffmpeg is NOT enough on PATH — OpenClaw resolves it via
+      # requireSystemBin/trusted dirs, so it goes in environment.systemPackages
+      # below instead.)
+      path = [ pkgs.git pkgs.bash pkgs.coreutils ]
+        ++ lib.optionals (cfg.agentRuntime == "claude-cli") [ pkgs.claude-code ]
         ++ lib.optionals cfg.stt.enable [ cfg.stt.package ];
 
       environment = {
