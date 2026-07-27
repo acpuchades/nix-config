@@ -652,7 +652,7 @@ let
             enable = true;
             model = "gemini-2.5-flash-image";
             # Gemini API key from sops-nix (eva-readable secret), not a plain file.
-            tokenFile = config.sops.secrets."openclaw/gemini-token".path;
+            tokenFile = config.sops.secrets."google/gemini-token".path;
             # Default reference (her avatar), overridable per call with --reference
             # or dropped with --no-reference; prompt-only also works. Runtime
             # references are confined to her workspace so an arbitrary file can't be
@@ -660,15 +660,12 @@ let
             referenceImage = "/home/eva/workspace/avatars/eva_lebbot.png";
             referenceRoot = "/home/eva/workspace";
           };
-          # Current weather via OpenWeatherMap. tokenFile is a plain runtime file
-          # eva owns (deliberately NOT a sops secret: a missing sops secret fails
-          # the whole rebuild, whereas a missing plain file just errors at runtime
-          # — create it with `install -m600 <(printf %s "<key>") ...` as eva, or
-          # switch to a sops secret once the key is added). lang=es for localized
-          # descriptions; add defaultLocation = "City,CC" if you want a default.
+          # Current weather via OpenWeatherMap. API key from sops-nix (eva-readable
+          # secret), read at runtime by the check-weather wrapper. lang=es for
+          # localized descriptions; add defaultLocation = "City,CC" for a default.
           checkWeather = {
             enable = true;
-            tokenFile = "/home/eva/.config/eva/openweather-token";
+            tokenFile = config.sops.secrets."openweather/token".path;
             lang = "es";
           };
         };
