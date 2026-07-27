@@ -132,10 +132,15 @@
         mode = "0400";
       };
 
-      # (Gemini failover removed 2026-07-26 — its key/project never had access to
-      # gemini-2.5-flash. The encrypted openclaw/gemini-token value may still sit
-      # in secrets/default.yml, harmless and unreferenced; re-declare here to
-      # revive it.)
+      # Gemini API key for eva's generate-image action
+      # (my.openclaw.actions.generateImage.tokenFile). Read at RUNTIME by the
+      # generate-image wrapper, which runs AS eva, so it must be eva-readable.
+      # Populate/rotate with:
+      #   sops machines/homeserver/secrets/default.yml   (openclaw/gemini-token)
+      "openclaw/gemini-token" = {
+        owner = "eva";
+        mode = "0400";
+      };
 
     };
 

@@ -637,11 +637,28 @@ let
         actions = {
           requestUrl = {
             enable = true;
-            trustedSites = [ "*.acpuchades.com" ];
+            trustedSites = [ "*.acpuchades.com" "generativelanguage.googleapis.com" ];
           };
           trustedMail = {
             enable = true;
             trustedAddresses = evaTrustedMailRecipients;
+          };
+          # Image generation via Gemini (uses eva's avatar as a subject/style
+          # reference). The API key is a runtime file eva owns; the model,
+          # reference image and endpoint are pinned by nix. This is why
+          # generativelanguage.googleapis.com is a trusted site above — though
+          # note generate-image uses raw curl (POST), not request-trusted-url.
+          generateImage = {
+            enable = true;
+            model = "gemini-2.5-flash-image";
+            # Gemini API key from sops-nix (eva-readable secret), not a plain file.
+            tokenFile = config.sops.secrets."openclaw/gemini-token".path;
+            # Default reference (her avatar), overridable per call with --reference
+            # or dropped with --no-reference; prompt-only also works. Runtime
+            # references are confined to her workspace so an arbitrary file can't be
+            # base64'd to the endpoint.
+            referenceImage = "/home/eva/workspace/avatars/eva_lebbot.png";
+            referenceRoot = "/home/eva/workspace";
           };
         };
 
@@ -662,15 +679,23 @@ let
         # SPECIFIC invocation at runtime without a rebuild via `openclaw approvals
         # allowlist add "<glob>"` — per-agent state, not re-seeded here.
         exec = {
-          # "allowlist" + ask "on-miss": a non-allowlisted command MISSES and
-          # goes through the approval path. Under the native agent runtime
-          # (agentRuntime = null above) this path now works — a miss raises an
-          # inline approve/deny prompt in the owner Telegram DM via
-          # channels.telegram.execApprovals below. (It never did under the old
-          # claude-cli backend, where the exec gate governed nothing and misses
-          # hung the turn.)
-          security = "allowlist";
-          ask = "on-miss";
+          # YOLO (security=full + ask=off). NOT a posture we'd pick, but the only
+          # one that FUNCTIONS: under the claude-cli runtime OpenClaw cannot gate
+          # Claude's native Bash per-command — its permission handler is BLANKET
+          # (allow iff full+off, else deny) and never consults safeBins/allowlist.
+          # So "allowlist"+"on-miss" denied EVERY command (eva couldn't even write
+          # her own memories — completely unusable). full+off makes OpenClaw launch
+          # Claude with --permission-mode=bypassPermissions, so commands actually
+          # run. The exec gate is thus effectively OFF; eva's containment now rests
+          # on OTHER layers: filesystem permissions (her writable surface is
+          # confined to her own tree + /tmp + acpuchades-site — NOT /home/alex, NOT
+          # the system), no passwordless sudo beyond `sudoCommands`, and (TODO)
+          # network-egress limits. The native runtime — where the gate genuinely
+          # works — is permanently off the table on cost. The safeBins/allowlist
+          # below are kept (harmless, and correct if the runtime ever changes) but
+          # are INERT under claude-cli. See the openclaw-execperms notes.
+          security = "full";
+          ask = "off";
           strictInlineEval = true;
           safeBins = options.my.openclaw.exec.safeBins.default ++ [
             # Process / system / network INSPECTION (read-only; their mutating
