@@ -123,6 +123,15 @@
         mode = "0400";
       };
 
+      # Anthropic API key for eva's native agent runtime (my.openclaw.agentRuntime
+      # = null). Rendered into the env file below and read by the openclaw service
+      # as ANTHROPIC_API_KEY. Populate with:
+      #   sops machines/homeserver/secrets/default.yml   (openclaw/anthropic-token)
+      "openclaw/anthropic-token" = {
+        owner = "eva";
+        mode = "0400";
+      };
+
       # (Gemini failover removed 2026-07-26 — its key/project never had access to
       # gemini-2.5-flash. The encrypted openclaw/gemini-token value may still sit
       # in secrets/default.yml, harmless and unreferenced; re-declare here to
@@ -221,6 +230,17 @@
         mode = "0400";
         content = ''
           AUTH_TOKEN=${config.sops.placeholder."grafana/renderer-token"}
+        '';
+      };
+
+      # Env file for eva's native agent runtime (Anthropic API). Added as an
+      # EnvironmentFile on the openclaw service; the anthropic provider reads
+      # ANTHROPIC_API_KEY.
+      "openclaw/anthropic-env" = {
+        owner = "eva";
+        mode = "0400";
+        content = ''
+          ANTHROPIC_API_KEY=${config.sops.placeholder."openclaw/anthropic-token"}
         '';
       };
 

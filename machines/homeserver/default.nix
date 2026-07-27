@@ -460,8 +460,22 @@ let
       my.openclaw = {
         enable = true;
         # The bot is eva_lebbot, so she gets a real account here: /home/eva,
-        # her own workspace, her own Claude login.
+        # her own workspace.
         user = "eva";
+
+        # Execution backend: OpenClaw's NATIVE agent runtime, authing against the
+        # Anthropic API with an out-of-band key (ANTHROPIC_API_KEY, from the SOPS
+        # env file in my.openclaw.environmentFiles below). This replaced the
+        # "claude-cli" backend (which reused a Claude Code subscription login):
+        # that backend delegated command execution to a Claude Code subprocess,
+        # so OpenClaw's own exec-approval gate (tools.exec + channels.telegram.
+        # execApprovals) never governed anything and a missed command hung the
+        # turn until the watchdog killed it — no Telegram approve/deny prompt ever
+        # rendered. The native runtime runs the exec tool in-process, so the
+        # approval surface below is actually live. Billing moves from the flat
+        # subscription to per-token API spend; at eva's volume that is a few
+        # dollars/month at most on the Haiku primary.
+        agentRuntime = null;
 
         # The module is secret-system agnostic and takes runtime FILES; on this
         # host they are the sops-nix secret paths. The token/ID values live only
@@ -469,12 +483,13 @@ let
         telegram.tokenFile = config.sops.secrets."openclaw/telegram-token".path;
         telegram.allowedIdFile = config.sops.secrets."openclaw/telegram-userid".path;
 
-        # Two-tier model use. Everyday chat runs on the Sonnet 4.6 primary
-        # (my.openclaw.model). Opus 4.8 is reserved for COMPLEX work only:
-        # delegated *subagents* run on Opus (e.g. the coding-agent skill
-        # spawning a background agent) while everyday turns stay fast/cheap on
-        # Sonnet. Opus is deliberately NOT a failover for the primary — it runs
-        # when eva delegates a heavy task, never just because a Sonnet call
+        # Two-tier model use. Everyday chat runs on the Haiku 4.5 primary — the
+        # cheapest capable tool-using tier, and at eva's message volume the API
+        # bill is a few dollars/month at most. Sonnet 4.6 is reserved for COMPLEX
+        # work only: delegated *subagents* run on Sonnet (e.g. the coding-agent
+        # skill spawning a background agent) while everyday turns stay fast/cheap
+        # on Haiku. Sonnet is deliberately NOT a failover for the primary — it
+        # runs when eva delegates a heavy task, never just because a Haiku call
         # errored. NB: this is task-delegation routing, not per-message
         # auto-escalation; it applies when eva spawns a subagent.
         # No model failover. A Gemini Flash fallback lived here for Claude
@@ -485,8 +500,9 @@ let
         # Claude error instead of bouncing onto a broken fallback. Re-add via
         # fallbackModels + the openclaw/gemini-env secret if a working
         # key/project is ever provisioned.
+        model = "anthropic/claude-haiku-4-5";
         fallbackModels = [ ];
-        settings.agents.defaults.subagents.model = "anthropic/claude-opus-4-8";
+        settings.agents.defaults.subagents.model = "anthropic/claude-sonnet-4-6";
 
         # Eva's email: read her Maildir + a recipient-gated send-email helper.
         # These addresses (all the owner's own) send with no approval; every
@@ -520,11 +536,13 @@ let
         # without a rebuild via `openclaw approvals allowlist add "<glob>"` (e.g.
         # "git status", "git diff*") — per-agent state, not re-seeded here.
         exec = {
-          # security back on "allowlist" (was briefly "full" for a diagnostic that
-          # confirmed the exec gate was the blocker). Kept "allowlist" + ask
-          # "on-miss" so a non-allowlisted command MISSES and must go through the
-          # approval path — the allowlist below is emptied on purpose to test
-          # whether approvals actually surface over Telegram.
+          # "allowlist" + ask "on-miss": a non-allowlisted command MISSES and
+          # goes through the approval path. Under the native agent runtime
+          # (agentRuntime = null above) this path now works — a miss raises an
+          # inline approve/deny prompt in the owner Telegram DM via
+          # channels.telegram.execApprovals below. (It never did under the old
+          # claude-cli backend, where the exec gate governed nothing and misses
+          # hung the turn.)
           security = "allowlist";
           ask = "on-miss";
           strictInlineEval = true;
@@ -541,12 +559,34 @@ let
             "sha1sum" "sha512sum" "b2sum" "base64" "base32"
             "xxd" "hexdump" "od" "strings"
           ];
-          # EMPTIED ON PURPOSE (approval test, 2026-07-27): every non-safeBin
-          # command now MISSES so it must go through the approval path — use this
-          # to check whether approvals actually surface over Telegram. Restore the
-          # git/systemctl/nix read-only globs + the git write ops (see git history
-          # of this file) once the approval question is settled.
-          allowlist = [ ];
+          # Pre-seeded full-command-line globs (merged with eva's own runtime
+          # additions). These bless read-only SUBCOMMANDS of tools too dangerous
+          # to whole-binary allowlist — only forms that cannot mutate. eva works
+          # in git repos and inspects services/logs/nix, so pre-blessing these
+          # keeps routine reads unprompted; anything else still MISSES and raises
+          # the inline Telegram approve/deny prompt (now that the native runtime
+          # makes that gate live). She can widen coverage for a SPECIFIC
+          # invocation at runtime without a rebuild via `openclaw approvals
+          # allowlist add "<glob>"` (per-agent state, not re-seeded here).
+          allowlist = [
+            # git — read-only porcelain/plumbing only. NOT "git branch*"/"git
+            # tag*"/"git remote*" (they'd also match -d/-D/add/remove/rename).
+            "git status*" "git log*" "git diff*" "git show*" "git blame*"
+            "git rev-parse*" "git describe*" "git ls-files*" "git shortlog*"
+            "git reflog*" "git cat-file*" "git branch --list*" "git remote -v"
+            "git config --get*" "git config --list*"
+            # systemctl — inspection subcommands (status/show/list/is-* never
+            # mutate). Restart/stop/start still go through her gated sudo grant.
+            "systemctl status*" "systemctl show*" "systemctl cat*"
+            "systemctl list-units*" "systemctl list-timers*"
+            "systemctl list-unit-files*" "systemctl is-active*"
+            "systemctl is-enabled*" "systemctl is-failed*"
+            "systemctl --user status*" "systemctl --user list-units*"
+            # nix — read-only query subcommands (no build/gc/store mutation).
+            "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
+            "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
+            "nixos-version*"
+          ];
         };
         settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
         # Exec approval prompts: make Telegram a NATIVE approval client so a
@@ -666,8 +706,10 @@ let
       # the token comes in from outside the module, next to the model/voice that
       # needs it. SOPS-rendered env file (openclaw/*-env), so no key is in this
       # public repo or the store:
+      #   * Anthropic (native agent runtime, agentRuntime = null) — ANTHROPIC_API_KEY.
       #   * ElevenLabs (reply TTS) — ELEVENLABS_API_KEY.
       my.openclaw.environmentFiles = [
+        config.sops.templates."openclaw/anthropic-env".path
         config.sops.templates."openclaw/elevenlabs-env".path
       ];
 
