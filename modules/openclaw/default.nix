@@ -170,6 +170,25 @@ let
           "--set GENIMG_API_BASE ${lib.escapeShellArg cfg.actions.generateImage.apiBase}"}
     '';
 
+  # `check-weather`: the generic actions/check-weather script wrapped so the API
+  # key file, units, language, default location and endpoint are pinned by nix.
+  # Destination-fixed (always the configured OpenWeatherMap endpoint), so it is
+  # safe to bless whole-binary in safeBins. The API key stays a runtime FILE
+  # (tokenFile), never a nix value.
+  checkWeatherBin = pkgs.runCommandLocal "openclaw-check-weather"
+    { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+      install -Dm0755 ${./actions/check-weather} $out/libexec/check-weather
+      makeWrapper $out/libexec/check-weather $out/bin/check-weather \
+        --prefix PATH : ${lib.makeBinPath [ pkgs.curl pkgs.jq pkgs.coreutils ]} \
+        --set WEATHER_TOKEN_FILE ${lib.escapeShellArg cfg.actions.checkWeather.tokenFile} \
+        --set WEATHER_UNITS ${lib.escapeShellArg cfg.actions.checkWeather.units} \
+        --set WEATHER_LANG ${lib.escapeShellArg cfg.actions.checkWeather.lang} \
+        ${lib.optionalString (cfg.actions.checkWeather.defaultLocation != null)
+          "--set WEATHER_DEFAULT_LOCATION ${lib.escapeShellArg cfg.actions.checkWeather.defaultLocation}"} \
+        ${lib.optionalString (cfg.actions.checkWeather.apiBase != null)
+          "--set WEATHER_API_BASE ${lib.escapeShellArg cfg.actions.checkWeather.apiBase}"}
+    '';
+
   # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
   # network interfaces (only a down `lo`), so a network-capable tool cannot reach
   # anything off-box regardless of its arguments — the fail-safe way to bless
@@ -560,7 +579,9 @@ let
         ++ lib.optionals cfg.actions.trustedMail.enable [ "send-trusted-mail" ]
         # generate-image is likewise destination-pinned (fixed model/endpoint), so
         # blessing the whole binary only ever hits the configured image endpoint.
-        ++ lib.optionals cfg.actions.generateImage.enable [ "generate-image" ];
+        ++ lib.optionals cfg.actions.generateImage.enable [ "generate-image" ]
+        # check-weather is destination-pinned to the configured weather endpoint.
+        ++ lib.optionals cfg.actions.checkWeather.enable [ "check-weather" ];
     } // lib.optionalAttrs (cfg.exec.safeBinProfiles != { }) {
       safeBinProfiles = cfg.exec.safeBinProfiles;
     };
@@ -1175,6 +1196,58 @@ in
           '';
         };
       };
+      checkWeather = {
+        enable = lib.mkEnableOption ''
+          the `check-weather` action: current weather via the OpenWeatherMap API.
+          Destination-fixed, so it is blessed whole-binary. Needs `tokenFile` set'';
+        tokenFile = lib.mkOption {
+          type = lib.types.str;
+          example = "/run/secrets/openclaw-openweather-token";
+          description = ''
+            Path to a file holding the OpenWeatherMap API key (single line), read
+            at RUNTIME — a `str` path (not a `path`), so the key never enters the
+            store or this public repo. Point it at a sops-nix secret or any
+            out-of-band file the agent can read.
+          '';
+        };
+        units = lib.mkOption {
+          type = lib.types.enum [ "standard" "metric" "imperial" ];
+          default = "metric";
+          description = ''
+            Units for temperature/wind: "standard" (K, m/s), "metric" (°C, m/s),
+            or "imperial" (°F, mph). Maps to the OpenWeatherMap `units` parameter.
+          '';
+        };
+        lang = lib.mkOption {
+          type = lib.types.str;
+          default = "en";
+          example = "es";
+          description = ''
+            Response language (OpenWeatherMap `lang`), which localizes the weather
+            `description`. An ISO code like "es", "en", "ca", …
+          '';
+        };
+        defaultLocation = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "Barcelona,ES";
+          description = ''
+            Place query used when the agent gives no location and no coordinates,
+            e.g. "Barcelona,ES". Null means a location (or --lat/--lon) is always
+            required.
+          '';
+        };
+        apiBase = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://api.openweathermap.org/data/2.5";
+          description = ''
+            Override the API base URL (default OpenWeatherMap data/2.5). The
+            wrapper uses raw curl, so whatever host this resolves to must be
+            reachable; it is not bound by trustedSites.
+          '';
+        };
+      };
     };
 
     # WHAT IT CAN DO TO THE HOST. The options below are the deliberate, narrow
@@ -1414,6 +1487,7 @@ in
       ++ lib.optionals cfg.actions.requestUrl.enable [ requestUrlBin ]
       ++ lib.optionals cfg.actions.trustedMail.enable [ trustedMailBin ]
       ++ lib.optionals cfg.actions.generateImage.enable [ generateImageBin ]
+      ++ lib.optionals cfg.actions.checkWeather.enable [ checkWeatherBin ]
       ++ lib.optional (cfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ cfg.extraPackages;
 

@@ -660,6 +660,17 @@ let
             referenceImage = "/home/eva/workspace/avatars/eva_lebbot.png";
             referenceRoot = "/home/eva/workspace";
           };
+          # Current weather via OpenWeatherMap. tokenFile is a plain runtime file
+          # eva owns (deliberately NOT a sops secret: a missing sops secret fails
+          # the whole rebuild, whereas a missing plain file just errors at runtime
+          # — create it with `install -m600 <(printf %s "<key>") ...` as eva, or
+          # switch to a sops secret once the key is added). lang=es for localized
+          # descriptions; add defaultLocation = "City,CC" if you want a default.
+          checkWeather = {
+            enable = true;
+            tokenFile = "/home/eva/.config/eva/openweather-token";
+            lang = "es";
+          };
         };
 
         # Exec policy: allowlist + confirm-on-miss, via the module's first-class
