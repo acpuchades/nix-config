@@ -62,21 +62,30 @@ let
   # --- optional email capability (see options.my.openclaw.mail) --------------
   # Read-only mblaze Maildir tools — display, inspect, search, sort/thread and
   # navigate the message sequence; none write to the Maildir, send, or hit the
-  # network, so they are safe to run unprompted. DELIBERATELY EXCLUDED (they
-  # mutate, send, or aren't reads): mflag/minc/mmkdir/mdeliver/mrefile (mutate
-  # the Maildir), mcom/mrep/mfwd/mbnc/msuck/mblow (send or fetch over network),
-  # msed (edits messages), and mless/mquote (interactive pager / reply-compose
-  # helper) — those keep prompting. NB: the exec gate splits a command into
-  # pipeline/chain segments and clears each one independently (it must satisfy
-  # `segments.every(...)`), so a pipeline of these read bins — e.g. `mlist |
-  # mscan` — runs unprompted because every segment is a safeBin. A prompt is
-  # raised only when SOME segment is not itself a safeBin/allowlisted, or the
-  # command uses a form that fails analysis (inline-eval like `sh -c`/`python -c`
-  # under exec.strictInlineEval, line continuations, etc.).
+  # network, so they are safe to run unprompted. NB: the exec gate splits a
+  # command into pipeline/chain segments and clears each one independently (it
+  # must satisfy `segments.every(...)`), so a pipeline of these read bins — e.g.
+  # `mlist | mscan` — runs unprompted because every segment is a safeBin. A
+  # prompt is raised only when SOME segment is not itself a safeBin/allowlisted,
+  # or the command uses a form that fails analysis (inline-eval like `sh -c`/
+  # `python -c` under exec.strictInlineEval, line continuations, etc.).
   mailReadBins = [
     "mscan" "mshow" "mlist" "mhdr" "mdirs"
     "mseq" "mthread" "msort" "maddr" "magrep" "mmime" "mpick" "mflow" "mdate"
   ];
+
+  # Local Maildir MUTATION tools, blessed only when cfg.mail.manageMaildir is on
+  # (the owner opts the agent into managing its OWN mailbox). Each edits the
+  # local Maildir but neither sends nor fetches over the network, so admitting
+  # them stays within the "local mutation, no network" tier: mflag (set/unset
+  # flags — read/unread/flagged/trashed), mrefile (move messages between
+  # mailboxes), mmkdir (create a mailbox), minc (incorporate new mail), mdeliver
+  # (deliver/export a message into a maildir). STILL DELIBERATELY EXCLUDED even
+  # when this is on: mcom/mrep/mfwd/mbnc/msuck/mblow (send or fetch over the
+  # network — the only blessed outbound path is the recipient-gated send-email),
+  # msed (rewrites message content in place, sed -i-style), and mless/mquote
+  # (interactive pager / reply-compose helper) — those keep prompting.
+  mailManageBins = [ "mflag" "mrefile" "mmkdir" "minc" "mdeliver" ];
 
   # `send-email`: the generic actions/send-email script wrapped so the sender
   # identity ($MAIL_FROM, from cfg.mail.fromAddress) and the sendmail path are
@@ -100,6 +109,52 @@ let
 
   mailFromDisplay =
     if cfg.mail.fromAddress == null then "the agent's configured address" else cfg.mail.fromAddress;
+
+  # `request-trusted-url`: the generic actions/request-trusted-url script wrapped
+  # so the allowed-host globs ($TRUSTED_SITES) and the curl binary ($CURL) are
+  # pinned by nix — the script stays generic and the agent cannot widen the host
+  # set or swap the code. Self-gating (refuses any non-trusted host), so it is
+  # safe to bless whole-binary in safeBins.
+  requestUrlBin = pkgs.runCommandLocal "openclaw-request-trusted-url"
+    { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+      install -Dm0755 ${./actions/request-trusted-url} $out/libexec/request-trusted-url
+      makeWrapper $out/libexec/request-trusted-url $out/bin/request-trusted-url \
+        --set CURL ${lib.getExe pkgs.curl} \
+        --set TRUSTED_SITES ${
+          lib.escapeShellArg (lib.concatStringsSep " " cfg.actions.requestUrl.trustedSites)
+        }
+    '';
+
+  # `send-trusted-mail`: the generic actions/send-trusted-mail script wrapped so
+  # the trusted recipient set ($TRUSTED_ADDRESSES), the sender ($MAIL_FROM) and
+  # sendmail ($SENDMAIL) are pinned by nix. Self-gating (refuses any non-trusted
+  # recipient), so it is safe to bless whole-binary in safeBins.
+  trustedMailBin = pkgs.runCommandLocal "openclaw-send-trusted-mail"
+    { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+      install -Dm0755 ${./actions/send-trusted-mail} $out/libexec/send-trusted-mail
+      makeWrapper $out/libexec/send-trusted-mail $out/bin/send-trusted-mail \
+        --set SENDMAIL /run/wrappers/bin/sendmail \
+        --set TRUSTED_ADDRESSES ${
+          lib.escapeShellArg (lib.concatStringsSep " " cfg.actions.trustedMail.trustedAddresses)
+        } \
+        ${lib.optionalString (cfg.mail.fromAddress != null)
+          "--set MAIL_FROM ${lib.escapeShellArg cfg.mail.fromAddress}"}
+    '';
+
+  # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
+  # network interfaces (only a down `lo`), so a network-capable tool cannot reach
+  # anything off-box regardless of its arguments — the fail-safe way to bless
+  # converters like ffmpeg/pandoc/xmllint unprompted without reopening a data-
+  # exfil channel (`offline ffmpeg -i http://evil/…` simply cannot connect). It
+  # only ever REMOVES capability, and the unprivileged userns needs no setuid.
+  # The bare tool (no `offline` prefix) stays gated. See exec.netIsolatedBins.
+  offlineLauncher = pkgs.writeShellScriptBin "offline" ''
+    exec ${pkgs.util-linux}/bin/unshare --user --map-root-user --net -- "$@"
+  '';
+
+  # Full-command globs blessing `offline <bin> …` for each netIsolatedBin, so the
+  # network-isolated form runs unprompted while the bare binary keeps prompting.
+  netIsolateAllowlist = map (b: "offline ${b}*") cfg.exec.netIsolatedBins;
 
   # The check-email skill, rendered immutably into the store and loaded via
   # skills.load.extraDirs.
@@ -148,6 +203,102 @@ let
       wait, and only mail other addresses when the task genuinely calls for it.
     - Set `In-Reply-To:` to the original `Message-ID` (from `mhdr`) and quote
       what you are answering, so threads stay intact.
+  '';
+
+  # Always-on policy skill (in Spanish — the agent's working language). Tells the
+  # agent, in its own terms, where the security boundary sits: what runs without
+  # approval, what always asks, and the strong preference for the sanctioned
+  # action wrappers over raw tools. Rendered immutably and loaded via
+  # skills.load.extraDirs like the mail skill.
+  policySkillsDir = pkgs.writeTextDir "policy/SKILL.md" ''
+    ---
+    name: policy
+    description: Política de seguridad y capacidades del agente — qué puedes hacer sin aprobación, qué requiere autorización, y la preferencia por usar los wrappers habilitados (request-trusted-url, send-trusted-mail, send-email) en lugar de herramientas crudas (curl, wget, sendmail). Consúltala siempre que dudes si una acción está permitida, cuando vayas a acceder a la red o enviar correo, o cuando una tarea repetitiva provoque peticiones de aprobación.
+    ---
+
+    # Política y capacidades
+
+    Corres como el usuario `${cfg.user}`, sin confinamiento de sandbox pero SÍ con
+    una política de ejecución estricta: bajo `security = "allowlist"` solo se
+    ejecutan sin aprobación los comandos de la lista de permitidos; cualquier otro
+    abre una petición de aprobación en el Telegram del propietario. Tu superficie
+    de escritura está limitada por permisos del sistema de ficheros a tu propio
+    árbol y a un único repositorio; el resto de ficheros del propietario no son
+    accesibles.
+
+    ## Puedes hacer SIN aprobación
+
+    - **Leer y gestionar tu propio correo** (Maildir en `${homeDir}/Maildir`):
+      inspección (`mscan`, `mshow`, `mlist`, `mhdr`, …)${lib.optionalString (cfg.mail.enable && cfg.mail.manageMaildir) " y mutación local (`mflag`, `mrefile`, `mmkdir`, `minc`, `mdeliver`)"}.
+    - **Operar con ficheros** dentro de tu propio árbol (`${homeDir}`,
+      `/var/lib/openclaw`), en `/tmp`, y en el repositorio `acpuchades-site`:
+      crear, copiar, mover, borrar y cambiar permisos (`mkdir`, `cp`, `mv`, `rm`,
+      `chmod`, …). Todo queda acotado por permisos a esas rutas.
+    - **git LOCAL**: `add`, `commit`, `branch`, `merge`, `rebase`, `restore`,
+      `stash`, `tag`, … El límite es el REMOTO.
+    - **Herramientas locales de solo lectura**: `cat`, `ls`, `grep`, `rg`, `jq`,
+      `find`, … (no acceden a la red).${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
+
+    - **Conversores con capacidad de red** (${lib.concatMapStringsSep ", " (b: "`${b}`") cfg.exec.netIsolatedBins}):
+      anteponles `offline` para ejecutarlos SIN aprobación dentro de un espacio de
+      nombres SIN red, de modo que no puedan abrir una URL arbitraria (un canal de
+      exfiltración). La forma DESNUDA (sin `offline`) pide aprobación.
+          offline ffmpeg -i entrada.mp4 salida.webm
+          offline pandoc informe.md -o informe.pdf
+      Para LEER de la web usa `request-trusted-url`, no `offline curl`.''}${lib.optionalString cfg.actions.requestUrl.enable ''
+
+    - **Web de confianza (GET/HEAD)** con `request-trusted-url`: solo a
+      ${lib.concatStringsSep ", " cfg.actions.requestUrl.trustedSites}.
+          request-trusted-url https://ejemplo.acpuchades.com/recurso
+          request-trusted-url --head https://ejemplo.acpuchades.com/recurso''}${lib.optionalString cfg.actions.trustedMail.enable ''
+
+    - **Correo a direcciones de confianza** con `send-trusted-mail` (mensaje por
+      stdin, destinatarios como argumentos): ${lib.concatStringsSep ", " cfg.actions.trustedMail.trustedAddresses}.''}
+
+    ## Requiere aprobación (o está prohibido)
+
+    - **`sudo`** (nixos-rebuild, systemctl, reboot, …): SIEMPRE pide aprobación.
+    - **Shells e intérpretes / evaluación en línea**: `bash -c`, `sh -c`,
+      `python -c`, `python3`, `R`, `node -e`, `awk`/`sed` con efectos… piden
+      aprobación. No los uses para envolver o esconder otro comando.
+    - **Red cruda**: `curl`, `wget` y cualquier acceso de red no envuelto piden
+      aprobación. Usa los wrappers (ver abajo).
+    - **`git push`** y cualquier verbo con el remoto (`pull`, `fetch`, `clone`,
+      `remote`): piden aprobación. Publicar es una acción humana.
+    - **Correo fuera de la lista de confianza**: `send-trusted-mail` lo RECHAZA.
+    - **Ficheros del propietario** fuera de `acpuchades-site`: sin acceso.
+
+    ## Prefiere SIEMPRE los wrappers habilitados
+
+    Cuando necesites red o enviar correo, usa el wrapper correspondiente en lugar
+    de la herramienta cruda. Los wrappers están preaprobados y restringen su
+    propio destino, así que se ejecutan sin interrumpir; las herramientas crudas
+    provocarán una petición de aprobación o serán rechazadas.
+
+    | Necesitas             | Usa                     | NO uses           |
+    |-----------------------|-------------------------|-------------------|
+    | Descargar / consultar | `request-trusted-url`   | `curl`, `wget`    |
+    | Enviar correo         | `send-trusted-mail`${lib.optionalString cfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`|${lib.optionalString (cfg.exec.netIsolatedBins != [ ]) ''
+
+    | Convertir medios/docs | `offline <herramienta>` | `ffmpeg`/`pandoc` a secas |''}
+
+    ## Tareas repetitivas: crea "actions"
+
+    Si una tarea se repite y te obliga a pedir aprobación de comandos individuales
+    una y otra vez, NO sigas pidiendo autorizaciones sueltas. En su lugar,
+    implementa un script de **action** específico para esa tarea que **acote su
+    propio alcance** (como `request-trusted-url` acota el host, o
+    `send-trusted-mail` el destinatario). Un action bien diseñado:
+
+    - fija por dentro sus destinos/parámetros permitidos y rechaza el resto;
+    - no evalúa código arbitrario ni acepta comandos como entrada;
+    - hace UNA cosa concreta, de forma que sea seguro añadirlo a la lista de
+      permitidos de manera **granular** (un único binario auto-limitado) en vez
+      de abrir un permiso amplio.
+
+    Redacta el script en tu workspace y pide al propietario que lo incorpore como
+    action del módulo (o que lo añada al allowlist de forma granular). Así el
+    trabajo repetitivo deja de interrumpir sin ampliar la superficie de riesgo.
   '';
 
   # OpenClaw's bundled-plugin loader opens each plugin "public surface" through a
@@ -227,6 +378,18 @@ let
       workspace = "${homeDir}/workspace";
     } // lib.optionalAttrs (cfg.agentRuntime != null) {
       agentRuntime.id = cfg.agentRuntime;
+    } // lib.optionalAttrs cfg.heartbeat.enable {
+      # Periodic autonomous turns, assembled from my.openclaw.heartbeat. A
+      # default (overridable via cfg.settings), not an enforced key.
+      heartbeat = {
+        every = cfg.heartbeat.every;
+        activeHours = {
+          start = cfg.heartbeat.activeHours.start;
+          end = cfg.heartbeat.activeHours.end;
+        } // lib.optionalAttrs (cfg.heartbeat.activeHours.timezone != null) {
+          timezone = cfg.heartbeat.activeHours.timezone;
+        };
+      };
     };
     channels.telegram = {
       enabled = true;
@@ -318,16 +481,29 @@ let
       security = cfg.exec.security;
       ask = cfg.exec.ask;
       strictInlineEval = cfg.exec.strictInlineEval;
-      safeBins = cfg.exec.safeBins ++ lib.optionals cfg.mail.enable mailReadBins;
+      safeBins = cfg.exec.safeBins
+        ++ lib.optionals cfg.mail.enable mailReadBins
+        ++ lib.optionals (cfg.mail.enable && cfg.mail.manageMaildir) mailManageBins
+        # The trusted-* action wrappers SELF-GATE their destination (refusing
+        # anything off the trusted list), so they are safe to bless whole-binary:
+        # any invocation either targets a trusted destination or exits non-zero.
+        ++ lib.optionals cfg.actions.requestUrl.enable [ "request-trusted-url" ]
+        ++ lib.optionals cfg.actions.trustedMail.enable [ "send-trusted-mail" ];
     } // lib.optionalAttrs (cfg.exec.safeBinProfiles != { }) {
       safeBinProfiles = cfg.exec.safeBinProfiles;
     };
   };
 
-  # Load the check-email skill (when enabled) between the module defaults and the
-  # host's cfg.settings, so the host can still override but need not wire it.
-  mailConfig = lib.optionalAttrs cfg.mail.enable {
-    skills.load.extraDirs = [ "${mailSkillsDir}" ];
+  # Skill directories the module ships, loaded between the module defaults and
+  # the host's cfg.settings (so the host can still override but need not wire
+  # them): the check-email skill (when mail is on) and the always-on policy
+  # skill that tells the agent what it may/must-not do and to prefer the
+  # sanctioned action wrappers over raw tools.
+  moduleSkillDirs =
+    lib.optional cfg.mail.enable "${mailSkillsDir}"
+    ++ [ "${policySkillsDir}" ];
+  mailConfig = lib.optionalAttrs (moduleSkillDirs != [ ]) {
+    skills.load.extraDirs = moduleSkillDirs;
   };
 
   fullConfig =
@@ -351,7 +527,7 @@ let
     defaults = { };
     agents."*".allowlist =
       map (pattern: { inherit pattern; })
-        (cfg.exec.allowlist ++ lib.optionals cfg.mail.enable mailAllowlist);
+        (cfg.exec.allowlist ++ lib.optionals cfg.mail.enable mailAllowlist ++ netIsolateAllowlist);
   };
 
   # Fast, Node-free seed: union the declared globs into the agent's live
@@ -395,6 +571,24 @@ in
       default = pkgs.openclaw;
       defaultText = lib.literalExpression "pkgs.openclaw";
       description = "OpenClaw package to run.";
+    };
+
+    extraPackages = lib.mkOption {
+      type = lib.types.listOf lib.types.package;
+      default = [ ];
+      example = lib.literalExpression "[ pkgs.ffmpeg pkgs.pandoc ]";
+      description = ''
+        Extra packages the agent can resolve BY NAME when it runs a command.
+        Placed on BOTH the service `path` (so `bash -c` resolves them) AND
+        environment.systemPackages (so OpenClaw's safe-bin trust check, which does
+        NOT auto-trust PATH, honors them when allowlisted). This is purely a "make
+        the binary reachable" grant — it does NOT by itself bless anything to run
+        unprompted. Whether a given invocation runs without an approval prompt is
+        still decided entirely by `exec.safeBins` / `exec.allowlist` under
+        `exec.security = "allowlist"`. Use this for tools the agent should be able
+        to invoke — media/document converters, interpreters, etc. — kept in the
+        host config so the module stays deployment-agnostic.
+      '';
     };
 
     user = lib.mkOption {
@@ -468,6 +662,46 @@ in
         Loopback port for the gateway / control UI. Bound to 127.0.0.1 only —
         never opened in the firewall. Reach it locally (e.g. via SSH tunnel).
       '';
+    };
+
+    heartbeat = {
+      enable = lib.mkEnableOption ''
+        periodic autonomous "heartbeat" turns — the agent wakes on a fixed
+        cadence (optionally bounded to active hours) to do proactive work'';
+
+      every = lib.mkOption {
+        type = lib.types.str;
+        default = "2h";
+        example = "30m";
+        description = ''
+          Heartbeat cadence as a duration string (maps to
+          agents.defaults.heartbeat.every), e.g. "2h", "90m". How often a
+          heartbeat turn fires while within activeHours.
+        '';
+      };
+
+      activeHours = {
+        start = lib.mkOption {
+          type = lib.types.str;
+          default = "08:00";
+          description = "Local time-of-day (HH:MM) at which heartbeats begin firing.";
+        };
+        end = lib.mkOption {
+          type = lib.types.str;
+          default = "22:00";
+          description = "Local time-of-day (HH:MM) after which heartbeats stop firing.";
+        };
+        timezone = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "Europe/Madrid";
+          description = ''
+            IANA timezone the activeHours window is interpreted in. Null lets
+            OpenClaw use its own default; set it to the host timezone so the
+            window means local wall-clock time regardless of the process TZ.
+          '';
+        };
+      };
     };
 
     telegram = {
@@ -658,6 +892,15 @@ in
     mail = {
       enable = lib.mkEnableOption "email for the agent: read its own Maildir, plus a constrained, recipient-gated `send-email` helper";
 
+      manageMaildir = lib.mkEnableOption ''
+        LOCAL Maildir mutation in the unprompted allowlist so the agent can
+        organise its OWN mailbox — mark read/flagged, move messages between
+        folders, create folders, incorporate/deliver mail (mflag/mrefile/mmkdir/
+        minc/mdeliver). These only touch the local Maildir; they never send or
+        fetch over the network, so the compose/send tools (mcom/mrep/mfwd/…) and
+        msed stay gated, and the only blessed outbound path remains the
+        recipient-gated send-email helper. Requires mail.enable'';
+
       fromAddress = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
@@ -688,6 +931,49 @@ in
           exfiltration guard: a prompt-injected agent cannot silently mail data to
           an arbitrary address. Empty (default) gates every send.
         '';
+      };
+    };
+
+    # Sanctioned, SELF-GATING action wrappers. Each is an immutable script that
+    # constrains its OWN destination (host / recipient) to a nix-pinned trusted
+    # set and refuses anything else, so it is safe to run unprompted — the safe,
+    # constrained way to hand the agent an outbound capability whose destination
+    # (unlike a raw curl or sendmail) cannot be repointed by a prompt injection.
+    actions = {
+      requestUrl = {
+        enable = lib.mkEnableOption ''
+          the `request-trusted-url` action: constrained web GET/HEAD limited to
+          the hosts in `trustedSites`. This is the sanctioned replacement for the
+          disabled ungated web_fetch — raw curl/wget stay gated'';
+        trustedSites = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "*.example.com" "docs.example.org" ];
+          description = ''
+            Shell globs matched against the URL host (case-insensitive, userinfo
+            stripped so `trusted@evil` cannot spoof it). A request to any host not
+            matching one of these is refused. Pinned into the wrapper, so the
+            agent cannot widen the set at runtime. `*.example.com` matches
+            subdomains only, not the apex — list the apex explicitly if needed.
+          '';
+        };
+      };
+      trustedMail = {
+        enable = lib.mkEnableOption ''
+          the `send-trusted-mail` action: send to recipients in `trustedAddresses`
+          only, refusing any other recipient outright (unlike the generic
+          send-email, which falls through to an approval prompt)'';
+        trustedAddresses = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "me@example.com" ];
+          description = ''
+            Exact recipient addresses (case-insensitive) the wrapper will deliver
+            to. Any other recipient is refused. Uses `mail.fromAddress` as the
+            envelope sender. Pinned into the wrapper, so the trusted set cannot be
+            widened at runtime.
+          '';
+        };
       };
     };
 
@@ -791,6 +1077,22 @@ in
           read-only subcommands, not whole verbs with mutating flags.
         '';
       };
+      netIsolatedBins = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "ffmpeg" "pandoc" "xmllint" ];
+        description = ''
+          Binaries to bless in a NETWORK-ISOLATED form. For each `<bin>` the
+          module ships an `offline` launcher (a `unshare --net` wrapper) and seeds
+          `offline <bin>*` into the allowlist, so `offline <bin> …` runs WITHOUT
+          approval but with no network access — a fail-safe path for network-
+          capable converters (ffmpeg/pandoc/xmllint) that would otherwise be data-
+          exfiltration channels if blessed bare. The bare `<bin>` is NOT blessed
+          by this and keeps prompting. The binary must be reachable independently
+          (e.g. via `extraPackages`); this only governs the unprompted `offline`
+          form. Tell the agent to prefer `offline <bin>` (the policy skill does).
+        '';
+      };
     };
 
     access = lib.mkOption {
@@ -886,10 +1188,22 @@ in
 
     # ffmpeg must be a *system* package (not just on the service PATH): the STT
     # pipeline resolves it via requireSystemBin, which only trusts fixed dirs
-    # like /run/current-system/sw/bin — the system profile, i.e. this list.
-    environment.systemPackages = [ openclawPatched pkgs.claude-code ]
+    # like /run/current-system/sw/bin — the system profile, i.e. this list. The
+    # SAME is true for any tool the agent runs unprompted: OpenClaw's safe-bin
+    # check trusts resolved binaries by directory, and PATH entries are never
+    # auto-trusted — so a safeBin present only on the service `path` gets found
+    # but NOT honored as safe. jq and rg are in the module's DEFAULT safeBins yet
+    # were shipped by neither list (dead references); ship them here. cfg.extra
+    # Packages likewise go here (trusted + resolvable) AND on the service `path`
+    # below (so bash -c can also resolve them) — belt-and-braces across both
+    # resolution paths.
+    environment.systemPackages = [ openclawPatched pkgs.claude-code pkgs.jq pkgs.ripgrep ]
       ++ lib.optionals cfg.stt.enable [ pkgs.ffmpeg-headless ]
-      ++ lib.optionals cfg.mail.enable [ mailSendBin pkgs.mblaze ];
+      ++ lib.optionals cfg.mail.enable [ mailSendBin pkgs.mblaze ]
+      ++ lib.optionals cfg.actions.requestUrl.enable [ requestUrlBin ]
+      ++ lib.optionals cfg.actions.trustedMail.enable [ trustedMailBin ]
+      ++ lib.optional (cfg.exec.netIsolatedBins != [ ]) offlineLauncher
+      ++ cfg.extraPackages;
 
     users.users.${cfg.user} = {
       isNormalUser = true;
@@ -982,9 +1296,13 @@ in
       # by name. (ffmpeg is NOT enough on PATH — OpenClaw resolves it via
       # requireSystemBin/trusted dirs, so it goes in environment.systemPackages
       # below instead.)
-      path = [ pkgs.git pkgs.bash pkgs.coreutils ]
+      path = [ pkgs.git pkgs.bash pkgs.coreutils pkgs.jq pkgs.ripgrep ]
         ++ lib.optionals (cfg.agentRuntime == "claude-cli") [ pkgs.claude-code ]
-        ++ lib.optionals cfg.stt.enable [ cfg.stt.package ];
+        ++ lib.optionals cfg.stt.enable [ cfg.stt.package ]
+        # Host-supplied tools the agent may invoke by name (still gated by the
+        # exec allowlist for whether a run needs approval — see cfg.exec). Also in
+        # environment.systemPackages above so the safe-bin trust check honors them.
+        ++ cfg.extraPackages;
 
       environment = {
         HOME = homeDir;

@@ -1,0 +1,70 @@
+#!/bin/sh
+# Constrained web fetch for an openclaw agent: GET or HEAD only, and ONLY to a
+# host that matches one of the trusted-site globs. This is the single sanctioned
+# outbound-HTTP path — raw curl/wget stay gated — because here the destination
+# is constrained (a prompt-injected agent cannot point it at an exfil host) and
+# the method cannot mutate remote state.
+#
+# The trusted-site globs are pinned by the nix module as $TRUSTED_SITES (space-
+# separated shell globs, e.g. "*.acpuchades.com"); the curl binary as $CURL.
+# Both come from the immutable wrapper the module builds around this file.
+#
+# Usage: request-trusted-url [--head|--get] URL   (default: GET)
+set -eu
+
+method=GET
+case "${1:-}" in
+  --head) method=HEAD; shift ;;
+  --get)  method=GET;  shift ;;
+esac
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: $(basename "$0") [--head|--get] URL" >&2
+  exit 2
+fi
+url=$1
+
+# Only http(s). Reject anything else up front (file://, gopher://, ftp://, …).
+case "$url" in
+  http://* | https://*) ;;
+  *) echo "refused: only http:// and https:// URLs are allowed" >&2; exit 3 ;;
+esac
+
+# Extract the host WITHOUT trusting userinfo. authority = between :// and the
+# first /?# ; strip userinfo (everything up to the last @) and any :port. This
+# defeats "https://trusted.com@evil.com/" style bypasses — the host is evil.com
+# there, and that is what we test.
+rest=${url#*://}
+authority=${rest%%[/?#]*}
+hostport=${authority##*@}
+host=${hostport%%:*}
+host=$(printf '%s' "$host" | tr 'A-Z' 'a-z')
+
+if [ -z "$host" ]; then
+  echo "refused: could not parse a host from the URL" >&2
+  exit 3
+fi
+
+matched=0
+for pat in $TRUSTED_SITES; do
+  # shellcheck disable=SC2254 -- $pat is a deliberate glob (e.g. *.acpuchades.com)
+  case "$host" in
+    $pat) matched=1; break ;;
+  esac
+done
+if [ "$matched" != 1 ]; then
+  echo "refused: host '$host' is not a trusted site" >&2
+  exit 3
+fi
+
+curl=${CURL:-curl}
+# --disable ignores ~/.curlrc; no redirect following (--max-redirs 0, no -L) so
+# a trusted host cannot bounce us to an untrusted one; --proto pins the scheme
+# set; caps bound time and body size.
+set -- --disable --silent --show-error \
+  --proto '=http,https' --max-redirs 0 \
+  --connect-timeout 10 --max-time 60 --max-filesize 25M
+if [ "$method" = HEAD ]; then
+  set -- "$@" --head
+fi
+exec "$curl" "$@" --url "$url"
