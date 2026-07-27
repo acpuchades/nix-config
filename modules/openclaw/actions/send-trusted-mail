@@ -1,0 +1,38 @@
+#!/bin/sh
+# Recipient-constrained send for an openclaw agent: delivers ONLY to addresses
+# on the pinned trusted list, refusing any other recipient outright (rather than
+# falling through to an approval prompt like the generic send-email). The
+# message (headers + body) is read from stdin; recipients are positional
+# ARGUMENTS. Deliberately NOT `sendmail -t`: To/Cc/Bcc headers do not route, so a
+# poisoned message cannot smuggle a hidden recipient — the delivered set is
+# exactly the (trust-checked) arguments.
+#
+# The trusted addresses are pinned by the nix module as $TRUSTED_ADDRESSES
+# (space-separated), the sender as $MAIL_FROM, and sendmail as $SENDMAIL — all
+# from the immutable wrapper the module builds around this file.
+set -eu
+
+if [ "$#" -lt 1 ]; then
+  echo "usage: $(basename "$0") RECIPIENT [RECIPIENT...]  (message on stdin)" >&2
+  exit 2
+fi
+
+for r in "$@"; do
+  rl=$(printf '%s' "$r" | tr 'A-Z' 'a-z')
+  ok=0
+  for a in $TRUSTED_ADDRESSES; do
+    al=$(printf '%s' "$a" | tr 'A-Z' 'a-z')
+    if [ "$rl" = "$al" ]; then ok=1; break; fi
+  done
+  if [ "$ok" != 1 ]; then
+    echo "refused: '$r' is not a trusted address" >&2
+    exit 3
+  fi
+done
+
+sendmail=${SENDMAIL:-sendmail}
+if [ -n "${MAIL_FROM:-}" ]; then
+  exec "$sendmail" -i -f "$MAIL_FROM" -- "$@"
+else
+  exec "$sendmail" -i -- "$@"
+fi

