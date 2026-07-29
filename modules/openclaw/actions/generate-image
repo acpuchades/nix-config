@@ -82,20 +82,28 @@ fi
 TOKEN="$(cat "$GENIMG_TOKEN_FILE")"
 API_URL="${API_BASE}/models/${GENIMG_MODEL}:generateContent"
 
-REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"
-cleanup() { rm -f "$REQ_FILE" "$RESP_FILE"; }
+REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"; REF_B64_FILE=""
+cleanup() { rm -f "$REQ_FILE" "$RESP_FILE" "$REF_B64_FILE"; }
 trap cleanup EXIT
 
 # Build the request body with jq (so the prompt is JSON-escaped — a raw printf
 # would break or allow injection on quotes/newlines). Include text and/or the
 # reference image inline_data depending on what was supplied.
 if [ -n "$REFERENCE" ]; then
-  REF_B64="$(base64 -w0 "$REFERENCE")"
+  # The base64 reference (the avatar) can be hundreds of KB — too large to pass
+  # as a jq --arg, which goes through argv and overruns ARG_MAX (breaks the
+  # default, with-reference path). Stage it in a temp file and feed it with
+  # --rawfile, which reads the string straight from disk. `tr -d '\n'` strips
+  # base64's trailing newline: --arg via command substitution dropped it
+  # implicitly, but --rawfile keeps the file verbatim, and a trailing newline in
+  # the data field would corrupt the inline image.
+  REF_B64_FILE="$(mktemp)"
+  base64 -w0 "$REFERENCE" | tr -d '\n' > "$REF_B64_FILE"
   if [ "$HAVE_PROMPT" = 1 ]; then
-    jq -n --arg p "$PROMPT" --arg img "$REF_B64" \
+    jq -n --arg p "$PROMPT" --rawfile img "$REF_B64_FILE" \
       '{contents:[{parts:[{text:$p},{inline_data:{mime_type:"image/png",data:$img}}]}]}' > "$REQ_FILE"
   else
-    jq -n --arg img "$REF_B64" \
+    jq -n --rawfile img "$REF_B64_FILE" \
       '{contents:[{parts:[{inline_data:{mime_type:"image/png",data:$img}}]}]}' > "$REQ_FILE"
   fi
 else
