@@ -6,7 +6,7 @@
       enable = true;
       config = {
         ProgramArguments = [
-          "${pkgs.ntfy}/bin/ntfy"
+          "${pkgs.ntfy-sh}/bin/ntfy"
           "subscribe"
           "--from-config"
         ];
