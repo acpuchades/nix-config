@@ -470,30 +470,35 @@ let
       # the host side (no sandbox/grants; see the module header).
       # Needs the two SOPS secrets below populated (declared in sops.nix):
       #   sops machines/homeserver/secrets/default.yml
-      #     openclaw/telegram-token, openclaw/telegram-userid
+      #     openclaw/eva/telegram-token, openclaw/eva/telegram-userid
       # Auth is the Claude subscription via the Claude CLI runtime — log in once:
       #   sudo -u eva -H claude            # /login, then quit
-      my.openclaw = {
-        enable = true;
+      # OpenClaw from nixpkgs-unstable (2026.6.33), NOT nixpkgs-26.05's 2026.5.7.
+      # Why: 2026.5.7's claude-cli runtime has no handler for Claude Code's
+      # permission protocol (control_request/can_use_tool), so a non-allowlisted
+      # command hangs ~180s then dies with no Telegram prompt. 2026.6.33 adds the
+      # responder (claude-live-session answers can_use_tool → allow under YOLO
+      # else a clean deny) AND fixes the bundled-surface hardlink guard upstream
+      # (plugin loaders now pass rejectHardlinks:false), which is what our
+      # openclawPatched workaround exists to paper over. A separate unstable pkgs
+      # instance is imported with an openclaw-only insecure permit (openclaw is
+      # marked knownVulnerabilities upstream); the predicate is version-agnostic
+      # so it survives unstable's openclaw bumps without editing a version string.
+      # SHARED across all agent instances — the one OpenClaw build they all run.
+      my.openclaw.package = (import nixpkgs-unstable {
+        inherit (pkgs.stdenv.hostPlatform) system;
+        config.allowInsecurePredicate = p: (pkgs.lib.getName p) == "openclaw";
+      }).openclaw;
+
+      # A single agent for now: eva (Telegram bot eva_lebbot), with her own OS
+      # user, home, memory/state dir (/var/lib/openclaw/eva) and gateway service
+      # (openclaw-eva.service). Additional agents would be added as sibling
+      # `my.openclaw.instances.<name>` blocks — each its own user, bot token and
+      # state; nothing below is shared between agents except the `package` above.
+      my.openclaw.instances.eva = {
         # The bot is eva_lebbot, so she gets a real account here: /home/eva,
         # her own workspace.
         user = "eva";
-
-        # OpenClaw from nixpkgs-unstable (2026.6.33), NOT nixpkgs-26.05's 2026.5.7.
-        # Why: 2026.5.7's claude-cli runtime has no handler for Claude Code's
-        # permission protocol (control_request/can_use_tool), so a non-allowlisted
-        # command hangs ~180s then dies with no Telegram prompt. 2026.6.33 adds the
-        # responder (claude-live-session answers can_use_tool → allow under YOLO
-        # else a clean deny) AND fixes the bundled-surface hardlink guard upstream
-        # (plugin loaders now pass rejectHardlinks:false), which is what our
-        # openclawPatched workaround exists to paper over. A separate unstable pkgs
-        # instance is imported with an openclaw-only insecure permit (openclaw is
-        # marked knownVulnerabilities upstream); the predicate is version-agnostic
-        # so it survives unstable's openclaw bumps without editing a version string.
-        package = (import nixpkgs-unstable {
-          inherit (pkgs.stdenv.hostPlatform) system;
-          config.allowInsecurePredicate = p: (pkgs.lib.getName p) == "openclaw";
-        }).openclaw;
 
         # Execution backend: the "claude-cli" runtime, which reuses a Claude Code
         # subscription login on this host (`claude -p`) so the flat subscription
@@ -531,8 +536,8 @@ let
         # The module is secret-system agnostic and takes runtime FILES; on this
         # host they are the sops-nix secret paths. The token/ID values live only
         # in the encrypted secrets file, never in this public repo or the store.
-        telegram.tokenFile = config.sops.secrets."openclaw/telegram-token".path;
-        telegram.allowedIdFile = config.sops.secrets."openclaw/telegram-userid".path;
+        telegram.tokenFile = config.sops.secrets."openclaw/eva/telegram-token".path;
+        telegram.allowedIdFile = config.sops.secrets."openclaw/eva/telegram-userid".path;
 
         # Sonnet 4.6 primary. Haiku 4.5 was tried as the everyday tier to shave
         # the API bill, but it is too weak for eva's tool-using turns, so the
@@ -560,8 +565,8 @@ let
         # into the module), same as stt.model — nomic-embed-text v1.5 Q4_K_M is
         # ~84MB and CPU-friendly; swap url+hash for a multilingual model if Spanish
         # recall needs it. After deploy, (re)index as eva with the service env:
-        #   sudo -u eva env HOME=/home/eva OPENCLAW_STATE_DIR=/var/lib/openclaw \
-        #     OPENCLAW_CONFIG_PATH=/var/lib/openclaw/openclaw.json \
+        #   sudo -u eva env HOME=/home/eva OPENCLAW_STATE_DIR=/var/lib/openclaw/eva \
+        #     OPENCLAW_CONFIG_PATH=/var/lib/openclaw/eva/openclaw.json \
         #     openclaw memory index --force --verbose
         memorySearch = {
           enable = true;
@@ -722,7 +727,7 @@ let
           security = "full";
           ask = "off";
           strictInlineEval = true;
-          safeBins = options.my.openclaw.exec.safeBins.default ++ [
+          safeBins = config.my.openclaw.defaultSafeBins ++ [
             # Process / system / network INSPECTION (read-only; their mutating
             # subcommands need root, which a bare non-sudo invocation lacks).
             "ps" "pgrep" "pstree" "lsof" "ss" "ip" "journalctl" "w" "who"
@@ -933,7 +938,7 @@ let
         # alex-only symlink she can no longer follow, since /home/alex is unlisted).
         #
         # This confines eva's writable surface to: her own tree (/home/eva,
-        # /var/lib/openclaw), world-writable /tmp, and this one git-backed repo —
+        # /var/lib/openclaw/eva), world-writable /tmp, and this one git-backed repo —
         # which is what keeps the "full local mutation" exec allowlist below safe.
         #
         # NB: changing this stops RE-APPLYING dropped ACLs on switch but does NOT
@@ -967,7 +972,7 @@ let
       # would bill per-token — defeating the point of the subscription switch. The
       # SOPS secret/template still exist (sops.nix) so re-adding this line is all
       # it takes to restore the native runtime's API auth.
-      my.openclaw.environmentFiles = [
+      my.openclaw.instances.eva.environmentFiles = [
         config.sops.templates."openclaw/elevenlabs-env".path
       ];
 
