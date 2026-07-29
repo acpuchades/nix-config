@@ -374,28 +374,30 @@ in
   #     Globs are `*.suffix` (subdomains only, not the apex) — same shape as
   #     the request-trusted-url trustedSites globs above.
   #   allowedHostnames — NOT a restriction: an exact-match EXCEPTION list
+  #     (Set.has(), NO globs — verified at ssrf.ts shouldSkipPrivateNetworkChecks)
   #     that skips the private-network / blocked-hostname checks. Needed
-  #     because these two resolve into the LAN, which the SSRF guard blocks
+  #     because these hosts resolve into the LAN, which the SSRF guard blocks
   #     by default. Per-host, so we avoid the blanket
   #     dangerouslyAllowPrivateNetwork. It does NOT grant passage through the
-  #     hostnameAllowlist gate, which is why both lists carry both hosts.
+  #     hostnameAllowlist gate, which is why every LAN host must appear in
+  #     BOTH lists. A `*.acpuchades.com` glob here would be inert (no
+  #     exact-match), so this list stays per-host by necessity.
   #
-  # DELIBERATELY NARROWER than actions.requestUrl.trustedSites, and NOT
-  # sharing that list: trustedSites carries `*.acpuchades.com`, which is
-  # fine for a GET/HEAD-only, no-redirect curl wrapper but would hand a
-  # full browser every internal admin UI on the box (adguard, vaultwarden,
-  # prefect, mail…). The browser gets the exact hosts eva asked for —
-  # github.com was considered for avatar changes and left OUT: an
-  # unauthenticated browser can't change a profile anyway, and it is the
-  # one host on the shortlist an injected turn could use to reach
-  # attacker-controlled content.
+  # The allowlist gate carries `*.acpuchades.com` (owner's call, 2026-07-29),
+  # matching actions.requestUrl.trustedSites: the browser may navigate to any
+  # acpuchades.com subdomain, including internal admin UIs (adguard,
+  # vaultwarden, prefect, mail…). LAN-resolving subdomains are still gated a
+  # SECOND time by the private-network check, so eva can only actually reach
+  # the ones ALSO listed in allowedHostnames below; a public-resolving
+  # subdomain passes both. The apex itself is NOT covered (`*.` is
+  # subdomains-only). github.com stays OUT — the one plausibly
+  # attacker-controlled host an injected turn could steer a browser toward.
   settings.browser.ssrfPolicy.hostnameAllowlist = [
-    "cloud.acpuchades.com" # Nextcloud
-    "home.acpuchades.com" # home dashboard
+    "*.acpuchades.com" # any subdomain; LAN ones still need allowedHostnames below
   ];
   settings.browser.ssrfPolicy.allowedHostnames = [
-    "cloud.acpuchades.com"
-    "home.acpuchades.com"
+    "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
+    "home.acpuchades.com" # home dashboard (resolves into LAN)
   ];
   # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
   # under channels.imessage, so putting it on the telegram channel tripped
