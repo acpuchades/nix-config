@@ -87,10 +87,13 @@ let
           "SELECT datname FROM pg_database \
              WHERE datistemplate = false AND datallowconn \
                AND datname NOT IN ('postgres'${lib.optionalString (cfg.postgres.excludeDatabases != []) ", ${excludeArg}"});")
+        # Write via a root shell redirect (not pg_dump --file), so the output
+        # file is created by root: the postgres process only writes to the
+        # already-open fd, and can't otherwise write into the 0700 staging dir.
         for db in $dbs; do
           echo "backup:   pg_dump $db"
           ${asPostgres "${pg_dump} --format=custom --compress=6"} \
-            --file="${staging}/postgres/$db.dump" "$db"
+            "$db" > "${staging}/postgres/$db.dump"
         done
       ''}
 
