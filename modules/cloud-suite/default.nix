@@ -224,7 +224,12 @@
         adminpassFile = config.my.cloud-suite.nextcloud.adminPasswordFile;
       };
       appstoreEnable = true;
-      autoUpdateApps.enable = true;
+      # Apps are pinned declaratively via extraApps (updated on nixpkgs bumps),
+      # so the App Store auto-updater is redundant and actively harmful: it
+      # pulls a second copy of a declaratively-managed app (e.g. contacts) into
+      # the mutable store-apps dir, colliding with the /nix/store copy and
+      # crashing occ upgrade on a duplicate-class redeclare.
+      autoUpdateApps.enable = false;
       extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps
         (name: config.services.nextcloud.package.packages.apps.${name});
       extraAppsEnable = true;
