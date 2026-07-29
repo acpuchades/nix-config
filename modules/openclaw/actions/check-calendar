@@ -1,38 +1,73 @@
 #!/usr/bin/env python3
-"""parse-ics — summarize upcoming events from an iCalendar (.ics) stream.
+"""check-calendar — list upcoming events from an iCalendar (.ics) calendar.
 
-Offline and network-free BY DESIGN: it reads an .ics from a file or stdin and
-prints the events in an upcoming window, expanding recurring events (RRULE) to
-their real occurrences. Because it never touches the network, it opens no
-exfiltration channel and is safe to bless whole-binary — pair it with the
-sanctioned fetch wrapper to read a calendar without any raw-curl access:
+Takes a calendar SOURCE that is either:
+  * a URL — fetched through the `request-trusted-url` wrapper, so the fetch is
+    subject to the SAME trusted-host allowlist, GET-only method and no-redirect
+    policy as any other sanctioned web read (no new outbound surface); or
+  * a local .ics file, or "-"/omitted for stdin — parsed offline.
 
-    request-trusted-url <ics-url> | parse-ics --days 14
+It expands recurring events (RRULE) to their real occurrences and prints the
+ones inside an upcoming window. The URL path means the common case is ONE
+command with no pipe (the exec gate prefers that):
+
+    check-calendar https://cloud.acpuchades.com/remote.php/dav/…/cal.ics --days 14
+    check-calendar meeting.ics --days 7 --json      # local file
+    request-trusted-url <ics-url> | check-calendar   # still works via stdin
 
 Works with any provider that exposes an .ics export/secret-link (Google
 Calendar, Apple iCloud, Microsoft/Outlook, Nextcloud, …); nothing here is
-provider-specific.
+provider-specific. A URL host must be a trusted site (request-trusted-url
+enforces this); otherwise the fetch is refused.
 
 Usage:
-    parse-ics [FILE] [--days N] [--max N] [--json]
-      FILE       path to a .ics file; omit or "-" to read stdin
-      --days N    look-ahead window in days     (default 14)
-      --max N     maximum events to print        (default 50)
-      --json      emit JSON instead of a summary
+    check-calendar [SOURCE] [--days N] [--max N] [--json]
+      SOURCE      an https:// URL, a .ics file, or "-"/omitted for stdin
+      --days N     look-ahead window in days     (default 14)
+      --max N      maximum events to print        (default 50)
+      --json       emit JSON instead of a summary
 """
 import sys
 import json
+import shutil
 import argparse
-from datetime import datetime, date, timedelta, timezone
+import subprocess
+from datetime import datetime, timedelta, timezone
+
+
+def fetch_via_trusted_url(url):
+    """Fetch a URL through the request-trusted-url wrapper (which enforces the
+    trusted-host allowlist, GET-only method and no redirects). Reusing that
+    binary keeps a single, vetted outbound path — check-calendar adds no fetch
+    logic or trust list of its own."""
+    exe = shutil.which("request-trusted-url")
+    if not exe:
+        print("check-calendar: request-trusted-url is not available, so a URL "
+              "cannot be fetched here — pass a local .ics file or pipe the data "
+              "in on stdin instead.", file=sys.stderr)
+        raise SystemExit(3)
+    try:
+        proc = subprocess.run([exe, url], capture_output=True, timeout=90)
+    except subprocess.TimeoutExpired:
+        print("check-calendar: timed out fetching the calendar URL", file=sys.stderr)
+        raise SystemExit(1)
+    if proc.returncode != 0:
+        # Surface request-trusted-url's own message (e.g. "host not a trusted site").
+        if proc.stderr:
+            sys.stderr.buffer.write(proc.stderr)
+        print(f"check-calendar: could not fetch the calendar "
+              f"(request-trusted-url exited {proc.returncode})", file=sys.stderr)
+        raise SystemExit(proc.returncode)
+    return proc.stdout
 
 
 def main():
     ap = argparse.ArgumentParser(
-        prog="parse-ics",
-        description="Summarize upcoming events from an .ics stream (offline).",
+        prog="check-calendar",
+        description="List upcoming events from an .ics calendar (URL or local).",
     )
-    ap.add_argument("file", nargs="?", default="-",
-                    help='.ics file, or "-"/omitted for stdin')
+    ap.add_argument("source", nargs="?", default="-",
+                    help='an https:// URL, a .ics file, or "-"/omitted for stdin')
     ap.add_argument("--days", type=int, default=14,
                     help="look-ahead window in days (default 14)")
     ap.add_argument("--max", dest="max", type=int, default=50,
@@ -42,25 +77,31 @@ def main():
     args = ap.parse_args()
 
     if args.days < 0:
-        print("parse-ics: --days must be >= 0", file=sys.stderr)
+        print("check-calendar: --days must be >= 0", file=sys.stderr)
         return 2
 
     try:
         import icalendar
         import recurring_ical_events
     except ImportError as exc:  # pragma: no cover - guarded by the nix wrapper
-        print(f"parse-ics: missing dependency: {exc}", file=sys.stderr)
+        print(f"check-calendar: missing dependency: {exc}", file=sys.stderr)
         return 4
 
-    raw = sys.stdin.buffer.read() if args.file in ("-", "") else open(args.file, "rb").read()
+    src = args.source
+    if src.startswith("http://") or src.startswith("https://"):
+        raw = fetch_via_trusted_url(src)
+    elif src in ("-", ""):
+        raw = sys.stdin.buffer.read()
+    else:
+        raw = open(src, "rb").read()
     if not raw.strip():
-        print("parse-ics: empty input (no calendar data)", file=sys.stderr)
+        print("check-calendar: empty input (no calendar data)", file=sys.stderr)
         return 1
 
     try:
         cal = icalendar.Calendar.from_ical(raw)
     except Exception as exc:
-        print(f"parse-ics: could not parse calendar: {exc}", file=sys.stderr)
+        print(f"check-calendar: could not parse calendar: {exc}", file=sys.stderr)
         return 1
 
     local = datetime.now().astimezone().tzinfo
@@ -70,7 +111,7 @@ def main():
     try:
         occurrences = recurring_ical_events.of(cal).between(start, end)
     except Exception as exc:
-        print(f"parse-ics: could not expand events: {exc}", file=sys.stderr)
+        print(f"check-calendar: could not expand events: {exc}", file=sys.stderr)
         return 1
 
     def sortable(value):

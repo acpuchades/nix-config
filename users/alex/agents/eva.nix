@@ -172,10 +172,10 @@ in
     requestUrl = {
       enable = true;
       # EXACT calendar hosts (never *.google.com etc.) so eva can fetch .ics
-      # feeds via `request-trusted-url <url> | parse-ics` without also opening
-      # the provider's other endpoints (Forms, Analytics, proxies). GET-only +
-      # --max-redirs 0 already, so an exact calendar host is not an exfil path.
-      # Nextcloud is already covered by *.acpuchades.com.
+      # feeds via `check-calendar <url>` without also opening the provider's
+      # other endpoints (Forms, Analytics, proxies). GET-only + --max-redirs 0
+      # already, so an exact calendar host is not an exfil path. Nextcloud is
+      # already covered by *.acpuchades.com.
       trustedSites = [
         "*.acpuchades.com" # Local services
         "generativelanguage.googleapis.com" # Google Gemini
@@ -183,23 +183,70 @@ in
         "*.caldav.icloud.com" # Apple iCloud (this subdomain only serves CalDAV)
         "outlook.office365.com" # Microsoft 365 published calendars
         "outlook.live.com" # Outlook.com published calendars
+        # Research/health REST APIs (owner's call, all read-only GET). All are
+        # EXACT hosts (never provider apexes with redirects/proxies), reputable
+        # (a leaked query param isn't adversary-retrievable), and keyless or
+        # query-param-keyed — the three properties that make a host safe to reach
+        # through request-trusted-url (GET/HEAD only, no auth header, no redirect
+        # following). github.com is deliberately kept OUT (see the browser SSRF
+        # note below): the one plausibly attacker-steerable host.
+        "eutils.ncbi.nlm.nih.gov" # PubMed E-utilities (keyless)
+        "api.zotero.org" # Zotero Web API (key passed as ?key= query param)
+        "api.ouraring.com" # Oura API v2 — trusted host kept, but note its
+        # Bearer-header auth can't ride request-trusted-url, so eva reaches it
+        # from an action SHE implements (raw curl now; a destination-pinned
+        # wrapper once exec is hardened). Trusting the host is the standing
+        # permission for that action's fetches.
+        # Biomedical literature (her Bellvitge/IDIBELL domain).
+        "www.ebi.ac.uk" # Europe PMC REST (search + open full text, keyless)
+        "api.unpaywall.org" # open-access PDF locator (keyless, ?email=)
+        # Scholarly metadata / discovery (all keyless).
+        "api.crossref.org" # DOI ↔ citation metadata
+        "api.openalex.org" # works / authors / citations
+        "api.semanticscholar.org" # papers / citations
+        "export.arxiv.org" # arXiv API (Atom)
+        # General reference (Wikimedia REST content APIs, keyless).
+        "es.wikipedia.org"
+        "en.wikipedia.org"
+        "www.wikidata.org"
+        # Geocoding — place ↔ lat/lon, pairs with check-weather (keyless).
+        "nominatim.openstreetmap.org"
+        # Clinical & drug data (biomedical, keyless).
+        "clinicaltrials.gov" # ClinicalTrials.gov API v2
+        "rxnav.nlm.nih.gov" # RxNorm drug normalization / interactions
+        "api.fda.gov" # openFDA (drugs/devices/adverse events)
+        # Everyday utilities (keyless).
+        "api.frankfurter.app" # ECB currency exchange rates
+        "date.nager.at" # public holidays by country (scheduling)
+        "api.sunrise-sunset.org" # sunrise / sunset times
+        # Weather forecast — keyless multi-day, complements check-weather.
+        "api.open-meteo.com"
+        # Words & books (keyless).
+        "api.dictionaryapi.dev" # English dictionary / definitions
+        "en.wiktionary.org" # dictionary (Wiktionary REST)
+        "es.wiktionary.org" # dictionary (Spanish)
+        "openlibrary.org" # book metadata
       ];
     };
     trustedMail = {
       enable = true;
       trustedAddresses = evaTrustedMailRecipients;
     };
-    # Image generation via Gemini (uses eva's avatar as a subject/style
-    # reference). The API key is a runtime file eva owns; the model,
-    # reference image and endpoint are pinned by nix. This is why
-    # generativelanguage.googleapis.com is a trusted site above — though
-    # note generate-image uses raw curl (POST), not request-trusted-url.
+    # Image generation via Gemini. The API key is a runtime file eva owns; the
+    # model and endpoint are pinned by nix. This is why
+    # generativelanguage.googleapis.com is a trusted site above — though note
+    # generate-image uses raw curl (POST), not request-trusted-url.
+    #
+    # No reference image or reference root is pinned here: eva's avatar (and any
+    # other reference she uses) lives in HER tree, and where it lives is hers to
+    # manage, not the flake's. She passes `--reference <path>` at call time. The
+    # exfil guard is preserved WITHOUT a hardcoded path — the wrapper confines a
+    # runtime `--reference` to eva's $HOME by default (so she can pick among her
+    # own images but can't feed an out-of-tree secret to the endpoint).
     generateImage = {
       enable = true;
       model = "gemini-2.5-flash-image";
       tokenFile = config.sops.secrets."google/gemini-token".path;
-      referenceImage = "/home/eva/workspace/avatars/eva_lebbot.png";
-      referenceRoot = "/home/eva/workspace";
     };
     # Current weather via OpenWeatherMap. API key from sops-nix (eva-readable
     # secret), read at runtime by the check-weather wrapper. lang=es for
@@ -209,10 +256,11 @@ in
       tokenFile = config.sops.secrets."openweather/token".path;
       lang = "es";
     };
-    # Offline .ics summarizer. eva reads calendars with
-    # `request-trusted-url <ics-url> | parse-ics --days 14` (the provider
-    # hosts are trusted sites above); parse-ics itself never touches the net.
-    parseIcs.enable = true;
+    # Calendar reader. `check-calendar <ics-url> --days 14` fetches the .ics
+    # (through the same trusted-host gate — the provider hosts are trusted sites
+    # above) AND lists upcoming events in one command; it also accepts a local
+    # file/stdin. Replaces the old request-trusted-url | parse-ics pipe.
+    checkCalendar.enable = true;
   };
 
   # Exec policy: allowlist + confirm-on-miss, via the module's first-class
@@ -398,6 +446,7 @@ in
   settings.browser.ssrfPolicy.allowedHostnames = [
     "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
     "home.acpuchades.com" # home dashboard (resolves into LAN)
+    "status.acpuchades.com" # Grafana metrics/dashboards (resolves into LAN)
   ];
   # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
   # under channels.imessage, so putting it on the telegram channel tripped
