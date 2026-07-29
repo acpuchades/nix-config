@@ -362,6 +362,41 @@ in
   # process isolation but is standard for headless server use.
   settings.browser.executablePath = "/run/current-system/sw/bin/chromium";
   settings.browser.noSandbox = true;
+  # Browser SSRF policy. TWO keys with OPPOSITE meanings — both are needed
+  # (verified against openclaw src/infra/net/ssrf.ts):
+  #
+  #   hostnameAllowlist — the RESTRICTIVE one. EMPTY/UNSET MEANS ALLOW ALL
+  #     (matchesHostnameAllowlist returns true on an empty list), so leaving
+  #     it out left the browser an unrestricted, JS-executing navigator —
+  #     i.e. exactly the ungated outbound channel that tools.web.fetch is
+  #     disabled to prevent, since a prompt-injected eva could navigate to
+  #     https://evil/?secret=… . Non-empty pins navigation to these hosts.
+  #     Globs are `*.suffix` (subdomains only, not the apex) — same shape as
+  #     the request-trusted-url trustedSites globs above.
+  #   allowedHostnames — NOT a restriction: an exact-match EXCEPTION list
+  #     that skips the private-network / blocked-hostname checks. Needed
+  #     because these two resolve into the LAN, which the SSRF guard blocks
+  #     by default. Per-host, so we avoid the blanket
+  #     dangerouslyAllowPrivateNetwork. It does NOT grant passage through the
+  #     hostnameAllowlist gate, which is why both lists carry both hosts.
+  #
+  # DELIBERATELY NARROWER than actions.requestUrl.trustedSites, and NOT
+  # sharing that list: trustedSites carries `*.acpuchades.com`, which is
+  # fine for a GET/HEAD-only, no-redirect curl wrapper but would hand a
+  # full browser every internal admin UI on the box (adguard, vaultwarden,
+  # prefect, mail…). The browser gets the exact hosts eva asked for —
+  # github.com was considered for avatar changes and left OUT: an
+  # unauthenticated browser can't change a profile anyway, and it is the
+  # one host on the shortlist an injected turn could use to reach
+  # attacker-controlled content.
+  settings.browser.ssrfPolicy.hostnameAllowlist = [
+    "cloud.acpuchades.com" # Nextcloud
+    "home.acpuchades.com" # home dashboard
+  ];
+  settings.browser.ssrfPolicy.allowedHostnames = [
+    "cloud.acpuchades.com"
+    "home.acpuchades.com"
+  ];
   # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
   # under channels.imessage, so putting it on the telegram channel tripped
   # the strict schema ("channels.telegram: must NOT have additional
