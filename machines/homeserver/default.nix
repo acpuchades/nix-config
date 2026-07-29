@@ -419,6 +419,15 @@ let
           location = "Home";
           deviceUri = "ipp://192.168.2.3/ipp/print";
           model = "everywhere";
+          # Default to two-sided (long-edge / book-style). `Duplex` is the
+          # standard PPD keyword CUPS's driverless PPD exposes; DuplexNoTumble =
+          # flip on the long edge, DuplexTumble = short edge, None = one-sided.
+          # This only sets the DEFAULT — a job can still override per-print
+          # (`lp -o Duplex=None`/`sides=one-sided`). If the generated PPD names the
+          # option `sides` instead, use `sides = "two-sided-long-edge";` here.
+          ppdOptions = {
+            Duplex = "DuplexNoTumble";
+          };
         }];
       };
 
