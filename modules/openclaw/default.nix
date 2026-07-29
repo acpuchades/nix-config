@@ -299,24 +299,26 @@ let
               ) "--set WEATHER_API_BASE ${lib.escapeShellArg icfg.actions.checkWeather.apiBase}"}
           '';
 
-      # `parse-ics`: an OFFLINE iCalendar summarizer (python + icalendar +
-      # recurring-ical-events). Reads an .ics from stdin or a file and prints the
-      # upcoming events, expanding recurrences (RRULE). It makes NO network calls, so
-      # it opens no exfil channel and is safe to bless whole-binary; the sanctioned
-      # way to read a calendar is to pipe request-trusted-url into it:
-      #   request-trusted-url <ics-url> | parse-ics --days 14
-      # so the outbound HTTP stays on the single hardened, host-gated path and this
-      # tool only ever does local, network-free parsing.
-      parseIcsPython = pkgs.python3.withPackages (ps: [
+      # `check-calendar`: list upcoming events from an .ics calendar (python +
+      # icalendar + recurring-ical-events). It takes the calendar SOURCE directly
+      # — an https:// URL (fetched by DELEGATING to request-trusted-url, so the
+      # fetch inherits the exact same trusted-host allowlist, GET-only method and
+      # no-redirect policy — no new outbound surface), or a local .ics file /
+      # stdin (parsed offline). Safe to bless whole-binary: local parsing is
+      # network-free, and the only network path is the already-hardened,
+      # host-gated request-trusted-url binary baked into its PATH below. This
+      # collapses the old two-segment `request-trusted-url <url> | parse-ics`
+      # pipe into one command (which the exec gate prefers).
+      checkCalendarPython = pkgs.python3.withPackages (ps: [
         ps.icalendar
         ps.recurring-ical-events
       ]);
-      parseIcsBin =
-        pkgs.runCommandLocal "openclaw-parse-ics" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+      checkCalendarBin =
+        pkgs.runCommandLocal "openclaw-check-calendar" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
-            install -Dm0755 ${./actions/parse-ics} $out/libexec/parse-ics
-            makeWrapper $out/libexec/parse-ics $out/bin/parse-ics \
-              --prefix PATH : ${lib.makeBinPath [ parseIcsPython ]}
+            install -Dm0755 ${./actions/check-calendar} $out/libexec/check-calendar
+            makeWrapper $out/libexec/check-calendar $out/bin/check-calendar \
+              --prefix PATH : ${lib.makeBinPath [ checkCalendarPython requestUrlBin ]}
           '';
 
       # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
@@ -470,23 +472,41 @@ let
                 To READ from the web use `request-trusted-url`, not `offline curl`.''
           }${lib.optionalString icfg.actions.requestUrl.enable ''
 
-            - **Trusted web (GET/HEAD)** with `request-trusted-url`: only to
+            - **Trusted web (GET/HEAD)** with `request-trusted-url`: the hosts below
+              are PRE-VETTED and safe — GET/HEAD them FREELY, WITHOUT asking. The
+              wrapper is GET/HEAD-only, sends no credentials and follows no redirects,
+              so a read can neither change anything remote nor be steered off this
+              list. They are your research, reference and utility APIs (e.g. PubMed,
+              Zotero, Europe PMC, Crossref/OpenAlex, ClinicalTrials, Wikipedia,
+              currency, geocoding, weather forecast). Full allowlist:
               ${lib.concatStringsSep ", " icfg.actions.requestUrl.trustedSites}.
-                  request-trusted-url https://example.acpuchades.com/resource
-                  request-trusted-url --head https://example.acpuchades.com/resource''}${lib.optionalString icfg.actions.parseIcs.enable ''
+                  request-trusted-url "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=glioma"
+                  request-trusted-url --head https://example.acpuchades.com/resource
+              A host NOT on this list still needs approval — do not reach for raw
+              curl/wget.''}${lib.optionalString icfg.actions.checkCalendar.enable ''
 
-            - **Read a calendar** (.ics — Google, Apple iCloud, Outlook, Nextcloud, …):
-              fetch it with `request-trusted-url` and pipe into `parse-ics`, which lists
-              the upcoming events with recurrences expanded. BOTH are pre-approved safe
-              tools, so this two-segment pipe runs WITHOUT approval:
-                  request-trusted-url <ics-url> | parse-ics --days 14
-                  request-trusted-url <ics-url> | parse-ics --days 7 --json
-              `parse-ics` only parses locally (never touches the network); the calendar
-              host must be a trusted site (listed above), and you keep the actual .ics
-              URLs in your workspace.''}${lib.optionalString icfg.actions.trustedMail.enable ''
+            - **Read a calendar** (.ics — Google, Apple iCloud, Outlook, Nextcloud, …)
+              with `check-calendar <ics-url>`: it fetches the calendar (through the
+              SAME trusted-host gate) AND lists the upcoming events with recurrences
+              expanded — ONE command, no pipe, runs WITHOUT approval:
+                  check-calendar <ics-url> --days 14
+                  check-calendar <ics-url> --days 7 --json
+              The calendar host must be a trusted site (listed above). It also accepts
+              a local .ics file or stdin; keep the actual .ics URLs in your workspace.''}${lib.optionalString icfg.actions.trustedMail.enable ''
 
             - **Mail to trusted addresses** with `send-trusted-mail` (message on stdin,
-              recipients as arguments): ${lib.concatStringsSep ", " icfg.actions.trustedMail.trustedAddresses}.''}
+              recipients as arguments): ${lib.concatStringsSep ", " icfg.actions.trustedMail.trustedAddresses}.''}${lib.optionalString icfg.actions.checkWeather.enable ''
+
+            - **Current weather** with `check-weather` (destination-fixed to the weather
+              API, so it runs WITHOUT approval):
+                  check-weather "Barcelona,ES"
+                  check-weather --lat 41.39 --lon 2.16 --json''}${lib.optionalString icfg.actions.generateImage.enable ''
+
+            - **Generate an image** with `generate-image` (destination-fixed to the image
+              API, so it runs WITHOUT approval). Write the PNG into your workspace; an
+              optional `--reference` subject/style image must live under your $HOME:
+                  generate-image --out out.png --prompt "a labelled diagram of ..."
+                  generate-image --out out.png --reference <your-image> --prompt "..."''}
 
         ## Requires approval (or is forbidden)
 
@@ -514,7 +534,7 @@ let
 
         | You need           | Use                     | Do NOT use            |
         |--------------------|-------------------------|-----------------------|
-        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.parseIcs.enable "\n    | Read a calendar    | `request-trusted-url` \\| `parse-ics` | reading `.ics` by hand |"}
+        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n    | Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n    | Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n    | Generate an image  | `generate-image`        | —                     |"}
         | Send mail          | `send-trusted-mail`${lib.optionalString icfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${
           lib.optionalString (icfg.exec.netIsolatedBins != [ ]) ''
 
@@ -790,10 +810,11 @@ let
             ++ lib.optionals icfg.actions.generateImage.enable [ "generate-image" ]
             # check-weather is destination-pinned to the configured weather endpoint.
             ++ lib.optionals icfg.actions.checkWeather.enable [ "check-weather" ]
-            # parse-ics makes NO network calls (pure local .ics parsing), so blessing
-            # it whole-binary opens no exfil channel; the fetch stays on
-            # request-trusted-url (request-trusted-url <url> | parse-ics).
-            ++ lib.optionals icfg.actions.parseIcs.enable [ "parse-ics" ];
+            # check-calendar only ever does local .ics parsing plus a fetch that
+            # DELEGATES to the host-gated request-trusted-url binary, so blessing it
+            # whole-binary opens no exfil channel beyond what request-trusted-url
+            # already allows.
+            ++ lib.optionals icfg.actions.checkCalendar.enable [ "check-calendar" ];
         }
         // lib.optionalAttrs (icfg.exec.safeBinProfiles != { }) {
           safeBinProfiles = icfg.exec.safeBinProfiles;
@@ -914,7 +935,7 @@ let
       ++ lib.optionals icfg.actions.trustedMail.enable [ trustedMailBin ]
       ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
       ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
-      ++ lib.optionals icfg.actions.parseIcs.enable [ parseIcsBin ]
+      ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
       ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ icfg.extraPackages;
 
@@ -1725,17 +1746,20 @@ let
             '';
           };
         };
-        parseIcs = {
+        checkCalendar = {
           enable = lib.mkEnableOption ''
-            the `parse-ics` action: an OFFLINE iCalendar summarizer. It reads an
-            .ics stream (stdin or a file) and prints the upcoming events, expanding
-            recurrences (RRULE) to their real occurrences. It makes NO network
-            calls, so it opens no exfiltration channel and is blessed whole-binary.
-            Pair it with `request-trusted-url` (whose trustedSites must include the
-            calendar host, EXACT — e.g. `calendar.google.com`, not `*.google.com`)
-            to read a calendar without raw curl:
-            `request-trusted-url <ics-url> | parse-ics --days 14`. Needs `python3`
-            with `icalendar` + `recurring-ical-events`, pulled in automatically'';
+            the `check-calendar` action: list upcoming events from an .ics
+            calendar. It takes the SOURCE directly — an https:// URL (fetched by
+            delegating to `request-trusted-url`, so the fetch inherits the same
+            trusted-host allowlist / GET-only / no-redirect policy — the calendar
+            host must be an EXACT trusted site, e.g. `calendar.google.com`, not
+            `*.google.com`), or a local .ics file / stdin (parsed offline). It
+            expands recurrences (RRULE) to real occurrences. Blessed whole-binary:
+            local parsing is network-free and the only outbound path is the
+            already-hardened request-trusted-url. Collapses the old
+            `request-trusted-url <url> | parse-ics` pipe into one command. Needs
+            `python3` with `icalendar` + `recurring-ical-events`, pulled in
+            automatically'';
         };
       };
 

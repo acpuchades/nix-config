@@ -16,14 +16,16 @@
 # At least one of a prompt or an (effective) reference is required. When
 # --reference is omitted, the configured default reference is used (unless
 # --no-reference). A runtime --reference must resolve under GENIMG_REFERENCE_ROOT
-# (a nix-pinned directory) — so the agent can pick among reference images there,
-# but cannot feed an arbitrary file (e.g. a secret) to the endpoint.
+# (or, when that is unset, the agent's $HOME) — so the agent can pick among its
+# own reference images, but cannot feed an out-of-tree file (e.g. a secret in
+# /run/secrets) to the endpoint.
 #
 # Environment (all pinned by the wrapper):
 #   GENIMG_MODEL              model id, e.g. "gemini-2.5-flash-image"   (required)
 #   GENIMG_TOKEN_FILE         file with the API key (read at runtime)   (required)
 #   GENIMG_DEFAULT_REFERENCE  reference used when --reference omitted    (optional)
-#   GENIMG_REFERENCE_ROOT     dir a runtime --reference must sit under   (optional)
+#   GENIMG_REFERENCE_ROOT     dir a runtime --reference must sit under   (optional;
+#                             defaults to the agent's $HOME when unset)
 #   GENIMG_API_BASE           API base URL (default: Google GL v1beta)   (optional)
 # The wrapper also puts curl/jq/coreutils on PATH.
 #
@@ -57,10 +59,12 @@ done
 REFERENCE=""
 if [ "$HAVE_REF" = 1 ]; then
   real="$(realpath -e -- "$REF_ARG")" || { echo "generate-image: reference not found: $REF_ARG" >&2; exit 1; }
-  # If a reference root is configured, confine runtime references to it; otherwise
-  # any readable image is accepted (generally useful; set GENIMG_REFERENCE_ROOT to
-  # restrict).
-  root="${GENIMG_REFERENCE_ROOT:-}"
+  # Confine runtime references to a root directory so the agent can pick among
+  # images in its own tree but cannot feed an out-of-tree secret to the endpoint.
+  # GENIMG_REFERENCE_ROOT overrides it; otherwise default to the agent's $HOME
+  # (a boundary WITHOUT a nix-hardcoded path). Only if neither is set is any
+  # readable image accepted.
+  root="${GENIMG_REFERENCE_ROOT:-${HOME:-}}"
   if [ -n "$root" ]; then
     realroot="$(realpath -e -- "$root")" || { echo "generate-image: reference root missing: $root" >&2; exit 1; }
     case "$real/" in
