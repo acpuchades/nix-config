@@ -26,6 +26,38 @@ in
         speak IPP Everywhere / AirPrint — CUPS auto-negotiates the format.
       '';
     };
+
+    printers = lib.mkOption {
+      type = lib.types.listOf lib.types.attrs;
+      default = [];
+      example = lib.literalExpression ''
+        [{
+          name = "HomePrinter";
+          location = "Home";
+          deviceUri = "ipp://192.168.2.3/ipp/print";
+          model = "everywhere";  # driverless IPP Everywhere / AirPrint
+        }]
+      '';
+      description = ''
+        Declarative CUPS queues, forwarded verbatim to
+        `hardware.printers.ensurePrinters` (which runs `lpadmin` on activation).
+
+        For a driverless network printer use `model = "everywhere"`: CUPS derives
+        the PPD by querying the device, so the printer MUST be powered on and
+        reachable during `nixos-rebuild switch` or the activation step fails (the
+        queue persists once created). A printer needing a real driver instead
+        takes a package in `drivers` above and an `lpinfo -m` model string here.
+      '';
+    };
+
+    defaultPrinter = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Name of the queue (from `printers` above) to set as the system default.
+        null leaves the default unmanaged.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -41,6 +73,13 @@ in
       # Newly added queues are shared (advertised over DNS-SD) by default.
       defaultShared = true;
       drivers = cfg.drivers;
+    };
+
+    # Declarative print queues (lpadmin runs on activation). See the option docs
+    # for the model = "everywhere" reachability caveat.
+    hardware.printers = {
+      ensurePrinters = cfg.printers;
+      ensureDefaultPrinter = lib.mkIf (cfg.defaultPrinter != null) cfg.defaultPrinter;
     };
 
     # Advertise shared queues as AirPrint over mDNS. Defaulted so a globally
