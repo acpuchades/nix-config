@@ -598,6 +598,7 @@ let
         # baked in, so `import requests` / `library(tidyverse)` resolve without a
         # network fetch or a writable site-library.
         extraPackages = with pkgs; [
+          chromium # browser automation via CDP (OpenClaw browser tool)
           ffmpeg # full ffmpeg (STT already pulls ffmpeg-headless; this adds codecs)
           imagemagick # `convert`/`magick` image manipulation
           libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
