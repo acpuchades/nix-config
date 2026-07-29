@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""parse-ics — summarize upcoming events from an iCalendar (.ics) stream.
+
+Offline and network-free BY DESIGN: it reads an .ics from a file or stdin and
+prints the events in an upcoming window, expanding recurring events (RRULE) to
+their real occurrences. Because it never touches the network, it opens no
+exfiltration channel and is safe to bless whole-binary — pair it with the
+sanctioned fetch wrapper to read a calendar without any raw-curl access:
+
+    request-trusted-url <ics-url> | parse-ics --days 14
+
+Works with any provider that exposes an .ics export/secret-link (Google
+Calendar, Apple iCloud, Microsoft/Outlook, Nextcloud, …); nothing here is
+provider-specific.
+
+Usage:
+    parse-ics [FILE] [--days N] [--max N] [--json]
+      FILE       path to a .ics file; omit or "-" to read stdin
+      --days N    look-ahead window in days     (default 14)
+      --max N     maximum events to print        (default 50)
+      --json      emit JSON instead of a summary
+"""
+import sys
+import json
+import argparse
+from datetime import datetime, date, timedelta, timezone
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        prog="parse-ics",
+        description="Summarize upcoming events from an .ics stream (offline).",
+    )
+    ap.add_argument("file", nargs="?", default="-",
+                    help='.ics file, or "-"/omitted for stdin')
+    ap.add_argument("--days", type=int, default=14,
+                    help="look-ahead window in days (default 14)")
+    ap.add_argument("--max", dest="max", type=int, default=50,
+                    help="maximum events to print (default 50)")
+    ap.add_argument("--json", action="store_true",
+                    help="emit JSON instead of a text summary")
+    args = ap.parse_args()
+
+    if args.days < 0:
+        print("parse-ics: --days must be >= 0", file=sys.stderr)
+        return 2
+
+    try:
+        import icalendar
+        import recurring_ical_events
+    except ImportError as exc:  # pragma: no cover - guarded by the nix wrapper
+        print(f"parse-ics: missing dependency: {exc}", file=sys.stderr)
+        return 4
+
+    raw = sys.stdin.buffer.read() if args.file in ("-", "") else open(args.file, "rb").read()
+    if not raw.strip():
+        print("parse-ics: empty input (no calendar data)", file=sys.stderr)
+        return 1
+
+    try:
+        cal = icalendar.Calendar.from_ical(raw)
+    except Exception as exc:
+        print(f"parse-ics: could not parse calendar: {exc}", file=sys.stderr)
+        return 1
+
+    local = datetime.now().astimezone().tzinfo
+    start = datetime.now(timezone.utc)
+    end = start + timedelta(days=args.days)
+
+    try:
+        occurrences = recurring_ical_events.of(cal).between(start, end)
+    except Exception as exc:
+        print(f"parse-ics: could not expand events: {exc}", file=sys.stderr)
+        return 1
+
+    def sortable(value):
+        # Normalize date (all-day) and naive/aware datetimes to an aware datetime
+        # so the mixed set sorts. A floating (naive) time is read as local.
+        if isinstance(value, datetime):
+            return value if value.tzinfo else value.replace(tzinfo=local)
+        return datetime(value.year, value.month, value.day, tzinfo=local)
+
+    def text(ev, key):
+        value = ev.get(key)
+        return str(value) if value is not None else None
+
+    rows = []
+    for ev in occurrences:
+        dtstart = ev.get("DTSTART")
+        if dtstart is None:
+            continue
+        st = dtstart.dt
+        dtend = ev.get("DTEND")
+        en = dtend.dt if dtend is not None else None
+        rows.append({
+            "summary": text(ev, "SUMMARY") or "(no title)",
+            "start": st,
+            "end": en,
+            "all_day": not isinstance(st, datetime),
+            "location": text(ev, "LOCATION"),
+            "_key": sortable(st),
+        })
+
+    rows.sort(key=lambda r: r["_key"])
+    rows = rows[: args.max]
+
+    if args.json:
+        def iso(value):
+            return value.isoformat() if value is not None else None
+        print(json.dumps({
+            "window_days": args.days,
+            "count": len(rows),
+            "events": [{
+                "summary": r["summary"],
+                "start": iso(r["start"]),
+                "end": iso(r["end"]),
+                "all_day": r["all_day"],
+                "location": r["location"],
+            } for r in rows],
+        }, ensure_ascii=False, indent=2))
+        return 0
+
+    if not rows:
+        print(f"No events in the next {args.days} day(s).")
+        return 0
+
+    def fmt(r):
+        st = r["start"]
+        if r["all_day"]:
+            head = st.strftime("%a %d %b") + " · all day"
+        else:
+            local_start = sortable(st).astimezone(local)
+            head = local_start.strftime("%a %d %b %H:%M")
+            en = r["end"]
+            if isinstance(en, datetime):
+                head += "–" + sortable(en).astimezone(local).strftime("%H:%M")
+        line = f"{head}  {r['summary']}"
+        if r["location"]:
+            line += f"  @ {r['location']}"
+        return line
+
+    print(f"Next {args.days} day(s) — {len(rows)} event(s):")
+    for r in rows:
+        print("  " + fmt(r))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
