@@ -108,11 +108,15 @@
       # From the Backblaze B2 Application Key you create for the backup bucket.
       "backup/b2-account-id" = { mode = "0400"; };   # keyID
       "backup/b2-account-key" = { mode = "0400"; };  # applicationKey
-      # ntfy access token for the failure alert (Bearer auth). Create it with:
-      #   sudo ntfy user add --role=user backup
-      #   sudo ntfy access backup backups write-only
-      #   sudo ntfy token add backup
-      "backup/ntfy-token" = { mode = "0400"; };
+      # Shared HOMESERVER ntfy publisher token (Bearer auth), reused by every
+      # local alert source: the restic backup, my.ntfy-alert's unit-failure
+      # notifier, and the UPS NOTIFYCMD. Rendered into ntfy/env below and injected
+      # as NTFY_TOKEN. Topics are separated at the ACL/topic level, not by token.
+      # Provision one ntfy user with write to the relevant topics:
+      #   sudo <ntfy-sh>/bin/ntfy user add --role=user homeserver
+      #   sudo <ntfy-sh>/bin/ntfy access homeserver "alerts-*" write-only
+      #   sudo <ntfy-sh>/bin/ntfy token add homeserver
+      "ntfy/token" = { mode = "0400"; };
 
       # One SMB password per user (nested samba/<user> branch). Add a line here
       # for each additional user, then store the value with:
@@ -252,6 +256,16 @@
         mode = "0400";
         content = ''
           home-wlan-psk=${config.sops.placeholder."wifi/password"}
+        '';
+      };
+
+      # NTFY_TOKEN for the homeserver alert publishers (my.ntfy-alert failure
+      # notifier + the UPS NOTIFYCMD). Loaded as a systemd EnvironmentFile as
+      # root, then inherited by forked notify commands.
+      "ntfy/env" = {
+        mode = "0400";
+        content = ''
+          NTFY_TOKEN=${config.sops.placeholder."ntfy/token"}
         '';
       };
 

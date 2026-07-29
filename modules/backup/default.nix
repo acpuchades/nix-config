@@ -240,22 +240,11 @@ in
       };
       description = "systemd timer config controlling when the backup runs.";
     };
-
-    notify = {
-      enable = lib.mkEnableOption "ntfy push on backup failure";
-      url = lib.mkOption {
-        type = lib.types.str;
-        example = "https://ntfy.acpuchades.com/backups";
-        description = "ntfy topic URL to POST to on failure.";
-      };
-      tokenFile = lib.mkOption {
-        type = lib.types.nullOr lib.types.path;
-        default = null;
-        description = "File with an ntfy access token (Bearer auth), if the topic requires one.";
-      };
-    };
   };
 
+  # Failure alerting is NOT handled here — opt the restic unit into the shared
+  # my.ntfy-alert mechanism (failureUnits) instead, so backup rides the same
+  # ntfy token/topic as every other homeserver alert.
   config = lib.mkIf cfg.enable {
     services.restic.backups.homeserver = {
       inherit (cfg) repository passwordFile environmentFile exclude pruneOpts timerConfig;
@@ -267,36 +256,5 @@ in
       # (restic prune is a full repack; on a large repo you may later move this
       # to a weekly maintenance job instead.)
     };
-
-    # Failure notification. onFailure fires the notify unit only when the
-    # restic-backups-homeserver service exits non-zero.
-    systemd.services = lib.mkMerge [
-      (lib.mkIf cfg.notify.enable {
-        "restic-backups-homeserver".onFailure = [ "backup-notify-failure.service" ];
-
-        "backup-notify-failure" = {
-          description = "Notify (ntfy) that the homeserver backup failed";
-          serviceConfig = {
-            Type = "oneshot";
-            ExecStart = lib.getExe (pkgs.writeShellApplication {
-              name = "backup-notify-failure";
-              runtimeInputs = [ pkgs.curl pkgs.coreutils ];
-              text = ''
-                auth=()
-                ${lib.optionalString (cfg.notify.tokenFile != null) ''
-                  auth=(-H "Authorization: Bearer $(cat ${cfg.notify.tokenFile})")
-                ''}
-                curl -fsS "''${auth[@]}" \
-                  -H "Title: Homeserver backup FAILED" \
-                  -H "Priority: high" \
-                  -H "Tags: rotating_light,floppy_disk" \
-                  -d "restic-backups-homeserver.service failed at $(date -Is). Check: journalctl -u restic-backups-homeserver" \
-                  "${cfg.notify.url}"
-              '';
-            });
-          };
-        };
-      })
-    ];
   };
 }
