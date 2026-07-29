@@ -637,7 +637,19 @@ let
         actions = {
           requestUrl = {
             enable = true;
-            trustedSites = [ "*.acpuchades.com" "generativelanguage.googleapis.com" ];
+            # EXACT calendar hosts (never *.google.com etc.) so eva can fetch .ics
+            # feeds via `request-trusted-url <url> | parse-ics` without also opening
+            # the provider's other endpoints (Forms, Analytics, proxies). GET-only +
+            # --max-redirs 0 already, so an exact calendar host is not an exfil path.
+            # Nextcloud is already covered by *.acpuchades.com.
+            trustedSites = [
+              "*.acpuchades.com"
+              "generativelanguage.googleapis.com"
+              "calendar.google.com" # Google Calendar .ics export
+              "*.caldav.icloud.com" # Apple iCloud (this subdomain only serves CalDAV)
+              "outlook.office365.com" # Microsoft 365 published calendars
+              "outlook.live.com" # Outlook.com published calendars
+            ];
           };
           trustedMail = {
             enable = true;
@@ -668,6 +680,10 @@ let
             tokenFile = config.sops.secrets."openweather/token".path;
             lang = "es";
           };
+          # Offline .ics summarizer. eva reads calendars with
+          # `request-trusted-url <ics-url> | parse-ics --days 14` (the provider
+          # hosts are trusted sites above); parse-ics itself never touches the net.
+          parseIcs.enable = true;
         };
 
         # Exec policy: allowlist + confirm-on-miss, via the module's first-class
@@ -981,6 +997,11 @@ let
         # alias forwarding to eva@mail.acpuchades.com, which (mailDomain being
         # local) delivers straight to the eva system user's ~/Maildir.
         mailDomain = "mail.acpuchades.com";
+        # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
+        # of these AND passes DMARC (spoof-proof). eva keys "may act on this mail"
+        # off that header, not the raw From. Same set as the send-trusted-mail
+        # allowlist so trust is symmetric in both directions.
+        trustedSenders = evaTrustedMailRecipients;
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
         acmeEnvironmentFile = config.sops.templates."acme/cloudflare-env".path;

@@ -2,6 +2,49 @@
 
 let
   cfg = config.my.mail-server;
+
+  # Custom rspamd rule (loaded via rspamd.local.lua) that stamps
+  # `X-Trusted-Sender: yes` on inbound mail whose visible From is on
+  # cfg.trustedSenders AND passes DMARC (so the From is cryptographically
+  # authenticated, not spoofed). Any inbound copy of the header is stripped first
+  # so a sender cannot forge it. It only MARKS mail — it never rejects or filters
+  # delivery. See the trustedSenders option.
+  trustedSenderLua = pkgs.writeText "rspamd-trusted-sender.lua" ''
+    local lua_mime = require "lua_mime"
+
+    local trusted = {
+    ${lib.concatMapStrings (a: ''  ["${lib.toLower a}"] = true,
+    '') cfg.trustedSenders}}
+
+    rspamd_config:register_symbol({
+      name = 'STAMP_X_TRUSTED_SENDER',
+      type = 'postfilter',
+      priority = 5,
+      callback = function(task)
+        local hdr = 'X-Trusted-Sender'
+        local ok = false
+        local from = task:get_from('mime')
+        if from and from[1] and from[1].addr then
+          local addr = tostring(from[1].addr):lower()
+          if trusted[addr] and task:has_symbol('DMARC_POLICY_ALLOW') then
+            ok = true
+          end
+        end
+        -- Always strip any inbound copy of the header (anti-forgery); add ours
+        -- only when the From is trusted AND DMARC-authenticated.
+        if ok then
+          lua_mime.modify_headers(task, {
+            remove = { [hdr] = 0 },
+            add = { [hdr] = { value = 'yes', order = 1 } },
+          })
+        else
+          lua_mime.modify_headers(task, {
+            remove = { [hdr] = 0 },
+          })
+        end
+      end
+    })
+  '';
 in
 {
   options.my.mail-server = {
@@ -31,6 +74,25 @@ in
         local parts are rejected at SMTP time (no catch-all, no backscatter).
       '';
       example = "mail.acpuchades.com";
+    };
+
+    trustedSenders = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "boss@example.com" ];
+      description = ''
+        Inbound senders to mark as VERIFIED-trusted. For each message whose visible
+        `From:` is on this list AND that passes DMARC (so the `From:` is
+        cryptographically authenticated — DKIM survives the Cloudflare forward for
+        DKIM-signing providers), rspamd stamps an `X-Trusted-Sender: yes` header;
+        any inbound copy of that header is stripped first, so a sender cannot forge
+        it. This does NOT reject or filter delivery — every message is still
+        delivered. It only MARKS who is verified, for a downstream consumer (e.g. an
+        agent reading the mailbox) to decide whom it may act on. Matching is
+        case-insensitive, exact address. A trusted address on a domain that does not
+        pass DMARC is simply not stamped (treated as untrusted downstream —
+        fail-safe). Empty (default) installs no rule.
+      '';
     };
 
     relayHost = lib.mkOption {
@@ -130,6 +192,8 @@ in
     # (bayes/ratelimit can be added later by pointing rspamd at a redis).
     services.rspamd = {
       enable = true;
+      # Load the trusted-sender stamping rule (only when a list is configured).
+      localLuaRules = lib.mkIf (cfg.trustedSenders != [ ]) trustedSenderLua;
       workers.rspamd_proxy = {
         type = "rspamd_proxy";
         bindSockets = [ "127.0.0.1:11332" ];
