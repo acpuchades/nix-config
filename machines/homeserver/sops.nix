@@ -104,49 +104,50 @@
       #   sops machines/homeserver/secrets/default.yml
       "samba/alex" = { mode = "0400"; };
 
-      # OpenClaw (eva) Telegram identity, consumed as files by my.openclaw.
-      # telegram.{tokenFile,allowedIdFile}. The token is read by systemd
-      # LoadCredential (as root, then handed to the service), so default
-      # ownership is fine. The allowed-ID file is read by the service's
-      # ExecStartPre seed script, which runs AS eva, so it must be eva-readable.
-      "openclaw/telegram-token" = { mode = "0400"; };
-      "openclaw/telegram-userid" = {
+      # Agent-IDENTITY secrets (the Telegram bot token + allowlisted ID) go under
+      # openclaw/<agent>/ — each agent is its OWN bot, so a second agent is added
+      # as a sibling openclaw/<name>/ subtree. The shared SERVICE API keys are NOT
+      # under openclaw: they keep their own service namespaces (anthropic/,
+      # elevenlabs/, google/, openweather/), so any agent references the same key.
+      # `/` in a name maps to a NESTED YAML key.
+
+      # eva's Telegram identity, consumed as files by
+      # my.openclaw.instances.eva.telegram.{tokenFile,allowedIdFile}. The token is
+      # read by systemd LoadCredential (as root), so default ownership is fine; the
+      # allowed-ID file is read by the ExecStartPre seed (runs AS eva), so it must
+      # be eva-readable.
+      "openclaw/eva/telegram-token" = { mode = "0400"; };
+      "openclaw/eva/telegram-userid" = {
         owner = "eva";
         mode = "0400";
       };
 
-      # ElevenLabs API key for eva's reply TTS, rendered into the env file below
-      # and read by the openclaw service as ELEVENLABS_API_KEY. Populate with:
-      #   sops machines/homeserver/secrets/default.yml   (elevenlabs/token)
+      # ElevenLabs API key for eva's reply TTS, rendered into openclaw/elevenlabs-env
+      # below and read by the openclaw service as ELEVENLABS_API_KEY.
       "elevenlabs/token" = {
         owner = "eva";
         mode = "0400";
       };
 
-      # Anthropic API key for eva's native agent runtime (my.openclaw.agentRuntime
-      # = null). Rendered into the env file below and read by the openclaw service
-      # as ANTHROPIC_API_KEY. Populate with:
-      #   sops machines/homeserver/secrets/default.yml   (anthropic/token)
+      # Anthropic API key. CURRENTLY UNUSED — the claude-cli runtime authenticates
+      # via the Claude subscription login, not an API key — kept for an easy switch
+      # back to native/API auth. Rendered into openclaw/anthropic-env below.
       "anthropic/token" = {
         owner = "eva";
         mode = "0400";
       };
 
       # Gemini API key for eva's generate-image action
-      # (my.openclaw.actions.generateImage.tokenFile). Read at RUNTIME by the
-      # generate-image wrapper, which runs AS eva, so it must be eva-readable.
-      # Populate/rotate with:
-      #   sops machines/homeserver/secrets/default.yml   (google/gemini-token)
+      # (my.openclaw.instances.eva.actions.generateImage.tokenFile), read at RUNTIME
+      # by the generate-image wrapper (runs AS eva).
       "google/gemini-token" = {
         owner = "eva";
         mode = "0400";
       };
 
       # OpenWeatherMap API key for eva's check-weather action
-      # (my.openclaw.actions.checkWeather.tokenFile). Read at RUNTIME by the
-      # check-weather wrapper, which runs AS eva, so it must be eva-readable.
-      # Populate/rotate with:
-      #   sops machines/homeserver/secrets/default.yml   (openweather/token)
+      # (my.openclaw.instances.eva.actions.checkWeather.tokenFile), read at RUNTIME
+      # by the check-weather wrapper (runs AS eva).
       "openweather/token" = {
         owner = "eva";
         mode = "0400";
@@ -248,9 +249,9 @@
         '';
       };
 
-      # Env file for eva's native agent runtime (Anthropic API). Added as an
-      # EnvironmentFile on the openclaw service; the anthropic provider reads
-      # ANTHROPIC_API_KEY.
+      # Env file for eva's native agent runtime (Anthropic API) — CURRENTLY UNUSED
+      # (the subscription login is used instead), kept for a quick switch back.
+      # Reads anthropic/token.
       "openclaw/anthropic-env" = {
         owner = "eva";
         mode = "0400";
@@ -260,7 +261,8 @@
       };
 
       # Env file for eva's reply TTS (ElevenLabs). Added as an EnvironmentFile on
-      # the openclaw service; the elevenlabs provider reads ELEVENLABS_API_KEY.
+      # eva's service; the elevenlabs provider reads ELEVENLABS_API_KEY. Reads
+      # elevenlabs/token.
       "openclaw/elevenlabs-env" = {
         owner = "eva";
         mode = "0400";
