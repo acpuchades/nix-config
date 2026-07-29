@@ -88,6 +88,7 @@ let
         ../../modules/acme-cloudflare
         ../../modules/host-security
         ../../modules/ups-monitor
+        ../../modules/backup
       ];
 
       systemd.network.networks = {
@@ -535,6 +536,66 @@ let
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
         acmeEnvironmentFile = config.sops.templates."acme/cloudflare-env".path;
+      };
+
+      # Encrypted off-site backups to Backblaze B2 (restic, client-side AES-256).
+      # Covers the irreplaceable, non-declarative state: DB dumps, eva's home +
+      # agent state, and the cloud-suite data dirs. Deliberately EXCLUDES the
+      # large/reproducible sets — Bitcoin chainstate, the Nominatim DB, and the
+      # Samba media/downloads — so the off-site copy stays small and cheap.
+      # Repo password + B2 credentials come from sops (backup/* below).
+      my.backup = {
+        enable = true;
+        repository = "b2:acpuchades-homeserver-restic:restic";
+        passwordFile = config.sops.secrets."backup/restic-password".path;
+        environmentFile = config.sops.templates."backup/b2-env".path;
+
+        # Data-directory paths tracked off their owning modules' options so they
+        # follow any relocation. eva's /home covers her Maildir too.
+        paths = [
+          "/home/eva"                                        # eva home + Maildir
+          "/var/lib/openclaw/eva"                            # eva agent state/memory
+          "/var/lib/hass"                                    # Home Assistant config
+          "/srv/prefect"                                     # Prefect data dir
+          config.my.cloud-suite.nextcloud.dataDir            # /srv/encrypted/nextcloud
+          config.my.cloud-suite.bitwarden.dataDir            # /srv/encrypted/vaultwarden
+          config.my.cloud-suite.immich.mediaLocation         # /srv/encrypted/immich
+          "/srv/shared"                                      # Samba share (media/downloads excluded)
+        ];
+
+        # Keep the big, re-acquirable trees out of the off-site copy.
+        exclude = [
+          "/srv/shared/Media"
+          "/srv/shared/Downloads"
+          "/srv/shared/**/.incomplete"
+          "/home/eva/.cache"
+          "/var/lib/hass/*.log*"
+        ];
+
+        # PostgreSQL: dump every live DB except the huge, re-importable Nominatim
+        # extract (rebuild from Geofabrik, not worth the off-site GB).
+        postgres.excludeDatabases = [ "nominatim" ];
+
+        # SQLite services snapshot-copied consistently before upload.
+        sqliteDatabases = [
+          { name = "grafana"; path = "/var/lib/grafana/grafana.db"; }
+          { name = "ntfy";    path = "/var/lib/ntfy-sh/user.db"; }
+        ];
+
+        # Quiesce NextCloud during the backup so files + DB agree.
+        nextcloudOccBin = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
+
+        # Retention: 7 daily, 4 weekly, 6 monthly (host default; here explicit).
+        pruneOpts = [ "--keep-daily 7" "--keep-weekly 4" "--keep-monthly 6" ];
+
+        # Failure alerting via ntfy. Requires the `backups` topic + token to
+        # exist before the next rebuild (backup/ntfy-token in sops):
+        #   sudo ntfy user add --role=user backup
+        #   sudo ntfy access backup backups write-only
+        #   sudo ntfy token add backup      # store under backup/ntfy-token in sops
+        notify.enable = true;
+        notify.url = "https://ntfy.acpuchades.com/backups";
+        notify.tokenFile = config.sops.secrets."backup/ntfy-token".path;
       };
 
       my.home-assistant = {
