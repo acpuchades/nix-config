@@ -89,6 +89,7 @@ let
         ../../modules/host-security
         ../../modules/ups-monitor
         ../../modules/backup
+        ../../modules/ntfy-alert
       ];
 
       systemd.network.networks = {
@@ -588,14 +589,8 @@ let
         # Retention: 7 daily, 4 weekly, 6 monthly (host default; here explicit).
         pruneOpts = [ "--keep-daily 7" "--keep-weekly 4" "--keep-monthly 6" ];
 
-        # Failure alerting via ntfy. Requires the `backups` topic + token to
-        # exist before the next rebuild (backup/ntfy-token in sops):
-        #   sudo ntfy user add --role=user backup
-        #   sudo ntfy access backup backups write-only
-        #   sudo ntfy token add backup      # store under backup/ntfy-token in sops
-        notify.enable = true;
-        notify.url = "https://ntfy.acpuchades.com/backups";
-        notify.tokenFile = config.sops.secrets."backup/ntfy-token".path;
+        # Failure alerting is handled by my.ntfy-alert — restic-backups-homeserver
+        # is opted into its failureUnits below.
       };
 
       my.home-assistant = {
@@ -698,6 +693,39 @@ let
         enable = true;
         monitorPasswordFile = config.sops.secrets."nut/monitor".path;
         network.enable = true;
+        # Push power events (on-battery, low-battery, back-online…) to ntfy.
+        notify.command = config.my.ntfy-alert.powerNotifyCommand;
+        notify.environmentFile = config.sops.templates."ntfy/env".path;
+      };
+
+      # Opt-in ntfy alerting. The module forces nothing; alerts fire only for the
+      # units listed here (and the UPS wiring above). One shared ntfy token
+      # (ntfy/token) backs all of it, backup included.
+      my.ntfy-alert = {
+        enable = true;
+        environmentFile = config.sops.templates."ntfy/env".path;
+        # All suitable long-running services whose failure means a real outage.
+        # Bare unit names (no .service). Setup/one-shot units are excluded
+        # (they fail visibly at deploy time, not in steady state).
+        failureUnits = [
+          "restic-backups-homeserver"
+          "postgresql"
+          "redis-nextcloud"
+          "redis-immich"
+          "caddy"
+          "postfix"
+          "vaultwarden"
+          "phpfpm-nextcloud"
+          "nextcloud-cron"
+          "immich-server"
+          "home-assistant"
+          "prefect-server"
+          "ddclient"
+          "openclaw-eva"
+          "bitcoind-main"
+          "upsd"
+          "upsmon"
+        ];
       };
 
 
