@@ -409,6 +409,17 @@ let
         allowedNetworks = privateNetworks;
         # Driverless printers (IPP Everywhere / AirPrint) need no driver package.
         drivers = [];
+        # Network printer at 192.168.2.3, driverless (IPP Everywhere). model =
+        # "everywhere" derives the PPD by querying the device, so the printer must
+        # be reachable at `nixos-rebuild switch` time. Print to it with
+        # `lp -d HomePrinter <file>`.
+        defaultPrinter = "HomePrinter";
+        printers = [{
+          name = "HomePrinter";
+          location = "Home";
+          deviceUri = "ipp://192.168.2.3/ipp/print";
+          model = "everywhere";
+        }];
       };
 
       my.gps-backend = {

