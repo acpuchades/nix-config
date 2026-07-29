@@ -83,7 +83,7 @@ let
         # One compressed custom-format dump per live database, minus the
         # excluded ones (large/re-importable). Enumerated at runtime so new
         # databases are picked up automatically.
-        dbs=$(${asPostgres psql} -tArc \
+        dbs=$(${asPostgres psql} -tAc \
           "SELECT datname FROM pg_database \
              WHERE datistemplate = false AND datallowconn \
                AND datname NOT IN ('postgres'${lib.optionalString (cfg.postgres.excludeDatabases != []) ", ${excludeArg}"});")
