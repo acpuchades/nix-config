@@ -822,6 +822,11 @@ let
           netIsolatedBins = [ "ffmpeg" "ffprobe" "pandoc" "xmllint" ];
         };
         settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
+        # Browser: point at the nix store chromium and disable sandbox (required
+        # on Linux without a user namespace / suid helper). noSandbox reduces
+        # process isolation but is standard for headless server use.
+        settings.browser.executablePath = "/run/current-system/sw/bin/chromium";
+        settings.browser.noSandbox = true;
         # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
         # under channels.imessage, so putting it on the telegram channel tripped
         # the strict schema ("channels.telegram: must NOT have additional
