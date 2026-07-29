@@ -155,7 +155,7 @@ inputs@{ config, lib, pkgs, host, ... }:
     cffconvert
     docker
     git-crypt
-    ntfy
+    ntfy-sh
     prefect
   ];
 
