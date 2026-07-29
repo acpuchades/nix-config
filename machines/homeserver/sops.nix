@@ -99,6 +99,21 @@
       "wifi/network" = { key = "wifi/network"; };
       "wifi/password" = { key = "wifi/password"; };
 
+      # restic backup: repository password + Backblaze B2 credentials. Read at
+      # runtime by the restic-backups-homeserver service, which runs as root, so
+      # default ownership (root 0400) is correct. The repo password ALSO lives
+      # off this server (it is the only thing that decrypts the snapshots).
+      #   Generate the password with: head -c 36 /dev/urandom | base64
+      "backup/restic-password" = { mode = "0400"; };
+      # From the Backblaze B2 Application Key you create for the backup bucket.
+      "backup/b2-account-id" = { mode = "0400"; };   # keyID
+      "backup/b2-account-key" = { mode = "0400"; };  # applicationKey
+      # ntfy access token for the failure alert (Bearer auth). Create it with:
+      #   sudo ntfy user add --role=user backup
+      #   sudo ntfy access backup backups write-only
+      #   sudo ntfy token add backup
+      "backup/ntfy-token" = { mode = "0400"; };
+
       # One SMB password per user (nested samba/<user> branch). Add a line here
       # for each additional user, then store the value with:
       #   sops machines/homeserver/secrets/default.yml
@@ -237,6 +252,16 @@
         mode = "0400";
         content = ''
           home-wlan-psk=${config.sops.placeholder."wifi/password"}
+        '';
+      };
+
+      # Environment file consumed by restic (services.restic.backups.homeserver
+      # environmentFile). restic's native B2 backend reads these two variables.
+      "backup/b2-env" = {
+        mode = "0400";
+        content = ''
+          B2_ACCOUNT_ID=${config.sops.placeholder."backup/b2-account-id"}
+          B2_ACCOUNT_KEY=${config.sops.placeholder."backup/b2-account-key"}
         '';
       };
 
