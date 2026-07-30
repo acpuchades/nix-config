@@ -444,6 +444,18 @@ in
   # attacker-controlled host an injected turn could steer a browser toward.
   settings.browser.ssrfPolicy.hostnameAllowlist = [
     "*.acpuchades.com" # any subdomain; LAN ones still need allowedHostnames below
+    # Google Forms (read + submit). NB forms.google.com is only a 301 stub to
+    # docs.google.com, so the actual form/viewform/formResponse host is
+    # docs.google.com; the rest are its static assets and reCAPTCHA. All
+    # content/asset hosts (public; LAN checks N/A). forms.google.com is kept as
+    # the entry point even though it 301s to docs.google.com. Font hosts are
+    # deliberately omitted — the form still renders/submits with system fonts.
+    "forms.google.com" # Forms entry point (301 → docs.google.com)
+    "docs.google.com" # the form itself + formResponse submit endpoint
+    "www.gstatic.com" # static JS/assets
+    "ssl.gstatic.com" # static assets
+    "*.googleusercontent.com" # images embedded/uploaded in the form
+    "www.google.com" # reCAPTCHA on submit (some forms)
   ];
   settings.browser.ssrfPolicy.allowedHostnames = [
     "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
