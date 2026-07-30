@@ -524,7 +524,7 @@ let
         enable = true;
         hostname = "mail.acpuchades.com";
         origin = "acpuchades.com";
-        # Public identity e.lebbot@acpuchades.com is a Cloudflare Email Routing
+        # Public identity e.nebot@acpuchades.com is a Cloudflare Email Routing
         # alias forwarding to eva@mail.acpuchades.com, which (mailDomain being
         # local) delivers straight to the eva system user's ~/Maildir.
         mailDomain = "mail.acpuchades.com";
