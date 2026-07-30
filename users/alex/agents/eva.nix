@@ -164,6 +164,8 @@ in
       vobject
       python-dateutil
       lxml
+      openpyxl
+      pdfplumber
     ]))
     (rWrapper.override { packages = [ rPackages.tidyverse ]; })
   ];
