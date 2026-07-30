@@ -226,6 +226,8 @@ in
         "en.wiktionary.org" # dictionary (Wiktionary REST)
         "es.wiktionary.org" # dictionary (Spanish)
         "openlibrary.org" # book metadata
+        # Social — Bluesky public AppView (keyless app.bsky.* XRPC, GET-only).
+        "public.api.bsky.app"
       ];
     };
     trustedMail = {
