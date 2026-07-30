@@ -1,11 +1,46 @@
-inputs@{ config, host, ...}:
+inputs@{ config, lib, host, ...}:
+
+let
+  defaultSopsFile = ./secrets/default.yml;
+
+  # SOPS encrypts values but leaves the YAML key structure in plaintext, so the
+  # `git-crypt:` subtree can be walked without decrypting the file. Returns the
+  # "/"-joined path of every leaf below it, relative to `git-crypt:` itself.
+  gitCryptKeys =
+    let
+      lines = lib.splitString "\n" (builtins.readFile defaultSopsFile);
+      step = acc: line:
+        let
+          entry = builtins.match "( *)([^:]+): *(.*)" line;
+          indent = builtins.stringLength (builtins.elemAt entry 0);
+          name = builtins.elemAt entry 1;
+          value = builtins.elemAt entry 2;
+          parents = builtins.filter (p: p.indent < indent) acc.stack;
+        in
+        if !acc.inside then acc // { inside = line == "git-crypt:"; }
+        else if entry == null || indent == 0 then acc // { inside = false; }
+        else {
+          inside = true;
+          stack = parents ++ [ { inherit indent name; } ];
+          # A leaf carries an inline value (ENC[...]); a group does not.
+          keys = acc.keys ++ lib.optional (value != "")
+            (lib.concatStringsSep "/" (map (p: p.name) parents ++ [ name ]));
+        };
+    in
+    (builtins.foldl' step { inside = false; stack = [ ]; keys = [ ]; } lines).keys;
+
+  gitCryptSecrets = lib.genAttrs (map (k: "git-crypt/${k}") gitCryptKeys) (name: {
+    sopsFile = defaultSopsFile;
+    key = name;
+  });
+in
 {
   age.keyFile = "${config.home.homeDirectory}/.config/sops/age/keys.txt";
   age.generateKey = true;
-  defaultSopsFile = ./secrets/default.yml;
+  inherit defaultSopsFile;
   defaultSopsFormat = "yaml";
 
-  secrets = {
+  secrets = gitCryptSecrets // {
 
     "anthropic/token" = {
       sopsFile = ./secrets/${host}.yml;
