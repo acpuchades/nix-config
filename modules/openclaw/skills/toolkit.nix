@@ -13,13 +13,25 @@ pkgs.writeTextDir "toolkit/SKILL.md" ''
 
         # Your installed toolkit
 
-        Everything below is ALREADY installed and importable. Do NOT try to install
-        packages — your environment is a fixed, read-only set you cannot extend at
-        runtime (`pip install` / `install.packages` will not work). If you genuinely
-        need something that is not listed, ASK THE OWNER to add it to the Nix config;
-        do not attempt a workaround. This list is only about what EXISTS — actually
-        running the interpreters/tools (e.g. `python3`, `R`) still follows the security
-        policy and may require approval (see the `policy` skill).
+        Everything below is ALREADY installed and importable. This is YOUR OWN
+        interpreter set — a fixed, read-only Nix closure you cannot extend at runtime,
+        so `pip install` / `install.packages` into it will not work. Never try to
+        install into a global or user-wide library. If you genuinely need something
+        that is not listed here for your everyday work, ASK THE OWNER to add it to the
+        Nix config; do not attempt a workaround.${
+          lib.optionalString icfg.projects.enable ''
+
+            This applies to the tools you reach for by default. It is NOT a rule
+            against project environments: inside a repository that declares its own
+            (a `.envrc`, `pyproject.toml`, `default.nix`, `renv.lock`), you SHOULD use
+            that environment and add dependencies to it the normal way — see the
+            `projects` skill. The prohibition is on polluting your own closure or any
+            system-wide library, not on a project managing its own dependencies.''
+        }
+
+        This list is only about what EXISTS — actually running the interpreters/tools
+        (e.g. `python3`, `R`) still follows the security policy and may require
+        approval (see the `policy` skill).
         ${lib.optionalString (icfg.toolkit.python != [ ]) ''
 
           ## Python libraries

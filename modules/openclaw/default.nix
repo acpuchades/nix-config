@@ -392,6 +392,7 @@ let
       captchaSkillsDir = import ./skills/captcha.nix skillArgs;
       policySkillsDir = import ./skills/policy.nix skillArgs;
       toolkitSkillsDir = import ./skills/toolkit.nix skillArgs;
+      projectsSkillsDir = import ./skills/projects.nix skillArgs;
       toolkitHasContent =
         icfg.toolkit.python != [ ]
         || icfg.toolkit.r != [ ]
@@ -652,6 +653,7 @@ let
         lib.optional icfg.mail.enable "${mailSkillsDir}"
         ++ lib.optional icfg.actions.solveCaptcha.enable "${captchaSkillsDir}"
         ++ lib.optional toolkitHasContent "${toolkitSkillsDir}"
+        ++ lib.optional icfg.projects.enable "${projectsSkillsDir}"
         ++ [ "${policySkillsDir}" ];
       mailConfig = lib.optionalAttrs (moduleSkillDirs != [ ]) {
         skills.load.extraDirs = moduleSkillDirs;
@@ -1059,6 +1061,34 @@ let
           Derive the lists from the same package sets you install (e.g.
           `map (p: p.pname) (pyPkgs python3Packages)`) so the skill cannot drift out of
           sync with what is actually present. Leave every field empty to skip the skill.
+        '';
+      };
+
+      projects = lib.mkOption {
+        type = lib.types.submodule {
+          options = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Render the `projects` SKILL.md for this instance.";
+            };
+          };
+        };
+        default = { };
+        description = ''
+          Teach the agent the Python/R project convention: inside a repository that
+          declares its own environment, use THAT environment (`.envrc` + direnv,
+          `use nix`, a uv virtualenv) rather than the agent's own baked interpreters,
+          and never install into a global or user-wide library. The skill also draws
+          the opposite line — for ad-hoc scratch work in its workspace it should just
+          use the interpreters from `extraPackages`, not bootstrap a virtualenv for a
+          five-line script.
+
+          Purely informational, like `toolkit`: it does NOT bless anything to run
+          unprompted. Only enable it for an instance that can actually ACT on it —
+          `direnv` and `uv` reachable via extraPackages, `rix` in its R library, and a
+          project tree it may write to. Enabling it without the tooling just tells the
+          agent to run commands it does not have.
         '';
       };
 
