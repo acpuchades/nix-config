@@ -15,7 +15,9 @@
   # build. Force-link icu78 (icu4c-78.3, which IS packaged) to supply exactly
   # those symbols. Injected via the r-modules `overrides` hook so dependents
   # (juicyjuice/gt/gtsummary) rebuild against the fixed V8. Drop once nixpkgs
-  # realigns ICU or ships a working r-V8. Last checked: 2026-07-30.
+  # realigns ICU or ships a working r-V8.
+  # Reported upstream: https://github.com/NixOS/nixpkgs/issues/547532
+  # Drop condition: that issue fixed. Last checked: 2026-07-30.
   nixpkgs.overlays = [
     (final: prev: {
       rPackages = prev.rPackages.override {
