@@ -70,7 +70,21 @@ let
     scikit-learn    # classical ML (no GPU needed)
     matplotlib      # plots / model-eval visuals
   ];
-  evaRLibs = rp: with rp; [ tidyverse readxl writexl ];
+  evaRLibs = rp: with rp; [
+    tidyverse
+    readxl
+    writexl
+    # Statistics / modelling
+    lme4        # linear mixed-effects models
+    nlme        # linear/nonlinear mixed-effects models
+    survival    # survival analysis (Surv, coxph, survfit)
+    # Tidy / tables / reporting
+    janitor     # clean_names(), tabyl(), remove_empty()
+    gt          # publication-quality display tables
+    gtsummary   # summary & regression tables (built on gt)
+    rmarkdown
+    quarto      # Quarto R interface — needs the `quarto` CLI (in extraPackages)
+  ];
 in
 {
   # The bot is eva_lebbot, so she gets a real account here: /home/eva,
@@ -186,6 +200,7 @@ in
     imagemagick # `convert`/`magick` image manipulation
     libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
     pandoc # document conversion
+    quarto # Quarto CLI — renders the rPackages.quarto R interface (evaRLibs)
     # OCR engine; `pytesseract` shells out to this binary. Default ships eng
     # only, so bundle the languages eva actually sees (English/Spanish/Catalan).
     (tesseract.override { enableLanguages = [ "eng" "spa" "cat" ]; })
@@ -203,6 +218,7 @@ in
     r = map (p: p.pname) (evaRLibs pkgs.rPackages);
     cli = [
       "pandoc (document conversion)"
+      "quarto (publishing engine — .qmd/.Rmd to HTML/PDF/docx)"
       "tesseract (OCR — languages: eng, spa, cat)"
       "convert / magick (ImageMagick)"
       "ffmpeg / ffprobe"

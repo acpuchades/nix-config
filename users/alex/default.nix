@@ -157,6 +157,9 @@ inputs@{ config, lib, pkgs, host, ... }:
     git-crypt
     ntfy-sh
     prefect
+
+    # Publishing
+    quarto # Quarto CLI — renders the rPackages.quarto R interface
   ];
 
   home.sessionVariables = {
@@ -193,9 +196,17 @@ inputs@{ config, lib, pkgs, host, ... }:
     fs          # tidy filesystem ops
     here        # robust project-relative paths
     scales      # axis/label formatting for ggplot2
+    # Statistics / modelling
+    lme4        # linear mixed-effects models
+    nlme        # linear/nonlinear mixed-effects models
+    survival    # survival analysis (Surv, coxph, survfit)
+    # Tables / summaries
+    gt          # publication-quality display tables
+    gtsummary   # summary & regression tables (built on gt)
     # Reporting (pairs with pandoc)
     knitr
     rmarkdown
+    quarto      # Quarto R interface — needs the `quarto` CLI (in home.packages)
   ];
 
   my.python-dev.extraPackages = ps: with ps; [
