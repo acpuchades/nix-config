@@ -127,8 +127,16 @@
       # openclaw/<agent>/ — each agent is its OWN bot, so a second agent is added
       # as a sibling openclaw/<name>/ subtree. The shared SERVICE API keys are NOT
       # under openclaw: they keep their own service namespaces (anthropic/,
-      # elevenlabs/, google/, openweather/), so any agent references the same key.
-      # `/` in a name maps to a NESTED YAML key.
+      # elevenlabs/, google/, openweather/, 2captcha/), so any agent references the
+      # same key. `/` in a name maps to a NESTED YAML key.
+      #
+      # ACCESS follows that same split, and NO shared key names an agent:
+      #   * IDENTITY secrets are chowned to the single agent they belong to (or
+      #     stay root-owned when systemd reads them as a credential);
+      #   * SERVICE keys are `group = "agents"; mode = "0440";` — the group the
+      #     openclaw module puts every agent user in — so adding a second agent
+      #     grants it the same keys with no edit here. (Not the `openclaw` group:
+      #     that one reads the state tree, i.e. each agent's memory and sessions.)
 
       # eva's Telegram identity, consumed as files by
       # my.openclaw.instances.eva.telegram.{tokenFile,allowedIdFile}. The token is
@@ -141,35 +149,45 @@
         mode = "0400";
       };
 
-      # ElevenLabs API key for eva's reply TTS, rendered into openclaw/elevenlabs-env
+      # ElevenLabs API key for reply TTS, rendered into openclaw/elevenlabs-env
       # below and read by the openclaw service as ELEVENLABS_API_KEY.
       "elevenlabs/token" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
       };
 
       # Anthropic API key. CURRENTLY UNUSED — the claude-cli runtime authenticates
       # via the Claude subscription login, not an API key — kept for an easy switch
       # back to native/API auth. Rendered into openclaw/anthropic-env below.
       "anthropic/token" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
       };
 
-      # Gemini API key for eva's generate-image action
-      # (my.openclaw.instances.eva.actions.generateImage.tokenFile), read at RUNTIME
-      # by the generate-image wrapper (runs AS eva).
+      # Gemini API key for the generate-image action
+      # (my.openclaw.instances.<agent>.actions.generateImage.tokenFile), read at
+      # RUNTIME by the generate-image wrapper (runs AS the agent).
       "google/gemini-token" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
       };
 
-      # OpenWeatherMap API key for eva's check-weather action
-      # (my.openclaw.instances.eva.actions.checkWeather.tokenFile), read at RUNTIME
-      # by the check-weather wrapper (runs AS eva).
+      # OpenWeatherMap API key for the check-weather action
+      # (my.openclaw.instances.<agent>.actions.checkWeather.tokenFile), read at
+      # RUNTIME by the check-weather wrapper (runs AS the agent).
       "openweather/token" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
+      };
+
+      # 2Captcha API key for the solve-captcha action
+      # (my.openclaw.instances.<agent>.actions.solveCaptcha.tokenFile), read at
+      # RUNTIME by the solve-captcha wrapper (runs AS the agent). This one bills per
+      # solve, so it is also the account whose balance `solve-captcha balance`
+      # reports — shared credit, so every agent on it spends the same pot.
+      "2captcha/token" = {
+        group = "agents";
+        mode = "0440";
       };
 
     };
@@ -292,8 +310,8 @@
       # (the subscription login is used instead), kept for a quick switch back.
       # Reads anthropic/token.
       "openclaw/anthropic-env" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
         content = ''
           ANTHROPIC_API_KEY=${config.sops.placeholder."anthropic/token"}
         '';
@@ -303,8 +321,8 @@
       # eva's service; the elevenlabs provider reads ELEVENLABS_API_KEY. Reads
       # elevenlabs/token.
       "openclaw/elevenlabs-env" = {
-        owner = "eva";
-        mode = "0400";
+        group = "agents";
+        mode = "0440";
         content = ''
           ELEVENLABS_API_KEY=${config.sops.placeholder."elevenlabs/token"}
         '';

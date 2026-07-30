@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+#
+# solve-captcha — solve a CAPTCHA through the 2Captcha API (human/AI solving
+# farm). Generic and identity-agnostic: the API key file, the endpoint, the
+# allowed page hosts, the image root and the timeouts are all injected by the
+# nix wrapper (see the my.openclaw.actions.solveCaptcha options); nothing is
+# hardcoded here. Prints the solution token (or text) on stdout, so it can be
+# fed straight back into the page by the browser tool.
+#
+# Usage:
+#   solve-captcha recaptcha-v2 --url URL --sitekey KEY [--invisible] [--enterprise] [--data-s VAL]
+#   solve-captcha recaptcha-v3 --url URL --sitekey KEY [--action NAME] [--min-score N] [--enterprise]
+#   solve-captcha hcaptcha     --url URL --sitekey KEY [--invisible]
+#   solve-captcha turnstile    --url URL --sitekey KEY [--action NAME] [--cdata VAL]
+#   solve-captcha funcaptcha   --url URL --sitekey KEY
+#   solve-captcha image        FILE|-  [--phrase] [--numeric N] [--math]
+#                                      [--min-len N] [--max-len N] [--hint TEXT]
+#   solve-captcha balance
+#
+#   --url URL       the page the captcha is on (host-gated, see below)
+#   --sitekey KEY   the site key read off the page (data-sitekey / k= / render=)
+#   --json          print the full API result instead of just the token
+#   --timeout SEC   give up after SEC seconds (default 180)
+#
+# ONLY the "…Proxyless" task types are reachable: this wrapper builds the task
+# JSON itself from the flags above and never accepts a raw task object, so no
+# proxy/User-Agent/cookie fields can be smuggled in — the solving farm cannot be
+# turned into a relay to an arbitrary host. The page URL is additionally matched
+# against the nix-pinned host globs, so a prompt-injected agent cannot point it
+# at a site the owner has not blessed. Image captchas are read from the agent's
+# own tree only.
+#
+# Environment (all pinned by the wrapper):
+#   CAPTCHA_TOKEN_FILE     file with the 2Captcha API key (read at runtime) (required)
+#   CAPTCHA_API_BASE       API base (default https://api.2captcha.com)
+#   CAPTCHA_ALLOWED_SITES  space-separated host globs for --url; empty = any
+#   CAPTCHA_IMAGE_ROOT     dir an image FILE must sit under (default: $HOME)
+#   CAPTCHA_TIMEOUT        seconds to wait for a solution (default 180)
+#   CAPTCHA_POLL_INTERVAL  seconds between result polls (default 5)
+#   CAPTCHA_SOFT_ID        2Captcha softId, if the deployment has one
+# The wrapper also puts curl/jq/coreutils on PATH.
+#
+set -euo pipefail
+
+: "${CAPTCHA_TOKEN_FILE:?CAPTCHA_TOKEN_FILE not set}"
+API_BASE="${CAPTCHA_API_BASE:-https://api.2captcha.com}"
+TIMEOUT="${CAPTCHA_TIMEOUT:-180}"
+POLL="${CAPTCHA_POLL_INTERVAL:-5}"
+
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+
+die()    { echo "solve-captcha: $*" >&2; exit 1; }
+refuse() { echo "solve-captcha: refused: $*" >&2; exit 3; }
+
+[ $# -ge 1 ] || { usage >&2; exit 2; }
+KIND="$1"; shift
+case "$KIND" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+URL=""; SITEKEY=""; ACTION=""; MINSCORE=""; DATA_S=""; CDATA=""
+INVISIBLE=false; ENTERPRISE=false; JSON=0
+IMAGE=""; PHRASE=false; NUMERIC=0; MATH=false; MINLEN=0; MAXLEN=0; HINT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --url)        URL="${2?missing value for --url}"; shift 2 ;;
+    --sitekey|-k) SITEKEY="${2?missing value for --sitekey}"; shift 2 ;;
+    --action)     ACTION="${2?missing value for --action}"; shift 2 ;;
+    --min-score)  MINSCORE="${2?missing value for --min-score}"; shift 2 ;;
+    --data-s)     DATA_S="${2?missing value for --data-s}"; shift 2 ;;
+    --cdata)      CDATA="${2?missing value for --cdata}"; shift 2 ;;
+    --invisible)  INVISIBLE=true; shift ;;
+    --enterprise) ENTERPRISE=true; shift ;;
+    --phrase)     PHRASE=true; shift ;;
+    --math)       MATH=true; shift ;;
+    --numeric)    NUMERIC="${2?missing value for --numeric}"; shift 2 ;;
+    --min-len)    MINLEN="${2?missing value for --min-len}"; shift 2 ;;
+    --max-len)    MAXLEN="${2?missing value for --max-len}"; shift 2 ;;
+    --hint)       HINT="${2?missing value for --hint}"; shift 2 ;;
+    --timeout)    TIMEOUT="${2?missing value for --timeout}"; shift 2 ;;
+    --json)       JSON=1; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    -*)           echo "solve-captcha: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *)            if [ -z "$IMAGE" ]; then IMAGE="$1"; shift; else echo "solve-captcha: unexpected argument: $1" >&2; exit 2; fi ;;
+  esac
+done
+
+# The page host must match one of the nix-pinned globs. Same parse as
+# request-trusted-url: take the authority between :// and the first /?# , drop
+# any userinfo (everything up to the last @) and the :port, so
+# "https://trusted.com@evil.com/" is tested as evil.com and refused.
+check_site() {
+  local url=$1 rest authority hostport host pat
+  case "$url" in
+    http://*|https://*) ;;
+    *) refuse "only http:// and https:// page URLs are allowed" ;;
+  esac
+  rest=${url#*://}
+  authority=${rest%%[/?#]*}
+  hostport=${authority##*@}
+  host=${hostport%%:*}
+  host=$(printf '%s' "$host" | tr 'A-Z' 'a-z')
+  [ -n "$host" ] || refuse "could not parse a host from the URL"
+  [ -n "${CAPTCHA_ALLOWED_SITES:-}" ] || return 0
+  for pat in $CAPTCHA_ALLOWED_SITES; do
+    # shellcheck disable=SC2254 -- $pat is a deliberate glob (e.g. *.example.com)
+    case "$host" in
+      $pat) return 0 ;;
+    esac
+  done
+  refuse "host '$host' is not an allowed captcha site"
+}
+
+need_page() {
+  [ -n "$URL" ]     || { echo "solve-captcha: $KIND needs --url" >&2; exit 2; }
+  [ -n "$SITEKEY" ] || { echo "solve-captcha: $KIND needs --sitekey" >&2; exit 2; }
+  check_site "$URL"
+}
+
+[ -r "$CAPTCHA_TOKEN_FILE" ] || die "token file not readable: $CAPTCHA_TOKEN_FILE"
+TOKEN="$(tr -d '\r\n' < "$CAPTCHA_TOKEN_FILE")"
+[ -n "$TOKEN" ] || die "token file is empty: $CAPTCHA_TOKEN_FILE"
+
+REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"; TASK_FILE="$(mktemp)"; IMG_B64_FILE=""
+cleanup() { rm -f "$REQ_FILE" "$RESP_FILE" "$TASK_FILE" "$IMG_B64_FILE"; }
+trap cleanup EXIT
+
+# POST a JSON body (file) to an API method, leaving the response in $RESP_FILE.
+api_post() {
+  local method=$1 body=$2 code
+  code="$(curl -sS --max-time 60 \
+    -X POST "${API_BASE}/${method}" \
+    -H "Content-Type: application/json" \
+    -d "@${body}" \
+    -o "$RESP_FILE" \
+    -w "%{http_code}")" || die "request to ${method} failed"
+  case "$code" in
+    2*) ;;
+    *) die "${method}: HTTP $code — $(cat "$RESP_FILE")" ;;
+  esac
+  local err
+  err="$(jq -r '.errorId // 0' "$RESP_FILE")"
+  if [ "$err" != "0" ]; then
+    die "API error: $(jq -r '.errorCode // "unknown"' "$RESP_FILE") — $(jq -r '.errorDescription // ""' "$RESP_FILE")"
+  fi
+}
+
+# `balance` short-circuits: no task, just the account credit.
+if [ "$KIND" = "balance" ]; then
+  jq -n --arg key "$TOKEN" '{clientKey:$key}' > "$REQ_FILE"
+  api_post getBalance "$REQ_FILE"
+  if [ "$JSON" = 1 ]; then jq . "$RESP_FILE"; else jq -r '.balance' "$RESP_FILE"; fi
+  exit 0
+fi
+
+# Build the task object. The `type` is chosen HERE from the subcommand — the
+# caller never supplies it — so only proxyless task types can ever be created.
+case "$KIND" in
+  recaptcha-v2)
+    need_page
+    jq -n --arg url "$URL" --arg key "$SITEKEY" --arg ds "$DATA_S" \
+          --argjson inv "$INVISIBLE" --argjson ent "$ENTERPRISE" '
+      { type: (if $ent then "RecaptchaV2EnterpriseTaskProxyless" else "RecaptchaV2TaskProxyless" end),
+        websiteURL: $url, websiteKey: $key, isInvisible: $inv }
+      + (if $ds == "" then {} else { recaptchaDataSValue: $ds } end)
+    ' > "$TASK_FILE"
+    ;;
+  recaptcha-v3)
+    need_page
+    jq -n --arg url "$URL" --arg key "$SITEKEY" --arg act "$ACTION" --arg min "$MINSCORE" \
+          --argjson ent "$ENTERPRISE" '
+      { type: "RecaptchaV3TaskProxyless", websiteURL: $url, websiteKey: $key, isEnterprise: $ent }
+      + (if $act == "" then {} else { pageAction: $act } end)
+      + (if $min == "" then {} else { minScore: ($min | tonumber) } end)
+    ' > "$TASK_FILE"
+    ;;
+  hcaptcha)
+    need_page
+    jq -n --arg url "$URL" --arg key "$SITEKEY" --argjson inv "$INVISIBLE" '
+      { type: "HCaptchaTaskProxyless", websiteURL: $url, websiteKey: $key, isInvisible: $inv }
+    ' > "$TASK_FILE"
+    ;;
+  turnstile)
+    need_page
+    jq -n --arg url "$URL" --arg key "$SITEKEY" --arg act "$ACTION" --arg cd "$CDATA" '
+      { type: "TurnstileTaskProxyless", websiteURL: $url, websiteKey: $key }
+      + (if $act == "" then {} else { action: $act } end)
+      + (if $cd  == "" then {} else { data: $cd } end)
+    ' > "$TASK_FILE"
+    ;;
+  funcaptcha)
+    need_page
+    jq -n --arg url "$URL" --arg key "$SITEKEY" '
+      { type: "FunCaptchaTaskProxyless", websiteURL: $url, websitePublicKey: $key }
+    ' > "$TASK_FILE"
+    ;;
+  image)
+    [ -n "$IMAGE" ] || { echo "solve-captcha: image needs a FILE (or - for stdin)" >&2; exit 2; }
+    IMG_B64_FILE="$(mktemp)"
+    if [ "$IMAGE" = "-" ]; then
+      base64 -w0 | tr -d '\n' > "$IMG_B64_FILE"
+    else
+      real="$(realpath -e -- "$IMAGE")" || die "image not found: $IMAGE"
+      # Confine image captchas to the agent's own tree (or the configured root),
+      # so a screenshot of a captcha can be solved but an out-of-tree file (a
+      # secret, someone else's document) cannot be shipped to the solving farm.
+      root="${CAPTCHA_IMAGE_ROOT:-${HOME:-}}"
+      if [ -n "$root" ]; then
+        realroot="$(realpath -e -- "$root")" || die "image root missing: $root"
+        case "$real/" in
+          "$realroot"/*) ;;
+          *) refuse "image must be under $realroot (got $real)" ;;
+        esac
+      fi
+      base64 -w0 "$real" | tr -d '\n' > "$IMG_B64_FILE"
+    fi
+    jq -n --rawfile body "$IMG_B64_FILE" --arg hint "$HINT" \
+          --argjson phrase "$PHRASE" --argjson math "$MATH" \
+          --argjson numeric "$NUMERIC" --argjson minlen "$MINLEN" --argjson maxlen "$MAXLEN" '
+      { type: "ImageToTextTask", body: $body, phrase: $phrase, math: $math, numeric: $numeric }
+      + (if $minlen > 0 then { minLength: $minlen } else {} end)
+      + (if $maxlen > 0 then { maxLength: $maxlen } else {} end)
+      + (if $hint == "" then {} else { comment: $hint } end)
+    ' > "$TASK_FILE"
+    ;;
+  *)
+    echo "solve-captcha: unknown captcha type: $KIND" >&2; usage >&2; exit 2 ;;
+esac
+
+# createTask — the task JSON goes in via --slurpfile, so a base64 image body
+# never rides on argv (it would overrun ARG_MAX).
+jq -n --arg key "$TOKEN" --arg soft "${CAPTCHA_SOFT_ID:-}" --slurpfile task "$TASK_FILE" '
+  { clientKey: $key, task: $task[0] }
+  + (if $soft == "" then {} else { softId: ($soft | tonumber) } end)
+' > "$REQ_FILE"
+api_post createTask "$REQ_FILE"
+
+TASK_ID="$(jq -r '.taskId // empty' "$RESP_FILE")"
+[ -n "$TASK_ID" ] || die "no taskId returned: $(cat "$RESP_FILE")"
+
+# Poll for the result. 2Captcha asks for a few seconds' grace before the first
+# poll (the task is still being handed to a worker), hence the leading sleep.
+jq -n --arg key "$TOKEN" --arg id "$TASK_ID" '{clientKey:$key, taskId:($id|tonumber)}' > "$REQ_FILE"
+WAITED=0
+while :; do
+  sleep "$POLL"
+  WAITED=$(( WAITED + POLL ))
+  api_post getTaskResult "$REQ_FILE"
+  STATUS="$(jq -r '.status // "processing"' "$RESP_FILE")"
+  [ "$STATUS" = "ready" ] && break
+  if [ "$WAITED" -ge "$TIMEOUT" ]; then
+    die "timed out after ${TIMEOUT}s waiting for task $TASK_ID (still $STATUS)"
+  fi
+done
+
+if [ "$JSON" = 1 ]; then
+  jq . "$RESP_FILE"
+else
+  # One line, ready to paste back into the page: reCAPTCHA/FunCaptcha return
+  # gRecaptchaResponse, hCaptcha/Turnstile a token, image captchas plain text.
+  SOLUTION="$(jq -r '.solution | (.gRecaptchaResponse // .token // .text // empty)' "$RESP_FILE")"
+  [ -n "$SOLUTION" ] || die "solved, but no known solution field: $(jq -c '.solution' "$RESP_FILE")"
+  printf '%s\n' "$SOLUTION"
+fi
