@@ -299,6 +299,52 @@ let
               ) "--set WEATHER_API_BASE ${lib.escapeShellArg icfg.actions.checkWeather.apiBase}"}
           '';
 
+      # `solve-captcha`: the generic actions/solve-captcha script wrapped so the API
+      # key file, the endpoint, the allowed page hosts, the image root and the
+      # timeouts are pinned by nix — the script stays generic and the agent can
+      # neither swap the code nor widen the host set. Destination-pinned (always the
+      # configured 2Captcha endpoint) AND self-gating on the page host, so it is safe
+      # to bless whole-binary. Two properties keep it from becoming an outbound
+      # channel: the wrapper BUILDS the task JSON itself from flags (only the
+      # "…Proxyless" task types exist for the agent, so no proxy/UA/cookie fields can
+      # be smuggled in and the farm cannot be used as a relay), and the page URL must
+      # match allowedSites. What the agent does control — the page URL, the site key
+      # and an image body — is low-bandwidth and goes only to 2Captcha; the image is
+      # additionally confined to its own tree. NB: the API key stays a runtime FILE
+      # (tokenFile), never a nix value, so it does not enter the store or this repo.
+      solveCaptchaBin =
+        pkgs.runCommandLocal "openclaw-solve-captcha" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/solve-captcha} $out/libexec/solve-captcha
+            makeWrapper $out/libexec/solve-captcha $out/bin/solve-captcha \
+              --prefix PATH : ${
+                lib.makeBinPath [
+                  pkgs.curl
+                  pkgs.jq
+                  pkgs.coreutils
+                ]
+              } \
+              --set CAPTCHA_TOKEN_FILE ${lib.escapeShellArg icfg.actions.solveCaptcha.tokenFile} \
+              --set CAPTCHA_ALLOWED_SITES ${
+                lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.solveCaptcha.allowedSites)
+              } \
+              --set CAPTCHA_TIMEOUT ${toString icfg.actions.solveCaptcha.timeoutSeconds} \
+              --set CAPTCHA_POLL_INTERVAL ${toString icfg.actions.solveCaptcha.pollIntervalSeconds} \
+              ${
+                lib.optionalString (
+                  icfg.actions.solveCaptcha.imageRoot != null
+                ) "--set CAPTCHA_IMAGE_ROOT ${lib.escapeShellArg icfg.actions.solveCaptcha.imageRoot}"
+              } \
+              ${
+                lib.optionalString (
+                  icfg.actions.solveCaptcha.softId != null
+                ) "--set CAPTCHA_SOFT_ID ${lib.escapeShellArg icfg.actions.solveCaptcha.softId}"
+              } \
+              ${lib.optionalString (
+                icfg.actions.solveCaptcha.apiBase != null
+              ) "--set CAPTCHA_API_BASE ${lib.escapeShellArg icfg.actions.solveCaptcha.apiBase}"}
+          '';
+
       # `check-calendar`: list upcoming events from an .ics calendar (python +
       # icalendar + recurring-ical-events). It takes the calendar SOURCE directly
       # — an https:// URL (fetched by DELEGATING to request-trusted-url, so the
@@ -420,6 +466,77 @@ let
           what you are answering, so threads stay intact.
       '';
 
+      # The solve-captcha skill: the WORKFLOW around the wrapper, which is the part
+      # an agent cannot guess — a solver returns a token, and the token still has to
+      # be planted in the right hidden field (and the right callback fired) for the
+      # page to accept it. Shipped only when the action is enabled, rendered
+      # immutably into the store and loaded via skills.load.extraDirs like the rest.
+      captchaSkillsDir = pkgs.writeTextDir "solve-captcha/SKILL.md" ''
+        ---
+        name: solve-captcha
+        description: Solve a CAPTCHA that blocks a page you are working on (reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile, FunCaptcha, or a plain image captcha) with the `solve-captcha` command, and plant the returned token so the form submits. Use it when a browser task stalls on a captcha or a form refuses to submit because of one.
+        ---
+
+        # Solving a CAPTCHA
+
+        `solve-captcha` sends the captcha to the 2Captcha solving service and prints
+        the solution on stdout. It runs WITHOUT approval, but only for pages on the
+        allowed host list${
+          lib.optionalString (icfg.actions.solveCaptcha.allowedSites != [ ]) ''
+             (${lib.concatStringsSep ", " icfg.actions.solveCaptcha.allowedSites})''
+        }; any other page is refused outright, so do not try to route
+        around it — ask the owner to add the host instead.
+
+        Each solve costs the owner real money and takes ~10–60s. Solve a captcha
+        because it stands between you and a task you were ASKED to do — never
+        speculatively, and never in a loop: if a solution is rejected twice, stop and
+        report it rather than burning credit.
+
+        ## 1. Identify the captcha and read its site key
+
+        With the page open in the browser, the site key is in the DOM:
+
+        - **reCAPTCHA v2**: `div.g-recaptcha[data-sitekey]`, or the `k=` parameter of
+          the `/recaptcha/api2/anchor?...` iframe `src`.
+        - **reCAPTCHA v3**: the `render=` parameter of the `api.js` script tag.
+        - **hCaptcha**: `div.h-captcha[data-sitekey]`.
+        - **Turnstile**: `div.cf-turnstile[data-sitekey]`.
+        - **Image captcha**: no key — screenshot just the image into your workspace.
+
+        ## 2. Solve
+
+            solve-captcha recaptcha-v2 --url "<page-url>" --sitekey "<key>"
+            solve-captcha recaptcha-v2 --url "<page-url>" --sitekey "<key>" --invisible
+            solve-captcha recaptcha-v3 --url "<page-url>" --sitekey "<key>" --action submit
+            solve-captcha hcaptcha     --url "<page-url>" --sitekey "<key>"
+            solve-captcha turnstile    --url "<page-url>" --sitekey "<key>"
+            solve-captcha image        captcha.png
+            solve-captcha balance                      # remaining account credit
+
+        The `--url` MUST be the page the captcha is actually on (same origin as the
+        form) — the solving service binds the token to it, so a wrong URL yields a
+        token the page rejects. Write the token to a file rather than piping it into
+        another command; a pipe adds a segment that can trip the exec gate.
+
+        ## 3. Plant the token
+
+        A solution is only accepted if it lands where the page's own script looks for
+        it. Set the hidden field, then trigger the callback:
+
+        - **reCAPTCHA v2**: fill `textarea#g-recaptcha-response` (make it visible
+          first if needed) with the token, then call the widget's `data-callback`
+          function if the form has one.
+        - **reCAPTCHA v3**: pass the token as the form/request parameter the site
+          expects (often `g-recaptcha-response` or a custom field).
+        - **hCaptcha**: fill BOTH `textarea[name=h-captcha-response]` and
+          `textarea[name=g-recaptcha-response]`.
+        - **Turnstile**: fill `input[name=cf-turnstile-response]`.
+        - **Image captcha**: type the printed text into the answer input.
+
+        Then submit the form normally and confirm it went through — a page that
+        silently re-renders the captcha means the token was not accepted.
+      '';
+
       # Always-on policy skill. Kept in ENGLISH (even though eva converses in
       # Spanish) so the security-critical wording stays precise and unambiguous — the
       # conversation language and the policy language need not match, and security
@@ -506,7 +623,21 @@ let
               API, so it runs WITHOUT approval). Write the PNG into your workspace; an
               optional `--reference` subject/style image must live under your $HOME:
                   generate-image --out out.png --prompt "a labelled diagram of ..."
-                  generate-image --out out.png --reference <your-image> --prompt "..."''}
+                  generate-image --out out.png --reference <your-image> --prompt "..."''}${lib.optionalString icfg.actions.solveCaptcha.enable ''
+
+            - **Solve a CAPTCHA** blocking a page you are working on with
+              `solve-captcha` (destination-fixed to the solving API, so it runs
+              WITHOUT approval). It prints the token; the `solve-captcha` SKILL has
+              the full workflow (finding the site key, planting the token):
+                  solve-captcha recaptcha-v2 --url "<page-url>" --sitekey "<key>"
+                  solve-captcha turnstile --url "<page-url>" --sitekey "<key>"
+                  solve-captcha image captcha.png
+              Only pages on the allowed host list${
+                lib.optionalString (icfg.actions.solveCaptcha.allowedSites != [ ])
+                  " (${lib.concatStringsSep ", " icfg.actions.solveCaptcha.allowedSites})"
+              } can be solved; anything else is
+              refused. Each solve costs the owner money, so use it to unblock a task
+              you were asked to do — not speculatively, and never in a retry loop.''}
 
         ## Requires approval (or is forbidden)
 
@@ -534,7 +665,7 @@ let
 
         | You need           | Use                     | Do NOT use            |
         |--------------------|-------------------------|-----------------------|
-        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n    | Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n    | Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n    | Generate an image  | `generate-image`        | —                     |"}
+        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n    | Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n    | Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n    | Generate an image  | `generate-image`        | —                     |"}${lib.optionalString icfg.actions.solveCaptcha.enable "\n    | Get past a CAPTCHA | `solve-captcha`         | manual guessing       |"}
         | Send mail          | `send-trusted-mail`${lib.optionalString icfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${
           lib.optionalString (icfg.exec.netIsolatedBins != [ ]) ''
 
@@ -810,6 +941,10 @@ let
             ++ lib.optionals icfg.actions.generateImage.enable [ "generate-image" ]
             # check-weather is destination-pinned to the configured weather endpoint.
             ++ lib.optionals icfg.actions.checkWeather.enable [ "check-weather" ]
+            # solve-captcha is destination-pinned to the configured solving endpoint
+            # AND self-gates the page host against allowedSites, so blessing the whole
+            # binary opens no destination the operator has not already blessed.
+            ++ lib.optionals icfg.actions.solveCaptcha.enable [ "solve-captcha" ]
             # check-calendar only ever does local .ics parsing plus a fetch that
             # DELEGATES to the host-gated request-trusted-url binary, so blessing it
             # whole-binary opens no exfil channel beyond what request-trusted-url
@@ -823,10 +958,14 @@ let
 
       # Skill directories the module ships, loaded between the module defaults and
       # the host's icfg.settings (so the host can still override but need not wire
-      # them): the check-email skill (when mail is on) and the always-on policy
-      # skill that tells the agent what it may/must-not do and to prefer the
-      # sanctioned action wrappers over raw tools.
-      moduleSkillDirs = lib.optional icfg.mail.enable "${mailSkillsDir}" ++ [ "${policySkillsDir}" ];
+      # them): the check-email skill (when mail is on), the solve-captcha workflow
+      # skill (when that action is on) and the always-on policy skill that tells the
+      # agent what it may/must-not do and to prefer the sanctioned action wrappers
+      # over raw tools.
+      moduleSkillDirs =
+        lib.optional icfg.mail.enable "${mailSkillsDir}"
+        ++ lib.optional icfg.actions.solveCaptcha.enable "${captchaSkillsDir}"
+        ++ [ "${policySkillsDir}" ];
       mailConfig = lib.optionalAttrs (moduleSkillDirs != [ ]) {
         skills.load.extraDirs = moduleSkillDirs;
       };
@@ -936,6 +1075,7 @@ let
       ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
       ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
       ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
+      ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
       ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ icfg.extraPackages;
 
@@ -946,6 +1086,14 @@ let
         createHome = true;
         shell = pkgs.bashInteractive;
         description = "OpenClaw agent";
+        # Every agent is a member of `agents`, the group that reads the SHARED
+        # service API keys (the image/weather/captcha/TTS tokens). Those are
+        # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
+        # account — so the secret is group-readable rather than chowned to whichever
+        # agent happened to be configured first. Deliberately NOT the `openclaw`
+        # group below: that one reads the state TREE, and putting agents in it would
+        # let each agent read every other agent's memory and sessions.
+        extraGroups = [ "agents" ];
         # Local-only identity: no password, no keys, and sshd refuses it outright
         # (below), so the account can be inhabited from a root session on this box
         # and nowhere else. `!` is an invalid hash — it matches nothing.
@@ -959,6 +1107,18 @@ let
       # agent's primary group — it owns its files as itself, and this is only an
       # ACL over the state tree. Join it with users.users.<name>.extraGroups.
       users.groups.openclaw = { };
+
+      # Read access to the SHARED service secrets — API keys that belong to a
+      # SERVICE, not to an agent (2Captcha, OpenWeatherMap, Gemini, ElevenLabs …).
+      # Every agent user joins it (see extraGroups above), so such a secret is
+      # granted once with `group = "agents"; mode = "0440";` and every agent —
+      # present and future — can read it, with no agent name anywhere in the secret
+      # declaration. Agent-IDENTITY secrets (a Telegram bot token and its
+      # allowlisted ID) are the opposite case: they stay owned by the one agent they
+      # belong to. Named generically because the membership is "is an agent on this
+      # host", not "is an OpenClaw instance" — a future non-OpenClaw agent joins the
+      # same group and inherits the same key access.
+      users.groups.agents = { };
 
       # Belt and braces on top of the empty password/key set: an authorized_keys
       # file or password added later cannot silently open remote access. Covers
@@ -1743,6 +1903,92 @@ let
               Override the API base URL (default OpenWeatherMap data/2.5). The
               wrapper uses raw curl, so whatever host this resolves to must be
               reachable; it is not bound by trustedSites.
+            '';
+          };
+        };
+        solveCaptcha = {
+          enable = lib.mkEnableOption ''
+            the `solve-captcha` action: solve a CAPTCHA blocking a page the agent is
+            working on (reCAPTCHA v2/v3, hCaptcha, Turnstile, FunCaptcha, or a plain
+            image captcha) through the 2Captcha API, printing the solution token.
+            Destination-fixed to the configured endpoint and self-gating on the page
+            host, so it is blessed whole-binary; it also ships a `solve-captcha` skill
+            with the token-planting workflow. Needs `tokenFile` set.
+
+            Two things keep this from becoming an outbound channel: the wrapper builds
+            the task JSON itself from flags, so only the "…Proxyless" task types are
+            reachable (no proxy/User-Agent/cookie fields — the solving farm cannot be
+            used as a relay), and the page URL must match `allowedSites`. Note the
+            capability itself is anti-anti-automation and costs real money per solve:
+            keep `allowedSites` to the pages the agent is actually meant to drive'';
+          tokenFile = lib.mkOption {
+            type = lib.types.str;
+            example = "/run/secrets/openclaw-2captcha-token";
+            description = ''
+              Path to a file holding the 2Captcha API key (single line), read at
+              RUNTIME — a `str` path (not a `path`), so the key never enters the store
+              or this public repo. Point it at a sops-nix secret or any out-of-band
+              file the agent can read.
+            '';
+          };
+          allowedSites = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            example = [ "docs.google.com" ];
+            description = ''
+              Shell globs matched against the host of the `--url` (the page the
+              captcha sits on), with the same parse as
+              `actions.requestUrl.trustedSites`: case-insensitive, userinfo stripped,
+              so `trusted.com@evil.com` is tested as evil.com. A captcha on any other
+              page is refused. EMPTY (the default) means NO host restriction — set it,
+              normally to the hosts the agent's browser may navigate to
+              (`settings.browser.ssrfPolicy.hostnameAllowlist`), so a prompt-injected
+              agent cannot spend the owner's credit solving captchas elsewhere.
+            '';
+          };
+          imageRoot = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "/home/eva";
+            description = ''
+              Directory an image-captcha FILE must resolve under, so a screenshot of a
+              captcha can be solved but an out-of-tree file (a secret, someone else's
+              document) cannot be uploaded to the solving service. Null falls back to
+              the agent's $HOME at runtime — a boundary without a nix-hardcoded path,
+              same as `generateImage.referenceRoot`.
+            '';
+          };
+          timeoutSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 180;
+            description = ''
+              How long to wait for a solution before giving up. A reCAPTCHA typically
+              comes back in 10–60s; overridable per call with `--timeout`.
+            '';
+          };
+          pollIntervalSeconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 5;
+            description = "Seconds between result polls (also the delay before the first poll).";
+          };
+          softId = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "1234";
+            description = ''
+              Optional 2Captcha `softId` (developer/software id) sent with each task.
+              Null omits it.
+            '';
+          };
+          apiBase = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "https://api.2captcha.com";
+            description = ''
+              Override the API base URL (default https://api.2captcha.com). Set this to
+              target an API-compatible service (e.g. a rucaptcha/anti-captcha-style
+              endpoint). The wrapper uses raw curl, so whatever host this resolves to
+              must be reachable; it is not bound by trustedSites.
             '';
           };
         };

@@ -21,6 +21,28 @@ let
     "acaravacapuchades@uoc.edu"
     "acaravpu55@alumnes.ub.edu"
   ];
+
+  # Hosts eva's BROWSER may navigate to. Defined ONCE and shared by BOTH gates
+  # that must agree on "pages eva is allowed to be on": the browser SSRF
+  # hostnameAllowlist (settings.browser.ssrfPolicy below) and the solve-captcha
+  # page-host gate (actions.solveCaptcha.allowedSites). Keeping them one list is
+  # what stops eva from being steered into spending captcha credit on a page she
+  # could not have browsed to in the first place.
+  evaBrowsableSites = [
+    "*.acpuchades.com" # any subdomain; LAN ones still need allowedHostnames below
+    # Google Forms (read + submit). NB forms.google.com is only a 301 stub to
+    # docs.google.com, so the actual form/viewform/formResponse host is
+    # docs.google.com; the rest are its static assets and reCAPTCHA. All
+    # content/asset hosts (public; LAN checks N/A). forms.google.com is kept as
+    # the entry point even though it 301s to docs.google.com. Font hosts are
+    # deliberately omitted — the form still renders/submits with system fonts.
+    "forms.google.com" # Forms entry point (301 → docs.google.com)
+    "docs.google.com" # the form itself + formResponse submit endpoint
+    "www.gstatic.com" # static JS/assets
+    "ssl.gstatic.com" # static assets
+    "*.googleusercontent.com" # images embedded/uploaded in the form
+    "www.google.com" # reCAPTCHA on submit (some forms)
+  ];
 in
 {
   # The bot is eva_lebbot, so she gets a real account here: /home/eva,
@@ -263,6 +285,25 @@ in
     # above) AND lists upcoming events in one command; it also accepts a local
     # file/stdin. Replaces the old request-trusted-url | parse-ics pipe.
     checkCalendar.enable = true;
+    # CAPTCHA solving via 2Captcha, so a form eva was asked to fill (Google Forms
+    # in particular — that is why www.google.com/reCAPTCHA is a browsable host)
+    # doesn't dead-end on a challenge she cannot answer. The API key is a runtime
+    # file she reads through the `agents` group; the endpoint is pinned by nix and
+    # only the proxyless task types are reachable, so the solving farm can't
+    # double as a relay.
+    #
+    # allowedSites is the real limit: it is the SAME list as the browser SSRF
+    # allowlist, so eva can only solve a captcha on a page she is allowed to be on
+    # — a prompt-injected turn cannot spend the account's credit on someone else's
+    # site. Image captchas are confined to her own $HOME (imageRoot unset → $HOME).
+    # Each solve costs money; the skill tells her to use it to unblock an assigned
+    # task, never speculatively or in a retry loop. Check credit with
+    # `solve-captcha balance`.
+    solveCaptcha = {
+      enable = true;
+      tokenFile = config.sops.secrets."2captcha/token".path;
+      allowedSites = evaBrowsableSites;
+    };
   };
 
   # Exec policy: allowlist + confirm-on-miss, via the module's first-class
@@ -442,21 +483,10 @@ in
   # subdomain passes both. The apex itself is NOT covered (`*.` is
   # subdomains-only). github.com stays OUT — the one plausibly
   # attacker-controlled host an injected turn could steer a browser toward.
-  settings.browser.ssrfPolicy.hostnameAllowlist = [
-    "*.acpuchades.com" # any subdomain; LAN ones still need allowedHostnames below
-    # Google Forms (read + submit). NB forms.google.com is only a 301 stub to
-    # docs.google.com, so the actual form/viewform/formResponse host is
-    # docs.google.com; the rest are its static assets and reCAPTCHA. All
-    # content/asset hosts (public; LAN checks N/A). forms.google.com is kept as
-    # the entry point even though it 301s to docs.google.com. Font hosts are
-    # deliberately omitted — the form still renders/submits with system fonts.
-    "forms.google.com" # Forms entry point (301 → docs.google.com)
-    "docs.google.com" # the form itself + formResponse submit endpoint
-    "www.gstatic.com" # static JS/assets
-    "ssl.gstatic.com" # static assets
-    "*.googleusercontent.com" # images embedded/uploaded in the form
-    "www.google.com" # reCAPTCHA on submit (some forms)
-  ];
+  # Shared with solve-captcha's page-host gate (see evaBrowsableSites above), so
+  # the pages she may browse and the pages she may solve a captcha on are the
+  # same set by construction.
+  settings.browser.ssrfPolicy.hostnameAllowlist = evaBrowsableSites;
   settings.browser.ssrfPolicy.allowedHostnames = [
     "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
     "home.acpuchades.com" # home dashboard (resolves into LAN)
