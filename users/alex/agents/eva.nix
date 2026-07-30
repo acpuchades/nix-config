@@ -156,7 +156,7 @@ in
   mail = {
     enable = true;
     manageMaildir = true;
-    fromAddress = "e.lebbot@acpuchades.com";
+    fromAddress = "e.nebot@acpuchades.com";
     # Shared with send-trusted-mail (see evaTrustedMailRecipients) so the
     # two outbound wrappers never drift. These send unprompted; any other
     # recipient falls through to the approval gate.
