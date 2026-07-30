@@ -43,6 +43,34 @@ let
     "*.googleusercontent.com" # images embedded/uploaded in the form
     "www.google.com" # reCAPTCHA on submit (some forms)
   ];
+
+  # Eva's Python + R library sets, defined ONCE as functions so BOTH the
+  # interpreter wrappers (extraPackages below) and the `toolkit` skill
+  # (toolkit.python / toolkit.r) read the SAME source. The skill lists are derived
+  # with `map (p: p.pname) …`, so the inventory advertised to eva can never drift
+  # from what is actually installed — add a package here and it appears in both.
+  evaPythonLibs = ps: with ps; [
+    requests
+    icalendar
+    vobject
+    python-dateutil
+    lxml
+    openpyxl
+    pdfplumber
+    # Document handling
+    pandas          # dataframe layer over openpyxl/pdfplumber/CSV; widest interop
+    polars          # faster dataframe for larger data (CPU, multi-threaded)
+    python-docx     # read/write .docx (Word)
+    python-pptx     # read/write .pptx (PowerPoint)
+    pytesseract     # OCR wrapper (needs the `tesseract` binary in extraPackages)
+    beautifulsoup4  # HTML parsing/cleanup
+    markdownify     # HTML -> Markdown
+    # Ad-hoc CPU modelling
+    numpy
+    scikit-learn    # classical ML (no GPU needed)
+    matplotlib      # plots / model-eval visuals
+  ];
+  evaRLibs = rp: with rp; [ tidyverse readxl writexl ];
 in
 {
   # The bot is eva_lebbot, so she gets a real account here: /home/eva,
@@ -158,17 +186,42 @@ in
     imagemagick # `convert`/`magick` image manipulation
     libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
     pandoc # document conversion
-    (python3.withPackages (ps: with ps; [
-      requests
-      icalendar
-      vobject
-      python-dateutil
-      lxml
-      openpyxl
-      pdfplumber
-    ]))
-    (rWrapper.override { packages = [ rPackages.tidyverse ]; })
+    # OCR engine; `pytesseract` shells out to this binary. Default ships eng
+    # only, so bundle the languages eva actually sees (English/Spanish/Catalan).
+    (tesseract.override { enableLanguages = [ "eng" "spa" "cat" ]; })
+    (python3.withPackages evaPythonLibs)
+    (rWrapper.override { packages = evaRLibs rPackages; })
   ];
+
+  # Capability inventory rendered into the `toolkit` skill so eva KNOWS what she
+  # already has (installing it grants the capability but does not tell her).
+  # python/r are derived from the same sets she installs (evaPythonLibs/evaRLibs),
+  # so they cannot drift. Informational only — running the interpreters is still
+  # gated by the exec policy; the skill says so.
+  toolkit = {
+    python = map (p: p.pname) (evaPythonLibs pkgs.python3Packages);
+    r = map (p: p.pname) (evaRLibs pkgs.rPackages);
+    cli = [
+      "pandoc (document conversion)"
+      "tesseract (OCR — languages: eng, spa, cat)"
+      "convert / magick (ImageMagick)"
+      "ffmpeg / ffprobe"
+      "chromium (headless browser)"
+      "xmllint"
+      "lp / lpstat (CUPS printing)"
+    ];
+    notes = ''
+      Import names differ from install names for some Python libs: scikit-learn ->
+      `import sklearn`, beautifulsoup4 -> `import bs4`, python-docx -> `import docx`,
+      python-pptx -> `import pptx`.
+
+      OCR: tesseract carries English/Spanish/Catalan data — select with `-l spa` /
+      `-l cat` on the CLI, or `pytesseract.image_to_string(img, lang="spa")`.
+
+      This host has NO GPU. Use CPU-friendly methods (scikit-learn) for modelling;
+      no deep-learning frameworks (torch/TensorFlow/CUDA) are installed.
+    '';
+  };
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
   # These addresses (all the owner's own) send with no approval; every
