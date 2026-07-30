@@ -180,6 +180,22 @@ inputs@{ config, lib, pkgs, host, ... }:
   my.r-dev.extraPackages = with pkgs.rPackages; [
     gitignore
     tidyverse
+    # Spreadsheets / tabular I/O
+    readxl      # read .xls/.xlsx
+    writexl     # fast, minimal .xlsx writer
+    openxlsx    # styled / multi-sheet .xlsx (formulas, formatting)
+    readODS     # LibreOffice/Collabora .ods
+    janitor     # clean_names(), tabyl(), remove_empty() — tidy messy imports
+    # Database (homeserver PostgreSQL; pairs with dbplyr in tidyverse)
+    DBI
+    RPostgres
+    # Project / file utilities
+    fs          # tidy filesystem ops
+    here        # robust project-relative paths
+    scales      # axis/label formatting for ggplot2
+    # Reporting (pairs with pandoc)
+    knitr
+    rmarkdown
   ];
 
   my.python-dev.extraPackages = ps: with ps; [
