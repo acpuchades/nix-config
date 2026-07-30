@@ -74,6 +74,9 @@ let
     tidyverse
     readxl
     writexl
+    # Project environments — generates a pinned default.nix for an R project she
+    # clones, which `use nix` + direnv then loads (see the `projects` skill).
+    rix
     # Statistics / modelling
     lme4        # linear mixed-effects models
     nlme        # linear/nonlinear mixed-effects models
@@ -196,6 +199,12 @@ in
   extraPackages = with pkgs; [
     chromium # browser automation via CDP (OpenClaw browser tool)
     cups # `lp`/`lpr`/`lpstat`/… CUPS client tools (submit/query/cancel print jobs)
+    # Project-environment tooling, for repos she clones into her own tree. Without
+    # these the `projects` skill would tell her to run commands she does not have:
+    # direnv loads a project's .envrc, uv manages a Python project's virtualenv.
+    # (`nix-shell`/`nix develop`, for `use nix` projects, come from the system.)
+    direnv
+    uv
     ffmpeg # full ffmpeg (STT already pulls ffmpeg-headless; this adds codecs)
     imagemagick # `convert`/`magick` image manipulation
     libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
@@ -217,6 +226,9 @@ in
     python = map (p: p.pname) (evaPythonLibs pkgs.python3Packages);
     r = map (p: p.pname) (evaRLibs pkgs.rPackages);
     cli = [
+      "direnv (loads a project's .envrc — see the `projects` skill)"
+      "uv (Python project/virtualenv manager — `uv venv`, `uv add`)"
+      "nix-shell / nix develop (enters a `use nix` project environment)"
       "pandoc (document conversion)"
       "quarto (publishing engine — .qmd/.Rmd to HTML/PDF/docx)"
       "tesseract (OCR — languages: eng, spa, cat)"
@@ -238,6 +250,19 @@ in
       no deep-learning frameworks (torch/TensorFlow/CUDA) are installed.
     '';
   };
+
+  # Repos she clones into her own tree get worked on through THEIR declared
+  # environment, not her baked interpreters. The tooling this assumes is in
+  # extraPackages (direnv, uv) and evaRLibs (rix) above; the skill also tells her
+  # NOT to bootstrap an env for ad-hoc scratch work, where the baked python3/R are
+  # the right tool.
+  #
+  # rix is the load-bearing one for R: it emits a default.nix that PINS its own
+  # nixpkgs (the rstats-on-nix fork, whose binaries the cachix substituter in
+  # modules/r-dev/system.nix already serves) instead of `import <nixpkgs> {}`. That
+  # keeps a project self-contained and sidesteps the host's ICU/V8 skew entirely —
+  # which is why she needs no per-user overlay to build gt/gtsummary in a project.
+  projects.enable = true;
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
   # These addresses (all the owner's own) send with no approval; every
