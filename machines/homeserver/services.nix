@@ -85,14 +85,66 @@
     # workflows build here instead of on GitHub-hosted runners. Runs under a
     # systemd DynamicUser (the module's default) with the usual hardening; the
     # token file is only ever read by the root-run ExecStartPre, so the sops
-    # secret stays root-owned. Note that `self-hosted`/`Linux`/`X64` are already
-    # applied by GitHub as default labels — these extras are redundant but
-    # harmless (deduped case-insensitively).
+    # secret stays root-owned. No extraLabels: GitHub already applies
+    # `self-hosted`/`Linux`/`X64` as default labels (noDefaultLabels = false).
+    #
+    # The repo's .github/workflows/deploy.yml is `make build` + an rsync of
+    # public/ into $DEPLOY_PATH — which is this host's own web root, so the
+    # deploy is a local copy, not an ssh one.
     github-runners.acpuchades-site = {
       enable = true;
       url = "https://github.com/acpuchades/acpuchades-site";
       tokenFile = config.sops.secrets."github-runner/acpuchades-site".path;
-      extraLabels = [ "self-hosted" "linux" "x64" ];
+
+      # The module's own PATH is only bash/coreutils/git/tar/gzip/nix (node for
+      # JS actions comes bundled with the runner), so everything `make build`
+      # shells out to has to be listed here:
+      #   * go      — the Blowfish theme is a Hugo Module (go.mod, no _vendor/),
+      #               so hugo shells out to `go` to fetch it on a fresh checkout.
+      #   * python3 — the CV PDF renderer (WeasyPrint) and the PII guard. Built
+      #               with withPackages rather than the repo's uv venv on
+      #               purpose: WeasyPrint dlopen()s Pango/HarfBuzz/fontconfig,
+      #               and programs.nix-ld cannot help here — it exports
+      #               NIX_LD_LIBRARY_PATH through environment.variables, which a
+      #               systemd service never sees. Fonts are not needed: the CV
+      #               print CSS @font-face's the woff2 files out of the repo.
+      #               The workflow passes `make build PY=python3` to override the
+      #               Makefile's hardcoded .venv/bin/python (a command-line
+      #               assignment beats the `:=` in the file).
+      extraPackages = with pkgs; [
+        gnumake
+        hugo
+        go
+        rsync
+        (python3.withPackages (ps: with ps; [ weasyprint pyyaml pypdf ]))
+      ];
+
+      # Take over an existing GitHub-side runner of the same name instead of
+      # failing on it. The module purges the state directory and re-registers
+      # whenever the registration config changes — that set is {ephemeral,
+      # extraLabels, name, noDefaultLabels, runnerGroup, tokenFile, url,
+      # workDir}, so e.g. touching extraLabels is enough. The purge destroys the
+      # credentials the old registration would have deregistered with, leaving
+      # an orphan on GitHub that the next `configure` collides with ("A runner
+      # exists with the same name"). Without --replace that is a hard failure
+      # and the unit will not start; `replace` is itself outside the hashed set,
+      # so setting it does not trigger yet another registration.
+      replace = true;
+
+      user = "acpuchades-site";
+      group = "acpuchades-site";
+
+      serviceOverrides = {
+        # ProtectSystem = "strict" leaves the whole filesystem read-only apart
+        # from the unit's own state/runtime/logs dirs, so the deploy step's
+        # target has to be punched back through.
+        ReadWritePaths = [ "/var/www/acpuchades.com" ];
+
+        # The module defaults to 0066, which would have hugo write public/ as
+        # 0600 — and `rsync -a` preserves those bits, so the deployed site would
+        # be unreadable by caddy. 0022 gives the usual 0644/0755.
+        UMask = "0022";
+      };
     };
 
     # OpenSSH
@@ -137,4 +189,12 @@
     };
 
   };
+
+  # Web root for www.acpuchades.com (my.web-server.virtualHosts). Setgid so the
+  # tree the runner rsyncs in keeps the group, and group-writable so alex can
+  # still deploy over ssh by hand. Not recursive — this only fixes the top
+  # directory; the contents get their ownership from whoever last deployed.
+  systemd.tmpfiles.rules = [
+    "d /var/www/acpuchades.com 2775 acpuchades-site acpuchades-site -"
+  ];
 }
