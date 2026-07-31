@@ -510,7 +510,6 @@ let
       captchaSkillsDir = import ./skills/captcha.nix skillArgs;
       policySkillsDir = import ./skills/policy.nix skillArgs;
       toolkitSkillsDir = import ./skills/toolkit.nix skillArgs;
-      projectsSkillsDir = import ./skills/projects.nix skillArgs;
       toolkitHasContent =
         icfg.toolkit.python != [ ]
         || icfg.toolkit.r != [ ]
@@ -770,18 +769,26 @@ let
         };
       };
 
-      # Skill directories the module ships, loaded between the module defaults and
+      # Skill directories loaded for this instance, between the module defaults and
       # the host's icfg.settings (so the host can still override but need not wire
-      # them): the check-email skill (when mail is on), the solve-captcha workflow
-      # skill (when that action is on) and the always-on policy skill that tells the
-      # agent what it may/must-not do and to prefer the sanctioned action wrappers
-      # over raw tools.
+      # them). The GENERATED ones come first: check-email (when mail is on),
+      # solve-captcha (when that action is on), toolkit (when an inventory was
+      # given) and the always-on policy skill that tells the agent what it
+      # may/must-not do and to prefer the sanctioned action wrappers over raw tools.
+      # Each exists because it is DERIVED from this instance's config — recipients,
+      # trusted hosts, installed packages — and a hand-written copy would go stale.
+      # Static, prose-only skills (a working method, a convention) are the host's to
+      # supply as markdown via icfg.extraSkillDirs; the module has no opinion on them.
       moduleSkillDirs =
         lib.optional icfg.mail.enable "${mailSkillsDir}"
         ++ lib.optional icfg.actions.solveCaptcha.enable "${captchaSkillsDir}"
         ++ lib.optional toolkitHasContent "${toolkitSkillsDir}"
-        ++ lib.optional icfg.projects.enable "${projectsSkillsDir}"
-        ++ [ "${policySkillsDir}" ];
+        ++ [ "${policySkillsDir}" ]
+        # Static SKILL.md trees supplied by the host (icfg.extraSkillDirs). They go
+        # through the SAME staging copy as the generated ones — a skill tree handed
+        # in as a plain directory still lands in the store, so it would hit the
+        # hardlink guard described below exactly like the generated dirs do.
+        ++ map (d: "${d}") icfg.extraSkillDirs;
 
       # WHY WE STAGE SKILLS INTO A WRITABLE DIR INSTEAD OF POINTING extraDirs AT THE
       # STORE:
@@ -1267,31 +1274,28 @@ let
         '';
       };
 
-      projects = lib.mkOption {
-        type = lib.types.submodule {
-          options = {
-            enable = lib.mkOption {
-              type = lib.types.bool;
-              default = false;
-              description = "Render the `projects` SKILL.md for this instance.";
-            };
-          };
-        };
-        default = { };
+      extraSkillDirs = lib.mkOption {
+        type = lib.types.listOf lib.types.path;
+        default = [ ];
+        example = lib.literalExpression "[ ./skills ]";
         description = ''
-          Teach the agent the Python/R project convention: inside a repository that
-          declares its own environment, use THAT environment (`.envrc` + direnv,
-          `use nix`, a uv virtualenv) rather than the agent's own baked interpreters,
-          and never install into a global or user-wide library. The skill also draws
-          the opposite line — for ad-hoc scratch work in its workspace it should just
-          use the interpreters from `extraPackages`, not bootstrap a virtualenv for a
-          five-line script.
+          Extra skill trees to load for this instance, as directories of static
+          `<name>/SKILL.md` files (a directory may hold several). They are staged and
+          loaded exactly like the ones this module generates.
 
-          Purely informational, like `toolkit`: it does NOT bless anything to run
-          unprompted. Only enable it for an instance that can actually ACT on it —
-          `direnv` and `uv` reachable via extraPackages, `rix` in its R library, and a
-          project tree it may write to. Enabling it without the tooling just tells the
-          agent to run commands it does not have.
+          This is where WORKING-METHOD skills belong — a way of processing mail, a
+          project convention, a house style — as opposed to the skills the module
+          renders itself (`policy`, `check-email`, `solve-captcha`, `toolkit`), which
+          exist because they must be DERIVED from this instance's configuration and
+          would go stale the moment they were written by hand. Content that is just
+          prose is better kept as prose: a `.md` file reads and diffs as markdown
+          instead of as a Nix string literal, and the module stays agnostic about
+          which methods a given agent follows.
+
+          Paths are copied into the store, so the tree is still reproducible and
+          pinned by the flake — the agent cannot edit its way out of one of these.
+          For a skill the agent should be able to revise itself, put it in its
+          workspace instead and leave it out of nix entirely.
         '';
       };
 
