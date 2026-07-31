@@ -94,6 +94,11 @@ in
   # her own workspace.
   user = "eva";
 
+  # Her human name, so mail she sends arrives as `Eva Nebot <e.nebot@...>` rather
+  # than a bare address (the send wrappers pass it to sendmail as -F, and it is
+  # also the account's GECOS name).
+  fullName = "Eva Nebot";
+
   # Execution backend: the "claude-cli" runtime, which reuses a Claude Code
   # subscription login on this host (`claude -p`) so the flat subscription
   # pays instead of per-token API spend — switched back 2026-07-27 to cut
@@ -398,6 +403,13 @@ in
     # above) AND lists upcoming events in one command; it also accepts a local
     # file/stdin. Replaces the old request-trusted-url | parse-ics pipe.
     checkCalendar.enable = true;
+    # Calendar invitations she can actually RSVP to. A .ics attached by hand
+    # arrives as a file with no accept/decline — the client only offers that for a
+    # `text/calendar; method=REQUEST` part whose ATTENDEE is the recipient, which
+    # is what this composes. It only writes the message; the send still goes
+    # through send-trusted-mail / send-email, so the recipient gates are unchanged
+    # and there is no invitation-shaped way around them.
+    makeInvite.enable = true;
     # CAPTCHA solving via 2Captcha, so a form eva was asked to fill (Google Forms
     # in particular — that is why www.google.com/reCAPTCHA is a browsable host)
     # doesn't dead-end on a challenge she cannot answer. The API key is a runtime

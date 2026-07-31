@@ -191,7 +191,8 @@ let
           # Confidential recipients are refused here (see mail.gpg): being on the
           # unprompted list does not make a cleartext send to them acceptable.
           ++ encryptOnlyWrapArgs
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
         pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
@@ -205,8 +206,15 @@ let
       # through to the exec `ask` gate — the data-exfiltration guard.
       mailAllowlist = map (addr: "send-email ${addr}") icfg.mail.unpromptedRecipients;
 
+      # How the agent's own identity is shown to it in the skills — the same string
+      # a recipient sees, so `From:` in the skill matches `From:` in the mailbox.
       mailFromDisplay =
-        if icfg.mail.fromAddress == null then "the agent's configured address" else icfg.mail.fromAddress;
+        if icfg.mail.fromAddress == null then
+          "the agent's configured address"
+        else if icfg.fullName == "" then
+          icfg.mail.fromAddress
+        else
+          "${icfg.fullName} <${icfg.mail.fromAddress}>";
 
       # --- confidential mail (OpenPGP) — see options.my.openclaw.mail.gpg -------
       gpgCfg = icfg.mail.gpg;
@@ -270,7 +278,8 @@ let
             "--prefix PATH : ${lib.makeBinPath [ pkgs.gnupg pkgs.coreutils ]}"
           ]
           ++ lib.optional (gpgCfg.fingerprint != null) "--set SIGN_KEY ${lib.escapeShellArg gpgCfg.fingerprint}"
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
         pkgs.runCommandLocal "openclaw-send-encrypted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
@@ -341,7 +350,8 @@ let
             "--set TRUSTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.trustedMail.trustedAddresses)}"
           ]
           ++ encryptOnlyWrapArgs
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
         pkgs.runCommandLocal "openclaw-send-trusted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
@@ -483,6 +493,30 @@ let
             install -Dm0755 ${./actions/check-calendar} $out/libexec/check-calendar
             makeWrapper $out/libexec/check-calendar $out/bin/check-calendar \
               --prefix PATH : ${lib.makeBinPath [ checkCalendarPython requestUrlBin ]}
+          '';
+
+      # `make-invite`: composes an iTIP calendar invitation on stdout — it does NOT
+      # send. The agent redirects it into one of the EXISTING senders
+      # (`send-trusted-mail addr < invite.eml`, or `send-email addr < invite.eml`),
+      # so an invitation is gated by exactly the recipient rules already in force
+      # and no second self-limiting sender has to be kept in step with the trusted
+      # list. Composing text reaches no network and has no destination, so this is
+      # safe whole-binary. The identity is pinned here, not passed as an argument:
+      # the ORGANIZER must match the From: the mail finally goes out with, and both
+      # now come from the same MAIL_FROM/MAIL_FROM_NAME pair.
+      makeInviteBin =
+        let
+          wrapArgs = [
+            "--prefix PATH : ${lib.makeBinPath [ pkgs.coreutils ]}"
+          ]
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
+        in
+        pkgs.runCommandLocal "openclaw-make-invite" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/make-invite} $out/libexec/make-invite
+            makeWrapper $out/libexec/make-invite $out/bin/make-invite \
+              ${lib.concatStringsSep " \\\n  " wrapArgs}
           '';
 
       # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
@@ -762,7 +796,11 @@ let
             # DELEGATES to the host-gated request-trusted-url binary, so blessing it
             # whole-binary opens no exfil channel beyond what request-trusted-url
             # already allows.
-            ++ lib.optionals icfg.actions.checkCalendar.enable [ "check-calendar" ];
+            ++ lib.optionals icfg.actions.checkCalendar.enable [ "check-calendar" ]
+            # make-invite only writes a message to stdout — no network, no send, no
+            # destination of any kind — so the whole binary is safe. What it composes
+            # still has to pass a SENDER's recipient gate to go anywhere.
+            ++ lib.optionals icfg.actions.makeInvite.enable [ "make-invite" ];
         }
         // lib.optionalAttrs (icfg.exec.safeBinProfiles != { }) {
           safeBinProfiles = icfg.exec.safeBinProfiles;
@@ -900,6 +938,13 @@ let
           message = "my.openclaw.memorySearch: provider = \"local\" requires memorySearch.localModelPath (a GGUF embedding model, e.g. via pkgs.fetchurl).";
         }
         {
+          # An invitation with no ORGANIZER is not an invitation — clients drop it,
+          # or show it as a plain event with nobody to RSVP to. The script refuses at
+          # runtime too, but a misconfigured instance should not get that far.
+          assertion = icfg.actions.makeInvite.enable -> icfg.mail.fromAddress != null;
+          message = "my.openclaw.instances.${name}.actions.makeInvite: needs mail.fromAddress — it becomes the invitation's ORGANIZER, which clients require to match the sender.";
+        }
+        {
           assertion = icfg.mail.gpg.enable -> icfg.mail.enable;
           message = "my.openclaw.instances.${name}.mail.gpg: requires mail.enable — confidential mail is the mail capability, encrypted.";
         }
@@ -960,6 +1005,7 @@ let
       ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
       ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
       ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
+      ++ lib.optionals icfg.actions.makeInvite.enable [ makeInviteBin ]
       ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
       ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ icfg.extraPackages;
@@ -970,7 +1016,10 @@ let
         home = homeDir;
         createHome = true;
         shell = pkgs.bashInteractive;
-        description = "OpenClaw agent";
+        # GECOS. Postfix's sendmail(1) reads the full name from here when no -F is
+        # given, so keeping it in sync with icfg.fullName means anything the agent
+        # sends outside the wrappers still carries the same name.
+        description = if icfg.fullName == "" then "OpenClaw agent" else icfg.fullName;
         # Every agent is a member of `agents`, the group that reads the SHARED
         # service API keys (the image/weather/captcha/TTS tokens). Those are
         # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
@@ -1271,6 +1320,27 @@ let
           Derive the lists from the same package sets you install (e.g.
           `map (p: p.pname) (pyPkgs python3Packages)`) so the skill cannot drift out of
           sync with what is actually present. Leave every field empty to skip the skill.
+        '';
+      };
+
+      fullName = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Eva Nebot";
+        description = ''
+          The agent's human name. Empty means it has none, and mail goes out as a
+          bare address.
+
+          Honored when sending: all three send wrappers pass it to sendmail as
+          `-F`, so Postfix writes `From: <fullName> <mail.fromAddress>` on the mail
+          they submit, and the `check-email` skill shows the agent that same
+          identity as the one fixed for it. Postfix applies `-F` only to a message
+          with NO `From:` header of its own — which is the case here, since the
+          skill tells the agent not to write one and the wrappers pin the sender
+          rather than taking it from the message.
+
+          It also becomes the account's GECOS name, so the agent has one name
+          across mail and the host rather than two.
         '';
       };
 
@@ -2094,6 +2164,19 @@ let
               must be reachable; it is not bound by trustedSites.
             '';
           };
+        };
+        makeInvite = {
+          enable = lib.mkEnableOption ''
+            the `make-invite` action: compose a calendar INVITATION (iTIP) that the
+            recipient's mail client offers to accept or decline, instead of a .ics
+            file it can only save. It writes the message to stdout and sends
+            nothing — the agent redirects it into `send-trusted-mail` or
+            `send-email`, so an invitation is gated by the recipient rules already
+            in force and there is no second self-limiting sender to keep in step.
+            Needs `mail.fromAddress` (it becomes the ORGANIZER, which clients
+            require to match the From: the mail goes out with); `fullName`, when
+            set, becomes the organizer's display name. Blessed whole-binary:
+            composing text has no destination and reaches no network'';
         };
         checkCalendar = {
           enable = lib.mkEnableOption ''

@@ -42,8 +42,16 @@ for r in "$@"; do
 done
 
 sendmail=${SENDMAIL:-sendmail}
-if [ -n "${MAIL_FROM:-}" ]; then
-  exec "$sendmail" -i -f "$MAIL_FROM" -- "$@"
-else
-  exec "$sendmail" -i -- "$@"
+
+# Same identity handling as send-email: `--` first so a recipient can never be
+# read as a flag, then -f (envelope sender) and -F (the display name Postfix puts
+# in the From: header it generates), both pinned by the module.
+set -- -- "$@"
+if [ -n "${MAIL_FROM_NAME:-}" ]; then
+  set -- -F "$MAIL_FROM_NAME" "$@"
 fi
+if [ -n "${MAIL_FROM:-}" ]; then
+  set -- -f "$MAIL_FROM" "$@"
+fi
+
+exec "$sendmail" -i "$@"
