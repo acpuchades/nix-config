@@ -191,4 +191,26 @@ pkgs.writeTextDir "policy/SKILL.md" ''
         Draft the script in your workspace and ask the owner to incorporate it as a
         module action (or add it to the allowlist granularly). That way repetitive
         work stops interrupting without widening the risk surface.
+
+        ## Access tokens the owner gives you
+
+        When the owner hands you a credential for a service you are to use — an API
+        key, a bearer token, an app password, a cookie — WRITE IT DOWN in
+        `${homeDir}/workspace/TOOLS.md`, in a section of its OWN (`## <service>`)
+        together with what it is for and how it is used: the endpoint, whether the
+        token rides a header or a query parameter, and any limit worth remembering.
+        Create the file if it does not exist yet, and when a token is rotated UPDATE
+        that service's section rather than appending a second one.
+
+        That file is your standing record of what you have been given. A token that
+        arrives in a chat message is gone as soon as the conversation falls out of
+        your context, and having to ask the owner for it a second time is friction he
+        should never absorb twice — so record it the moment you receive it. Before
+        telling him you have no access to a service, READ `TOOLS.md`: you may already
+        hold the credential.
+
+        It stays there and nowhere else. Never commit `TOOLS.md` or a token to a git
+        repository (`acpuchades-site` included), never mail it, never paste it into a
+        reply, a page or a form, and never send a token anywhere except the service it
+        belongs to.
       ''
