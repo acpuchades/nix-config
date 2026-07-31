@@ -17,6 +17,17 @@
 
   brews = [
     "mas"
+    # WeasyPrint (acpuchades-site's CV PDF renderer) dlopen()s Pango/GLib at import
+    # time. scripts/build-cv-pdf.py re-execs itself with DYLD_FALLBACK_LIBRARY_PATH
+    # set to `brew --prefix`/lib, so Homebrew is the prefix dyld gets pointed at.
+    # Declared here because onActivation.cleanup = "uninstall" would otherwise
+    # remove a manually-installed formula on the next rebuild. GLib, HarfBuzz and
+    # fontconfig arrive as Pango's dependencies; `brew bundle` cleanup leaves the
+    # dependencies of listed formulae alone.
+    #
+    # The homeserver runs the same project but has no Homebrew — there the libs
+    # come from programs.nix-ld.libraries in machines/homeserver/settings.nix.
+    "pango"
   ];
 
   casks = [

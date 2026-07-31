@@ -97,6 +97,16 @@
   programs.nix-ld.libraries = with pkgs; [
     stdenv.cc.cc.lib # libstdc++.so.6, libgcc_s
     zlib
+
+    # WeasyPrint (acpuchades-site's CV PDF renderer, run from a uv-managed venv
+    # under ~/projects) dlopen()s these by soname at import time rather than
+    # linking them, so they have to be findable at runtime — nix-ld's aggregate
+    # lib dir is on the loader search path for foreign binaries, and that path
+    # serves dlopen too, not just startup linking. pangoft2 ships inside pango.
+    glib # libgobject-2.0.so.0
+    pango # libpango-1.0.so.0, libpangoft2-1.0.so.0
+    harfbuzz # libharfbuzz.so.0, libharfbuzz-subset.so.0
+    fontconfig # libfontconfig.so.1 (nix-ld maps getLib over this list)
   ];
 
   security.sudo.wheelNeedsPassword = true;
