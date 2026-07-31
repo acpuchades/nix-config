@@ -30,6 +30,29 @@ pkgs.writeTextDir "policy/SKILL.md" ''
           `/var/lib/openclaw`), in `/tmp`, and in the `acpuchades-site` repository:
           create, copy, move, delete and change permissions (`mkdir`, `cp`, `mv`,
           `rm`, `chmod`, …). All bounded by permissions to those paths.
+        - **Build & preview static sites** with `hugo` — no approval needed:
+          - **Build**: run `hugo` (optionally with flags such as `--minify`) from
+            inside the site's directory to compile it into `public/`. This is a
+            one-shot command that returns when the build finishes.
+          - **Preview** (the `make serve` equivalent): `hugo server` runs a
+            live-reload web server. It is a LONG-RUNNING process that does NOT
+            return, so start it in the BACKGROUND — otherwise it hangs your turn
+            waiting for a command that never exits. Bind it to the LAN and hand the
+            owner a link built from THIS host's LAN address, so he can open the
+            preview in his own browser (the default `hugo server`, with no
+            `--bind`, listens on loopback only and is NOT reachable from his
+            machine — which is why you bind `0.0.0.0` and give the LAN URL):
+                # 1. find this host's LAN address (the 192.168.2.x one)
+                ip -4 -o addr show scope global
+                # 2. start the preview in the BACKGROUND, reachable on the LAN
+                hugo server --bind 0.0.0.0 --baseURL "http://<lan-ip>/" --port 1313 &
+            Then reply to the owner with the URL `http://<lan-ip>:1313/`. The LAN
+            already permits this port, so the link works with no firewall change.
+            Stop the server when he is done previewing (`pkill hugo`, or kill the
+            PID you backgrounded) — do not leave it running indefinitely.
+          - `hugo deploy` (publishes the built site to a remote bucket) and
+            `hugo mod …` (fetches modules over the network) still REQUIRE approval,
+            like `git push` — publishing and network fetches are gated.
         - **LOCAL git**: `add`, `commit`, `branch`, `merge`, `rebase`, `restore`,
           `stash`, `tag`, … The boundary is the REMOTE.
         - **Read-only local tools**: `cat`, `ls`, `grep`, `rg`, `jq`, `find`, … (no

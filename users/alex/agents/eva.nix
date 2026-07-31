@@ -209,7 +209,7 @@ in
     imagemagick # `convert`/`magick` image manipulation
     libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
     pandoc # document conversion
-    hugo # static-site generator — builds the acpuchades-site repo she maintains
+    hugo # static-site generator (build + `hugo server` live preview)
     quarto # Quarto CLI — renders the rPackages.quarto R interface (evaRLibs)
     # OCR engine; `pytesseract` shells out to this binary. Default ships eng
     # only, so bundle the languages eva actually sees (English/Spanish/Catalan).
@@ -231,7 +231,7 @@ in
       "uv (Python project/virtualenv manager — `uv venv`, `uv add`)"
       "nix-shell / nix develop (enters a `use nix` project environment)"
       "pandoc (document conversion)"
-      "hugo (static-site generator — builds the acpuchades-site repo)"
+      "hugo (static-site generator — build + local preview; see the policy skill for the serve workflow)"
       "quarto (publishing engine — .qmd/.Rmd to HTML/PDF/docx)"
       "tesseract (OCR — languages: eng, spa, cat)"
       "convert / magick (ImageMagick)"
@@ -525,13 +525,13 @@ in
       "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
       "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
       "nixos-version*"
-      # hugo — build + local preview of the acpuchades-site she maintains.
+      # hugo — build + local preview of static sites.
       # This is the SAFE answer to "let her run `make serve`": hugo is a
       # bounded transform (no template function spawns a shell), so unlike
       # `make`/`npm run` it can't be turned into an arbitrary-exec primitive by
-      # a recipe she writes into the repo she has write access to. So `hugo`,
-      # not `make`, is what's blessed for the site — a blessed `make` would be
-      # identical to a blessed `bash`, since she controls the Makefile.
+      # a recipe she writes into a repo she has write access to. So `hugo`, not
+      # `make`, is what's blessed — a blessed `make` would be identical to a
+      # blessed `bash`, since she controls the Makefile.
       #   "hugo"      — bare build (no subcommand IS the build in hugo)
       #   "hugo -*"   — build with flags (`--minify`, `-D`, `--gc`…); a
       #                 subcommand never starts with `-`, so this stays a build
