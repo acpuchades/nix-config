@@ -253,18 +253,33 @@ in
     '';
   };
 
-  # Repos she clones into her own tree get worked on through THEIR declared
-  # environment, not her baked interpreters. The tooling this assumes is in
-  # extraPackages (direnv, uv) and evaRLibs (rix) above; the skill also tells her
-  # NOT to bootstrap an env for ad-hoc scratch work, where the baked python3/R are
-  # the right tool.
+  # Eva's own working-method skills, as plain markdown under ./skills (one
+  # directory per skill, each holding a SKILL.md). They are hers, not the module's:
+  # the module only generates the skills it must DERIVE from config (policy,
+  # check-email, solve-captcha, toolkit), and prose belongs in a .md file where it
+  # reads and diffs as prose. Both are staged and loaded exactly like the generated
+  # ones.
   #
-  # rix is the load-bearing one for R: it emits a default.nix that PINS its own
-  # nixpkgs (the rstats-on-nix fork, whose binaries the cachix substituter in
-  # modules/r-dev/system.nix already serves) instead of `import <nixpkgs> {}`. That
-  # keeps a project self-contained and sidesteps the host's ICU/V8 skew entirely —
-  # which is why she needs no per-user overlay to build gt/gtsummary in a project.
-  projects.enable = true;
+  # - `gtd`: how she processes anything that arrives — capture/clarify/organize/
+  #   reflect/engage, the markdown lists under ~/workspace/gtd, and the disposition
+  #   of EVERY mail she touches (trash / reference / incubate / do-now / next action
+  #   / project / delegate / waiting-for / calendar) with the mblaze command for
+  #   each, so a sweep ends with an empty inbox instead of a read one. It restates
+  #   rather than relaxes the inbound-trust rule: an untrusted sender's mail can
+  #   become reference or a question for the owner, never an action she performs.
+  #   The Archive/Waiting/Someday maildirs it files into are hers to create (mmkdir
+  #   is blessed via mail.manageMaildir), and the daily/weekly reviews land on the
+  #   heartbeat turns configured above.
+  # - `projects`: repos she clones get worked on through THEIR declared environment,
+  #   not her baked interpreters. The tooling this assumes is in extraPackages
+  #   (direnv, uv) and evaRLibs (rix) above; it also tells her NOT to bootstrap an
+  #   env for ad-hoc scratch work, where the baked python3/R are the right tool.
+  #   rix is the load-bearing one for R: it emits a default.nix that PINS its own
+  #   nixpkgs (the rstats-on-nix fork, whose binaries the cachix substituter in
+  #   modules/r-dev/system.nix already serves) instead of `import <nixpkgs> {}`. That
+  #   keeps a project self-contained and sidesteps the host's ICU/V8 skew entirely —
+  #   which is why she needs no per-user overlay to build gt/gtsummary in a project.
+  extraSkillDirs = [ ./skills ];
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
   # These addresses (all the owner's own) send with no approval; every
