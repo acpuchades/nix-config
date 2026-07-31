@@ -144,6 +144,18 @@
         # 0600 — and `rsync -a` preserves those bits, so the deployed site would
         # be unreadable by caddy. 0022 gives the usual 0644/0755.
         UMask = "0022";
+
+        # The deploy's `rsync --chmod=Dg+ws` keeps the web root 2775 so alex can
+        # still deploy by hand; the module's default (true) makes systemd refuse
+        # the setgid half of that with EPERM on every directory, even though the
+        # runner OWNS them — the restriction is on the bit, not on ownership, so
+        # the deploy step fails wholesale with rsync exit 23. Nothing weaker
+        # works: dropping the `s` costs the group inheritance that keeps a
+        # hand-made directory writable by the runner, and `--no-perms` leaves
+        # new directories 2755 (alex cannot write inside them). Cheap to allow —
+        # the unit is an unprivileged user and NoNewPrivileges stays on, so a
+        # setgid file it creates confers nothing beyond acpuchades-site.
+        RestrictSUIDSGID = false;
       };
     };
 
