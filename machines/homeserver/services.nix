@@ -81,6 +81,20 @@
       configFile = config.sops.templates."ddclient/config".path;
     };
 
+    # Self-hosted GitHub Actions runner for the acpuchades-site repo, so its
+    # workflows build here instead of on GitHub-hosted runners. Runs under a
+    # systemd DynamicUser (the module's default) with the usual hardening; the
+    # token file is only ever read by the root-run ExecStartPre, so the sops
+    # secret stays root-owned. Note that `self-hosted`/`Linux`/`X64` are already
+    # applied by GitHub as default labels — these extras are redundant but
+    # harmless (deduped case-insensitively).
+    github-runners.acpuchades-site = {
+      enable = true;
+      url = "https://github.com/acpuchades/acpuchades-site";
+      tokenFile = config.sops.secrets."github-runner/acpuchades-site".path;
+      extraLabels = [ "self-hosted" "linux" "x64" ];
+    };
+
     # OpenSSH
     openssh = {
       enable = true;
