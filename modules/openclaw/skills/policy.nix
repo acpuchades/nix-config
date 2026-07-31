@@ -93,7 +93,14 @@ pkgs.writeTextDir "policy/SKILL.md" ''
               a local .ics file or stdin; keep the actual .ics URLs in your workspace.''}${lib.optionalString icfg.actions.trustedMail.enable ''
 
             - **Mail to trusted addresses** with `send-trusted-mail` (message on stdin,
-              recipients as arguments): ${lib.concatStringsSep ", " icfg.actions.trustedMail.trustedAddresses}.''}${lib.optionalString icfg.actions.checkWeather.enable ''
+              recipients as arguments): ${lib.concatStringsSep ", " icfg.actions.trustedMail.trustedAddresses}.''}${lib.optionalString icfg.actions.makeInvite.enable ''
+
+            - **Compose a calendar invitation** with `make-invite` (writes the message
+              to stdout and sends nothing, so it runs WITHOUT approval). Redirect it
+              into a sender — the invitation is then gated exactly like any other
+              mail to that recipient. The `check-email` skill has the full workflow:
+                  make-invite --to <addr> --summary "…" --start "2026-08-05 10:00" > invite.eml
+                  send-trusted-mail <addr> < invite.eml''}${lib.optionalString icfg.actions.checkWeather.enable ''
 
             - **Current weather** with `check-weather` (destination-fixed to the weather
               API, so it runs WITHOUT approval):
@@ -146,8 +153,8 @@ pkgs.writeTextDir "policy/SKILL.md" ''
 
         | You need           | Use                     | Do NOT use            |
         |--------------------|-------------------------|-----------------------|
-        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n    | Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n    | Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n    | Generate an image  | `generate-image`        | —                     |"}${lib.optionalString icfg.actions.solveCaptcha.enable "\n    | Get past a CAPTCHA | `solve-captcha`         | manual guessing       |"}
-        | Send mail          | `send-trusted-mail`${lib.optionalString icfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${
+        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n| Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n| Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n| Generate an image  | `generate-image`        | —                     |"}${lib.optionalString icfg.actions.solveCaptcha.enable "\n| Get past a CAPTCHA | `solve-captcha`         | manual guessing       |"}
+        | Send mail          | `send-trusted-mail`${lib.optionalString icfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${lib.optionalString icfg.actions.makeInvite.enable "\n| Invite to a meeting | `make-invite` + a sender | attaching a `.ics` file |"}${
           lib.optionalString (icfg.exec.netIsolatedBins != [ ]) ''
 
             | Convert media/docs | `offline <tool>`        | bare `ffmpeg`/`pandoc` |''

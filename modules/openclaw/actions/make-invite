@@ -1,0 +1,226 @@
+#!/bin/sh
+# Compose an iTIP calendar INVITATION for an openclaw agent, on stdout.
+#
+# This action deliberately does NOT send. It only builds the message, so the
+# invitation rides the senders that already exist — `send-trusted-mail addr <
+# invite.eml` for a trusted recipient, `send-email addr < invite.eml` for anyone
+# else — and inherits their gating unchanged. A `send-invite` of its own would
+# have had to duplicate one of those recipient gates (and a `send-trusted-invite`
+# the other), which is the same gate maintained twice: two places to get wrong,
+# and a second self-limiting wrapper to keep in step with the trusted list.
+# Composing text is destination-less and reaches no network, so this one is safe
+# whole-binary with no gate at all.
+#
+# WHY A SCRIPT AND NOT PROSE IN A SKILL: a .ics attachment is NOT an invitation.
+# A mail client only offers accept/decline when BOTH of these hold, and neither
+# is guessable from the file alone:
+#   * the MIME part is `text/calendar; charset=utf-8; method=REQUEST` (inside a
+#     multipart/alternative — not an `attachment` part in a multipart/mixed,
+#     which is what a generic MIME builder produces from a .ics file), and
+#   * the calendar object carries METHOD:REQUEST, an ORGANIZER, and an ATTENDEE
+#     with RSVP=TRUE that IS the recipient — without that there is nobody for the
+#     client to RSVP as.
+# Getting one detail wrong fails silently: it arrives as a file, exactly like
+# before. So the details are fixed here rather than re-derived per send.
+#
+# The identity is pinned by the nix module and is not an argument: $MAIL_FROM
+# becomes the ORGANIZER (which must match the From: the mail goes out with, or
+# clients reject the invitation) and $MAIL_FROM_NAME its display name. No From:
+# header is emitted — the sender wrappers pass both to sendmail, and Postfix
+# writes the matching header.
+set -eu
+
+usage() {
+  cat >&2 <<'EOF'
+usage: make-invite --to ADDR --summary TEXT --start WHEN
+                   [--end WHEN | --duration MINUTES]
+                   [--location TEXT] [--description TEXT]
+                   [--uid UID] [--sequence N] [--cancel]
+
+Writes the invitation message (headers + body) to stdout; send it with:
+
+    make-invite --to bob@example.com --summary "Revisión" \
+      --start "2026-08-05 10:00" --duration 30 > invite.eml
+    send-trusted-mail bob@example.com < invite.eml
+
+WHEN is anything `date -d` understands ("2026-08-05 10:00", "tomorrow 09:30");
+it is interpreted in this host's timezone and written to the calendar in UTC.
+
+To UPDATE an event, resend with the SAME --uid and a HIGHER --sequence. To call
+it off, resend with --cancel, the same --uid and a higher --sequence. Keep the
+UID (it is printed on stderr) or the client will show a second, unrelated event
+instead of replacing the first.
+EOF
+  exit 2
+}
+
+to=
+summary=
+start=
+end=
+duration=
+location=
+description=
+uid=
+sequence=0
+method=REQUEST
+
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --to) to=${2:-}; shift 2 || usage ;;
+    --summary|--title) summary=${2:-}; shift 2 || usage ;;
+    --start) start=${2:-}; shift 2 || usage ;;
+    --end) end=${2:-}; shift 2 || usage ;;
+    --duration) duration=${2:-}; shift 2 || usage ;;
+    --location) location=${2:-}; shift 2 || usage ;;
+    --description) description=${2:-}; shift 2 || usage ;;
+    --uid) uid=${2:-}; shift 2 || usage ;;
+    --sequence) sequence=${2:-}; shift 2 || usage ;;
+    --cancel) method=CANCEL; shift ;;
+    -h|--help) usage ;;
+    *) echo "unknown argument: $1" >&2; usage ;;
+  esac
+done
+
+[ -n "$to" ] || usage
+[ -n "$summary" ] || usage
+[ -n "$start" ] || usage
+
+if [ -z "${MAIL_FROM:-}" ]; then
+  echo "refused: no sender identity configured (MAIL_FROM) — an invitation needs an ORGANIZER" >&2
+  exit 3
+fi
+
+if [ "$method" = CANCEL ] && [ -z "$uid" ]; then
+  echo "refused: --cancel needs the --uid of the event being called off" >&2
+  exit 2
+fi
+
+case $sequence in
+  ''|*[!0-9]*) echo "refused: --sequence must be a whole number" >&2; exit 2 ;;
+esac
+
+# Times are resolved to epoch seconds first and only then formatted. Deliberately
+# NOT `date -d "$start + 30 minutes"`: after a clock time, `date` reads `+30` as a
+# UTC OFFSET, so that form is rejected outright rather than silently shifting the
+# event. Output is UTC (Z), which needs no VTIMEZONE component and cannot be
+# misread by a client that lacks our tz database.
+epoch() {
+  date -d "$1" +%s 2>/dev/null || {
+    echo "refused: cannot read the time '$1'" >&2
+    exit 2
+  }
+}
+
+start_epoch=$(epoch "$start")
+if [ -n "$end" ]; then
+  end_epoch=$(epoch "$end")
+else
+  mins=${duration:-60}
+  case $mins in
+    ''|*[!0-9]*|0) echo "refused: --duration must be a whole number of minutes" >&2; exit 2 ;;
+  esac
+  end_epoch=$((start_epoch + mins * 60))
+fi
+
+if [ "$end_epoch" -le "$start_epoch" ]; then
+  echo "refused: the event ends before it starts" >&2
+  exit 2
+fi
+
+dtstart=$(date -u -d "@$start_epoch" +%Y%m%dT%H%M%SZ)
+dtend=$(date -u -d "@$end_epoch" +%Y%m%dT%H%M%SZ)
+dtstamp=$(date -u +%Y%m%dT%H%M%SZ)
+
+if [ -z "$uid" ]; then
+  uid="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')@${MAIL_FROM#*@}"
+fi
+
+# RFC 5545 TEXT escaping: backslash, semicolon and comma are special, and a
+# literal newline is written \n. Anything unescaped here would break the parse
+# and land the event in the client as garbage, or not at all.
+esc() {
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/;/\\;/g' -e 's/,/\\,/g' | awk 'NR>1{printf "\\n"} {printf "%s", $0}'
+}
+
+summary_ics=$(esc "$summary")
+location_ics=$(esc "$location")
+description_ics=$(esc "$description")
+
+if [ -n "${MAIL_FROM_NAME:-}" ]; then
+  organizer="ORGANIZER;CN=$(esc "$MAIL_FROM_NAME"):mailto:$MAIL_FROM"
+else
+  organizer="ORGANIZER:mailto:$MAIL_FROM"
+fi
+
+boundary=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
+
+if [ "$method" = CANCEL ]; then
+  subject="Cancelado: $summary"
+  intro="Este evento ha sido cancelado."
+else
+  subject="Invitación: $summary"
+  intro="Invitación de calendario. Responde desde tu cliente de correo para aceptar o rechazar."
+fi
+
+# Headers. No From: — the sending wrapper pins it (and Postfix writes it), which
+# is also what keeps it aligned with the ORGANIZER above.
+printf 'To: %s\n' "$to"
+printf 'Subject: %s\n' "$subject"
+printf 'MIME-Version: 1.0\n'
+printf 'Content-Type: multipart/alternative; boundary="=_%s"\n' "$boundary"
+printf '\n'
+
+# text/plain alternative, for whatever cannot read the calendar part.
+printf -- '--=_%s\n' "$boundary"
+printf 'Content-Type: text/plain; charset=utf-8\n'
+printf 'Content-Transfer-Encoding: 8bit\n'
+printf '\n'
+printf '%s\n\n' "$intro"
+printf '%s\n' "$summary"
+printf 'Inicio: %s (UTC)\n' "$dtstart"
+printf 'Fin:    %s (UTC)\n' "$dtend"
+[ -n "$location" ] && printf 'Lugar:  %s\n' "$location"
+[ -n "$description" ] && printf '\n%s\n' "$description"
+printf '\n'
+
+# The calendar part. CRLF per RFC 5545, and `method=` on the Content-Type: this
+# parameter is what turns the part from a file into a request the client acts on.
+printf -- '--=_%s\n' "$boundary"
+printf 'Content-Type: text/calendar; charset=utf-8; method=%s\n' "$method"
+printf 'Content-Transfer-Encoding: 8bit\n'
+printf '\n'
+{
+  printf 'BEGIN:VCALENDAR\r\n'
+  printf 'PRODID:-//openclaw//make-invite//EN\r\n'
+  printf 'VERSION:2.0\r\n'
+  printf 'CALSCALE:GREGORIAN\r\n'
+  printf 'METHOD:%s\r\n' "$method"
+  printf 'BEGIN:VEVENT\r\n'
+  printf 'UID:%s\r\n' "$uid"
+  printf 'DTSTAMP:%s\r\n' "$dtstamp"
+  printf 'DTSTART:%s\r\n' "$dtstart"
+  printf 'DTEND:%s\r\n' "$dtend"
+  printf 'SEQUENCE:%s\r\n' "$sequence"
+  printf 'SUMMARY:%s\r\n' "$summary_ics"
+  [ -n "$location" ] && printf 'LOCATION:%s\r\n' "$location_ics"
+  [ -n "$description" ] && printf 'DESCRIPTION:%s\r\n' "$description_ics"
+  printf '%s\r\n' "$organizer"
+  # The RSVP=TRUE attendee IS the accept/decline offer. Without it the client has
+  # nobody to answer as, and shows the event as something to import instead.
+  printf 'ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:%s\r\n' "$to"
+  if [ "$method" = CANCEL ]; then
+    printf 'STATUS:CANCELLED\r\n'
+  else
+    printf 'STATUS:CONFIRMED\r\n'
+    printf 'TRANSP:OPAQUE\r\n'
+  fi
+  printf 'END:VEVENT\r\n'
+  printf 'END:VCALENDAR\r\n'
+}
+printf '\n'
+printf -- '--=_%s--\n' "$boundary"
+
+# The UID goes to stderr so it stays out of the message but is visible to the
+# caller — it is what a later update or cancellation has to quote.
+echo "uid: $uid" >&2

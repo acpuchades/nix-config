@@ -35,8 +35,17 @@ done
 
 sendmail=${SENDMAIL:-sendmail}
 
-if [ -n "${MAIL_FROM:-}" ]; then
-  exec "$sendmail" -i -f "$MAIL_FROM" -- "$@"
-else
-  exec "$sendmail" -i -- "$@"
+# Build the invocation in front of the recipients, which are already in "$@":
+# `--` first so an address can never be read as a flag, then the identity flags.
+# -f is the envelope sender; -F is the display name Postfix puts in the From:
+# header it generates for a message that has none (this one, by design — the
+# agent composes To:/Subject:/body, never From:). Both are pinned by the module.
+set -- -- "$@"
+if [ -n "${MAIL_FROM_NAME:-}" ]; then
+  set -- -F "$MAIL_FROM_NAME" "$@"
 fi
+if [ -n "${MAIL_FROM:-}" ]; then
+  set -- -f "$MAIL_FROM" "$@"
+fi
+
+exec "$sendmail" -i "$@"

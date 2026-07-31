@@ -136,8 +136,17 @@ boundary=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
 } > "$tmp/out"
 
 sendmail=${SENDMAIL:-sendmail}
-if [ -n "${MAIL_FROM:-}" ]; then
-  "$sendmail" -i -f "$MAIL_FROM" -- "$to" < "$tmp/out"
-else
-  "$sendmail" -i -- "$to" < "$tmp/out"
+
+# gpg has already run, so "$@" (its argument list) is free to reuse for the
+# sendmail invocation. Same identity handling as the plaintext senders: -f is the
+# envelope sender, -F the display name Postfix puts in the generated From: header
+# — the outer headers we rebuilt above deliberately carry no From: of their own.
+set -- -- "$to"
+if [ -n "${MAIL_FROM_NAME:-}" ]; then
+  set -- -F "$MAIL_FROM_NAME" "$@"
 fi
+if [ -n "${MAIL_FROM:-}" ]; then
+  set -- -f "$MAIL_FROM" "$@"
+fi
+
+"$sendmail" -i "$@" < "$tmp/out"

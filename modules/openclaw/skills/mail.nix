@@ -58,6 +58,50 @@ let
     content warrants it: ${lib.concatStringsSep ", " bothWays}.
   '';
 
+  # Composing an invitation by hand fails in a way that looks like success — the
+  # mail arrives, just as a file nobody can answer — so the skill points at the
+  # action rather than describing the MIME/iTIP shape it builds.
+  inviteSection = lib.optionalString icfg.actions.makeInvite.enable ''
+
+    ## Calendar invitations
+
+    To propose a meeting, do NOT attach a `.ics` file: attached that way it arrives
+    as a document the recipient can only save, with no accept/decline. Use
+    `make-invite`, which writes a real invitation to stdout, and send that:
+
+        make-invite --to bob@example.com --summary "Revisión de resultados" \
+          --start "2026-08-05 10:00" --duration 30 --location "Bellvitge, planta 3" \
+          > invite.eml
+        send-trusted-mail bob@example.com < invite.eml
+
+    Two commands and a redirection, not a pipe — each one is a single segment, so
+    neither trips the approval gate (see the `policy` skill). The recipient rules
+    are unchanged: the invitation goes out through the ordinary senders, so a
+    non-trusted recipient still needs the owner's approval.
+
+    `--start` takes a plain local time ("2026-08-05 10:00", "tomorrow 09:30") and
+    the invitation carries UTC, so the recipient sees it in their own timezone.
+    Length is `--duration` in minutes (default 60) or an explicit `--end`.
+
+    It prints `uid: <id>` on stderr. KEEP IT — it is how the same event is changed
+    later. To move or rename it, resend with the SAME `--uid` and a HIGHER
+    `--sequence`; to call it off, add `--cancel`:
+
+        make-invite --to bob@example.com --summary "Revisión de resultados" \
+          --start "2026-08-06 12:00" --uid "<id>" --sequence 1 > update.eml
+        make-invite --to bob@example.com --summary "Revisión de resultados" \
+          --start "2026-08-06 12:00" --uid "<id>" --sequence 2 --cancel > cancel.eml
+
+    Without the original UID the recipient gets a SECOND event instead of an
+    updated one, and the old one stays in their calendar — so record the UID
+    alongside whatever list entry the meeting belongs to.
+
+    An invitation is plaintext-only: it cannot go through `send-encrypted-mail`,
+    which rebuilds the message as a single encrypted part and would swallow the
+    calendar part. For a recipient who accepts encrypted mail only, propose the
+    meeting in an ordinary encrypted message instead, in words.
+  '';
+
   gpgSection = lib.optionalString gpgOn ''
 
     Note what encryption does and does not mean. That a message was encrypted TO you
@@ -202,4 +246,4 @@ pkgs.writeTextDir "check-email/SKILL.md" ''
           wait, and only mail other addresses when the task genuinely calls for it.
         - Set `In-Reply-To:` to the original `Message-ID` (from `mhdr`) and quote
           what you are answering, so threads stay intact.
-      ''
+        ${inviteSection}''
