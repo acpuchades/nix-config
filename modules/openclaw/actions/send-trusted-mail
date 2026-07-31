@@ -10,6 +10,11 @@
 # The trusted addresses are pinned by the nix module as $TRUSTED_ADDRESSES
 # (space-separated), the sender as $MAIL_FROM, and sendmail as $SENDMAIL — all
 # from the immutable wrapper the module builds around this file.
+#
+# $ENCRYPT_ONLY_ADDRESSES (space-separated, lowercase, likewise pinned) is the
+# set of recipients the module has declared confidential. Being trusted does not
+# make a plaintext send acceptable — quite the opposite — so those are refused
+# here too and must go through send-encrypted-mail.
 set -eu
 
 if [ "$#" -lt 1 ]; then
@@ -28,6 +33,12 @@ for r in "$@"; do
     echo "refused: '$r' is not a trusted address" >&2
     exit 3
   fi
+  for a in ${ENCRYPT_ONLY_ADDRESSES:-}; do
+    if [ "$rl" = "$a" ]; then
+      echo "refused: '$r' only accepts encrypted mail — use send-encrypted-mail" >&2
+      exit 4
+    fi
+  done
 done
 
 sendmail=${SENDMAIL:-sendmail}

@@ -10,12 +10,28 @@
 # baked in. The sender, if any, is supplied by the nix module as $MAIL_FROM, and
 # the sendmail binary as $SENDMAIL (both pinned by the immutable wrapper the
 # module builds around this file).
+#
+# $ENCRYPT_ONLY_ADDRESSES (space-separated, lowercase, also pinned) is the set of
+# recipients the module has declared confidential. This script refuses them
+# outright: their mail goes through send-encrypted-mail or not at all. That is
+# what makes confidentiality structural rather than a mode the agent elects —
+# there is no plaintext fallback to be talked into.
 set -eu
 
 if [ "$#" -lt 1 ]; then
   echo "usage: $(basename "$0") RECIPIENT [RECIPIENT...]  (message on stdin)" >&2
   exit 2
 fi
+
+for r in "$@"; do
+  rl=$(printf '%s' "$r" | tr 'A-Z' 'a-z')
+  for a in ${ENCRYPT_ONLY_ADDRESSES:-}; do
+    if [ "$rl" = "$a" ]; then
+      echo "refused: '$r' only accepts encrypted mail — use send-encrypted-mail" >&2
+      exit 4
+    fi
+  done
+done
 
 sendmail=${SENDMAIL:-sendmail}
 
