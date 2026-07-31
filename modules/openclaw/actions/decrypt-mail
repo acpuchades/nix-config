@@ -1,0 +1,124 @@
+#!/bin/sh
+# Read side of the agent's confidential mail: decrypt an OpenPGP message from its
+# own Maildir and report who signed it, verified against a nix-pinned set of
+# signer fingerprints.
+#
+# Read-only and destination-less — it opens a file the agent could already read,
+# talks to no network (the keyring is closed: --disable-dirmngr, no keyserver, no
+# opportunistic import) and never writes to the keyring — so it is safe to run
+# unprompted. It REPORTS trust rather than enforcing it: an encrypted-but-
+# unsigned message still decrypts, and is labelled as unsigned. What the agent is
+# allowed to do with each verdict is the skill's business, not the wrapper's.
+#
+# Usage: decrypt-mail [FILE]        (message on stdin when FILE is omitted)
+#
+# Handles both PGP/MIME (as produced by send-encrypted-mail) and inline/clear-
+# signed armor: it pulls the first OpenPGP armor block out of the raw message and
+# hands that to gpg, so the MIME shape around it does not matter.
+#
+# Output is a short verdict block, then a blank line, then the decrypted content:
+#
+#   X-OpenPGP-Decrypted: yes
+#   X-OpenPGP-Signer: <fingerprint> | none | unverified | bad
+#   X-OpenPGP-Signer-Trusted: yes|no
+#
+# where `none` = no signature at all, `unverified` = signed by a key outside the
+# pinned keyring (unfetchable, since the keyring is closed), and `bad` = a
+# signature that is present and does not verify. Only a fingerprint on the pinned
+# list yields Trusted: yes.
+#
+# Pinned by the nix module through the immutable wrapper: $GPG, $GNUPGHOME, and
+# $TRUSTED_SIGNERS (space-separated fingerprints; the owner keys declared in the
+# module).
+set -eu
+
+if [ "$#" -gt 1 ]; then
+  echo "usage: $(basename "$0") [FILE]  (message on stdin when FILE is omitted)" >&2
+  exit 2
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+if [ "$#" -eq 1 ]; then
+  if [ ! -r "$1" ]; then
+    echo "error: cannot read '$1'" >&2
+    exit 2
+  fi
+  cp -- "$1" "$tmp/in"
+else
+  cat > "$tmp/in"
+fi
+
+# Pull out the first armor block, whatever MIME wrapping surrounds it. Covers
+# both `PGP MESSAGE` (encrypted, and/or signed) and `PGP SIGNED MESSAGE`
+# (clearsigned) — gpg --decrypt verifies either.
+awk '
+  /^-----BEGIN PGP (MESSAGE|SIGNED MESSAGE)-----/ { f = 1 }
+  f { print }
+  f && /^-----END PGP (MESSAGE|SIGNATURE)-----/ { exit }
+' "$tmp/in" > "$tmp/armor"
+
+if [ ! -s "$tmp/armor" ]; then
+  echo "no OpenPGP armor found: this message is not encrypted or signed — read it with mshow instead" >&2
+  exit 3
+fi
+
+gpg=${GPG:-gpg}
+rc=0
+"$gpg" --batch --no-tty --quiet \
+  --homedir "$GNUPGHOME" \
+  --disable-dirmngr --no-auto-key-locate --no-auto-key-import \
+  --keyserver-options no-auto-key-retrieve \
+  --status-file "$tmp/status" \
+  --decrypt --output "$tmp/plain" "$tmp/armor" 2> "$tmp/err" || rc=$?
+
+if [ ! -s "$tmp/plain" ]; then
+  echo "decryption failed — the message is not addressed to this agent's key, or the key is unavailable:" >&2
+  sed 's/^/  /' "$tmp/err" >&2 || :
+  exit 4
+fi
+
+# VALIDSIG is emitted only for a GOOD signature; field 3 is the signing key's
+# fingerprint. Anything else is reported as a distinct non-trusted verdict rather
+# than lumped together, because "nobody signed this" and "somebody signed it with
+# a key I am not allowed to know" are different facts about a message — though
+# neither confers any trust.
+signer=$(awk '/^\[GNUPG:\] VALIDSIG /{ print $3; exit }' "$tmp/status" 2>/dev/null || :)
+signer=$(printf '%s' "$signer" | tr 'a-f' 'A-F')
+
+if [ -z "$signer" ]; then
+  if grep -q '^\[GNUPG:\] BADSIG ' "$tmp/status" 2>/dev/null; then
+    # A signature that is present and does NOT verify: the message was altered, or
+    # it was not signed by the key it claims. Strictly worse than unsigned.
+    signer=bad
+  elif grep -q '^\[GNUPG:\] \(ERRSIG\|NO_PUBKEY\) ' "$tmp/status" 2>/dev/null; then
+    # Signed by a key that is not in the keyring — and the keyring is closed, so it
+    # cannot be fetched. Unverifiable, which for our purposes means untrusted.
+    signer=unverified
+  else
+    signer=none
+  fi
+fi
+
+trusted=no
+case "$signer" in
+  bad | unverified | none) ;;
+  *)
+    for f in ${TRUSTED_SIGNERS:-}; do
+      fu=$(printf '%s' "$f" | tr 'a-f' 'A-F')
+      if [ "$signer" = "$fu" ]; then trusted=yes; break; fi
+    done
+    ;;
+esac
+
+printf 'X-OpenPGP-Decrypted: yes\n'
+printf 'X-OpenPGP-Signer: %s\n' "${signer:-none}"
+printf 'X-OpenPGP-Signer-Trusted: %s\n' "$trusted"
+printf '\n'
+cat "$tmp/plain"
+
+# A decrypt that worked but whose signature did not verify is still a successful
+# read — the verdict block says so. Only a hard gpg failure with no plaintext
+# (handled above) is an error.
+exit 0

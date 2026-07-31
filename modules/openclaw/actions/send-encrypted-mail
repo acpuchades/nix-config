@@ -1,0 +1,143 @@
+#!/bin/sh
+# Confidential send for an openclaw agent: delivers ONLY to an address that has a
+# nix-pinned OpenPGP key, and ALWAYS encrypts + signs — there is no plaintext
+# path through this script and no flag to disable the crypto. Encryption is a
+# property of the RECIPIENT (pinned in the module), never a mode the agent
+# chooses, so a prompt-injected agent cannot talk the wrapper out of it.
+#
+# The message (headers + body) is read from stdin, exactly like send-email; the
+# recipient is a positional ARGUMENT. Deliberately NOT `sendmail -t`: To/Cc/Bcc
+# headers do not route, so a poisoned message cannot smuggle a hidden recipient —
+# the delivered set is exactly the (key-checked) argument. Exactly ONE recipient
+# per call: an encrypted message is encrypted to a specific key, and a mixed
+# recipient set is a footgun rather than a feature.
+#
+# Output is PGP/MIME (RFC 3156): the agent's body becomes an inner
+# `text/plain; charset=utf-8` part which is encrypted whole, so accented text
+# survives the round trip (inline armor would leave the charset to the receiving
+# MUA to guess). The outer headers stay cleartext because they have to route —
+# Subject included. Anything genuinely secret belongs in the BODY, not the
+# Subject.
+#
+# Everything security-relevant is pinned by the nix module through the immutable
+# wrapper built around this file:
+#   $GPG            — the gpg binary
+#   $GNUPGHOME      — the agent's keyring, rebuilt from nix on every service start
+#   $ENCRYPT_KEYS   — space-separated `address=fingerprint`, lowercase addresses
+#   $SIGN_KEY       — optional; the agent's own fingerprint, to pin which key signs
+#   $MAIL_FROM      — envelope sender
+#   $SENDMAIL       — sendmail path
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: $(basename "$0") RECIPIENT  (message on stdin; exactly one recipient)" >&2
+  exit 2
+fi
+
+to=$1
+tol=$(printf '%s' "$to" | tr 'A-Z' 'a-z')
+
+# Resolve the recipient to a PINNED fingerprint. We encrypt to the fingerprint,
+# never to the address: gpg's own address matching would happily pick up a key
+# imported at runtime, whereas a fingerprint names exactly one key.
+fpr=
+for pair in ${ENCRYPT_KEYS:-}; do
+  a=${pair%%=*}
+  f=${pair#*=}
+  if [ "$tol" = "$a" ]; then fpr=$f; break; fi
+done
+if [ -z "$fpr" ]; then
+  echo "refused: no pinned OpenPGP key for '$to' — this action only reaches recipients whose key is declared in the module" >&2
+  exit 3
+fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT INT TERM
+cat > "$tmp/in"
+: > "$tmp/body"
+
+# Split the composed message at the first blank line: headers above, body below.
+awk -v hdr="$tmp/hdr" -v body="$tmp/body" '
+  BEGIN { inhdr = 1 }
+  inhdr && /^\r?$/ { inhdr = 0; next }
+  inhdr { print > hdr; next }
+  { print > body }
+' "$tmp/in"
+: > "$tmp/hdr.keep"
+
+# Drop any MIME/content framing (and Bcc) the agent may have set: we build the
+# outer PGP/MIME framing ourselves, and a stray Content-Type would contradict it.
+# Folded continuation lines follow the fate of the header they belong to.
+awk '
+  /^[ \t]/ { if (!drop) print; next }
+  {
+    drop = (tolower($0) ~ /^(mime-version|content-type|content-transfer-encoding|content-disposition|bcc):/)
+    if (!drop) print
+  }
+' "$tmp/hdr" > "$tmp/hdr.keep" 2>/dev/null || :
+
+# The inner MIME entity — this is what actually gets encrypted, charset and all.
+{
+  printf 'Content-Type: text/plain; charset=utf-8\n'
+  printf 'Content-Transfer-Encoding: 8bit\n'
+  printf '\n'
+  cat "$tmp/body"
+} > "$tmp/part"
+
+gpg=${GPG:-gpg}
+# --disable-dirmngr and --no-auto-key-* keep the keyring CLOSED: no keyserver
+# lookup, no opportunistic import, so the only usable keys are the ones nix put
+# there. --trust-model always is safe precisely because we name a fingerprint:
+# it skips the web-of-trust prompt without widening which key may be used.
+# --set-filename '' / --no-emit-version avoid leaking the temp path and version.
+#
+# NB: the fingerprints are passed WITHOUT gpg's `!` "use exactly this key" suffix.
+# A full fingerprint already identifies one key unambiguously, so the pinning is
+# not weakened — but `!` would additionally force the PRIMARY key to do the work,
+# and on any normally-generated key the primary cannot encrypt (that is what the
+# encryption subkey is for), so it fails outright. Without `!`, gpg picks the
+# right subkey of the pinned key, which is what we actually want.
+set -- --batch --no-tty --yes --quiet \
+  --homedir "$GNUPGHOME" \
+  --disable-dirmngr --no-auto-key-locate --no-auto-key-import \
+  --keyserver-options no-auto-key-retrieve \
+  --trust-model always \
+  --no-emit-version --no-comments --set-filename '' \
+  --armor --encrypt --sign --recipient "$fpr"
+if [ -n "${SIGN_KEY:-}" ]; then
+  set -- "$@" --local-user "$SIGN_KEY"
+fi
+
+if ! "$gpg" "$@" --output "$tmp/enc.asc" "$tmp/part"; then
+  echo "refused: encryption to $to <$fpr> failed — nothing was sent" >&2
+  exit 4
+fi
+
+boundary=$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')
+
+{
+  cat "$tmp/hdr.keep"
+  printf 'MIME-Version: 1.0\n'
+  printf 'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="=_%s"\n' "$boundary"
+  printf '\n'
+  printf 'This is an OpenPGP/MIME encrypted message (RFC 3156).\n'
+  printf -- '--=_%s\n' "$boundary"
+  printf 'Content-Type: application/pgp-encrypted\n'
+  printf 'Content-Description: PGP/MIME version identification\n'
+  printf '\n'
+  printf 'Version: 1\n'
+  printf -- '--=_%s\n' "$boundary"
+  printf 'Content-Type: application/octet-stream; name="encrypted.asc"\n'
+  printf 'Content-Description: OpenPGP encrypted message\n'
+  printf 'Content-Disposition: inline; filename="encrypted.asc"\n'
+  printf '\n'
+  cat "$tmp/enc.asc"
+  printf -- '--=_%s--\n' "$boundary"
+} > "$tmp/out"
+
+sendmail=${SENDMAIL:-sendmail}
+if [ -n "${MAIL_FROM:-}" ]; then
+  "$sendmail" -i -f "$MAIL_FROM" -- "$to" < "$tmp/out"
+else
+  "$sendmail" -i -- "$to" < "$tmp/out"
+fi

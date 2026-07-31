@@ -184,14 +184,20 @@ let
       # neither swap the code nor change the sender. The bin name carries no agent
       # name.
       mailSendBin =
+        let
+          wrapArgs = [
+            "--set SENDMAIL /run/wrappers/bin/sendmail"
+          ]
+          # Confidential recipients are refused here (see mail.gpg): being on the
+          # unprompted list does not make a cleartext send to them acceptable.
+          ++ encryptOnlyWrapArgs
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+        in
         pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
             install -Dm0755 ${./actions/send-email} $out/libexec/send-email
             makeWrapper $out/libexec/send-email $out/bin/send-email \
-              --set SENDMAIL /run/wrappers/bin/sendmail \
-              ${lib.optionalString (
-                icfg.mail.fromAddress != null
-              ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"}
+              ${lib.concatStringsSep " \\\n  " wrapArgs}
           '';
 
       # One exact allowlist rule per pre-blessed recipient: `send-email <addr>`. Any
@@ -201,6 +207,114 @@ let
 
       mailFromDisplay =
         if icfg.mail.fromAddress == null then "the agent's configured address" else icfg.mail.fromAddress;
+
+      # --- confidential mail (OpenPGP) — see options.my.openclaw.mail.gpg -------
+      gpgCfg = icfg.mail.gpg;
+      gpgEnabled = icfg.mail.enable && gpgCfg.enable;
+
+      # The keyring lives in the SERVICE state dir rather than the agent's ~/.gnupg,
+      # and is rebuilt from nix on every start (see gpgSeed). That is what keeps it
+      # CLOSED: a key the agent imports at runtime — the obvious move for an
+      # injection that wants to encrypt an exfil copy to itself — does not survive a
+      # restart, and cannot be selected in the meantime because both wrappers name
+      # keys by pinned fingerprint rather than by address.
+      gnupgHome = "${stateDir}/gnupg";
+
+      # Flags shared by the seed and both wrappers. Every network path gpg has is
+      # off (no dirmngr, no keyserver, no opportunistic import), so the keyring can
+      # only ever hold what nix put in it.
+      gpgFlags = lib.concatStringsSep " " [
+        "--batch"
+        "--no-tty"
+        "--quiet"
+        "--homedir ${gnupgHome}"
+        "--disable-dirmngr"
+        "--no-auto-key-locate"
+        "--no-auto-key-import"
+        "--keyserver-options no-auto-key-retrieve"
+      ];
+
+      # `address=fingerprint` pairs for send-encrypted-mail (addresses lowercased
+      # here so the script's comparison is a plain string match).
+      gpgEncryptKeys = lib.concatStringsSep " " (
+        map (k: "${lib.toLower k.address}=${k.fingerprint}") gpgCfg.keys
+      );
+
+      # Fingerprints decrypt-mail will accept as a trusted signer on inbound mail.
+      gpgTrustedSigners = lib.concatStringsSep " " (map (k: k.fingerprint) gpgCfg.keys);
+
+      # Addresses the PLAINTEXT senders must refuse. This is the fail-closed half of
+      # the design: confidentiality is a property of the recipient, fixed in nix, so
+      # there is no cleartext fallback for the agent to be argued into.
+      gpgEncryptOnly = lib.concatStringsSep " " (
+        map (k: lib.toLower k.address) (lib.filter (k: k.requireEncryption) gpgCfg.keys)
+      );
+
+      # Pinned into send-email/send-trusted-mail only when the feature is on, so an
+      # instance without gpg keeps exactly its previous behaviour.
+      encryptOnlyWrapArgs = lib.optional gpgEnabled "--set ENCRYPT_ONLY_ADDRESSES ${lib.escapeShellArg gpgEncryptOnly}";
+
+      # `send-encrypted-mail`: the generic actions/send-encrypted-mail script wrapped
+      # so the keyring, the gpg binary and the pinned recipient keys come from nix.
+      # Self-gating twice over — it refuses any recipient without a pinned key, and
+      # has no code path that emits cleartext — so it is safe to bless whole-binary
+      # in safeBins. NB: gnupg goes on the WRAPPER's PATH only (gpg-agent/gpgconf
+      # need to be resolvable), never on the agent's, so raw `gpg` stays unavailable.
+      encryptedMailBin =
+        let
+          wrapArgs = [
+            "--set SENDMAIL /run/wrappers/bin/sendmail"
+            "--set GPG ${pkgs.gnupg}/bin/gpg"
+            "--set GNUPGHOME ${gnupgHome}"
+            "--set ENCRYPT_KEYS ${lib.escapeShellArg gpgEncryptKeys}"
+            "--prefix PATH : ${lib.makeBinPath [ pkgs.gnupg pkgs.coreutils ]}"
+          ]
+          ++ lib.optional (gpgCfg.fingerprint != null) "--set SIGN_KEY ${lib.escapeShellArg gpgCfg.fingerprint}"
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+        in
+        pkgs.runCommandLocal "openclaw-send-encrypted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/send-encrypted-mail} $out/libexec/send-encrypted-mail
+            makeWrapper $out/libexec/send-encrypted-mail $out/bin/send-encrypted-mail \
+              ${lib.concatStringsSep " \\\n  " wrapArgs}
+          '';
+
+      # `decrypt-mail`: read-only and destination-less (it opens a file the agent can
+      # already read and reaches no network), so it is safe to bless whole-binary. It
+      # reports the signature verdict against the pinned signer set; deciding what a
+      # verdict permits is the skill's job, not the wrapper's.
+      decryptMailBin =
+        pkgs.runCommandLocal "openclaw-decrypt-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/decrypt-mail} $out/libexec/decrypt-mail
+            makeWrapper $out/libexec/decrypt-mail $out/bin/decrypt-mail \
+              --set GPG ${pkgs.gnupg}/bin/gpg \
+              --set GNUPGHOME ${gnupgHome} \
+              --set TRUSTED_SIGNERS ${lib.escapeShellArg gpgTrustedSigners} \
+              --prefix PATH : ${lib.makeBinPath [ pkgs.gnupg pkgs.coreutils ]}
+          '';
+
+      # Rebuild the keyring from nix at every start: kill any agent left over from
+      # the previous run, wipe the home, re-import the agent's own secret key from
+      # the systemd credential and each owner public key from the store. Fail-closed
+      # throughout — a missing or unreadable secret key leaves a keyring that cannot
+      # decrypt or sign, which stops confidential mail rather than downgrading it.
+      gpgSeed = lib.optionalString gpgEnabled ''
+        ${pkgs.gnupg}/bin/gpgconf --homedir ${gnupgHome} --kill gpg-agent >/dev/null 2>&1 || true
+        rm -rf ${gnupgHome}
+        install -d -m 0700 ${gnupgHome}
+        if [ -r "''${CREDENTIALS_DIRECTORY:-}/mail-gpg-key" ]; then
+          ${pkgs.gnupg}/bin/gpg ${gpgFlags} --import "''${CREDENTIALS_DIRECTORY}/mail-gpg-key" \
+            || echo "[openclaw] WARN: could not import the agent's OpenPGP secret key; confidential mail fails closed" >&2
+        else
+          echo "[openclaw] WARN: no OpenPGP secret key available (mail.gpg.secretKeyFile); confidential mail fails closed" >&2
+        fi
+        ${lib.concatMapStrings (k: ''
+          ${pkgs.gnupg}/bin/gpg ${gpgFlags} --import ${k.publicKeyFile} \
+            || echo "[openclaw] WARN: could not import the OpenPGP public key for ${k.address}" >&2
+        '') gpgCfg.keys}
+        ${pkgs.gnupg}/bin/gpgconf --homedir ${gnupgHome} --kill gpg-agent >/dev/null 2>&1 || true
+      '';
 
       # `request-trusted-url`: the generic actions/request-trusted-url script wrapped
       # so the allowed-host globs ($TRUSTED_SITES) and the curl binary ($CURL) are
@@ -221,15 +335,19 @@ let
       # sendmail ($SENDMAIL) are pinned by nix. Self-gating (refuses any non-trusted
       # recipient), so it is safe to bless whole-binary in safeBins.
       trustedMailBin =
+        let
+          wrapArgs = [
+            "--set SENDMAIL /run/wrappers/bin/sendmail"
+            "--set TRUSTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.trustedMail.trustedAddresses)}"
+          ]
+          ++ encryptOnlyWrapArgs
+          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}";
+        in
         pkgs.runCommandLocal "openclaw-send-trusted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
             install -Dm0755 ${./actions/send-trusted-mail} $out/libexec/send-trusted-mail
             makeWrapper $out/libexec/send-trusted-mail $out/bin/send-trusted-mail \
-              --set SENDMAIL /run/wrappers/bin/sendmail \
-              --set TRUSTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.trustedMail.trustedAddresses)} \
-              ${lib.optionalString (
-                icfg.mail.fromAddress != null
-              ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"}
+              ${lib.concatStringsSep " \\\n  " wrapArgs}
           '';
 
       # `generate-image`: the generic actions/generate-image script wrapped so the
@@ -623,6 +741,15 @@ let
             # any invocation either targets a trusted destination or exits non-zero.
             ++ lib.optionals icfg.actions.requestUrl.enable [ "request-trusted-url" ]
             ++ lib.optionals icfg.actions.trustedMail.enable [ "send-trusted-mail" ]
+            # send-encrypted-mail refuses any recipient without a pinned key and has
+            # no cleartext path at all; decrypt-mail is read-only and reaches no
+            # network. Both are therefore safe whole-binary. Raw `gpg` is NOT here
+            # and NOT on the agent's PATH — these wrappers are its entire OpenPGP
+            # surface (see mail.gpg).
+            ++ lib.optionals gpgEnabled [
+              "send-encrypted-mail"
+              "decrypt-mail"
+            ]
             # generate-image is likewise destination-pinned (fixed model/endpoint), so
             # blessing the whole binary only ever hits the configured image endpoint.
             ++ lib.optionals icfg.actions.generateImage.enable [ "generate-image" ]
@@ -765,6 +892,28 @@ let
             -> icfg.memorySearch.localModelPath != null;
           message = "my.openclaw.memorySearch: provider = \"local\" requires memorySearch.localModelPath (a GGUF embedding model, e.g. via pkgs.fetchurl).";
         }
+        {
+          assertion = icfg.mail.gpg.enable -> icfg.mail.enable;
+          message = "my.openclaw.instances.${name}.mail.gpg: requires mail.enable — confidential mail is the mail capability, encrypted.";
+        }
+        {
+          # Without a key there is nothing to encrypt to and no signature to
+          # verify, so the feature would only ever refuse — catch it at eval.
+          assertion = icfg.mail.gpg.enable -> icfg.mail.gpg.keys != [ ];
+          message = "my.openclaw.instances.${name}.mail.gpg: needs at least one entry in `keys` (an owner address + pinned fingerprint + public key file).";
+        }
+        {
+          assertion = lib.all (
+            k: builtins.match "[0-9A-Fa-f]{40}" k.fingerprint != null
+          ) icfg.mail.gpg.keys;
+          message = "my.openclaw.instances.${name}.mail.gpg.keys: each `fingerprint` must be a full 40-character hex OpenPGP fingerprint with no spaces.";
+        }
+        {
+          assertion =
+            icfg.mail.gpg.fingerprint == null
+            || builtins.match "[0-9A-Fa-f]{40}" icfg.mail.gpg.fingerprint != null;
+          message = "my.openclaw.instances.${name}.mail.gpg.fingerprint: must be a full 40-character hex OpenPGP fingerprint with no spaces.";
+        }
       ];
 
       # Upstream flags this package insecure on purpose. Acknowledge explicitly;
@@ -792,6 +941,12 @@ let
       ++ lib.optionals icfg.mail.enable [
         mailSendBin
         pkgs.mblaze
+      ]
+      # The wrappers only — deliberately NOT pkgs.gnupg, so the agent has no raw
+      # `gpg` to reach for (it carries its own network and key-import surface).
+      ++ lib.optionals gpgEnabled [
+        encryptedMailBin
+        decryptMailBin
       ]
       ++ lib.optionals icfg.actions.requestUrl.enable [ requestUrlBin ]
       ++ lib.optionals icfg.actions.trustedMail.enable [ trustedMailBin ]
@@ -977,6 +1132,11 @@ let
             # (see skillsStageSeed) BEFORE the gateway starts, so the loader accepts
             # them. No-op when the instance ships no skills.
             ${skillsStageSeed}
+
+            # (0b) Rebuild the OpenPGP keyring from nix (see gpgSeed), so the agent
+            # starts from exactly the keys this module declares and nothing it may
+            # have imported since. No-op unless mail.gpg is on.
+            ${gpgSeed}
             tmpl=${configTemplate}
             if [ -f ${configFile} ]; then
               ${lib.getExe openclawPatched} config patch --file "$tmpl" || {
@@ -1015,7 +1175,11 @@ let
 
           LoadCredential = [
             "telegram-token:${icfg.telegram.tokenFile}"
-          ];
+          ]
+          # systemd reads the key as root and exposes it 0400 to the service user,
+          # so the secret never depends on the sops/agenix file's own ownership
+          # being right — same handling the bot token already gets.
+          ++ lib.optional (gpgEnabled && gpgCfg.secretKeyFile != null) "mail-gpg-key:${gpgCfg.secretKeyFile}";
 
           # Extra env for provider API keys (Gemini fallback, ElevenLabs TTS, …),
           # supplied as files from outside the module. Empty by default.
@@ -1536,6 +1700,145 @@ let
             exfiltration guard: a prompt-injected agent cannot silently mail data to
             an arbitrary address. Empty (default) gates every send.
           '';
+        };
+
+        # --- confidential mail (OpenPGP) -------------------------------------
+        # Closes a REAL leak: inbound reaches this box through an external
+        # forwarder and outbound leaves through a relay, so both see the full
+        # plaintext of every message today. End-to-end encryption removes them
+        # from the trust set, and a signature authenticates the owner end-to-end
+        # rather than depending on DMARC surviving the forwarding hop.
+        #
+        # What it deliberately does NOT do: protect anything from the AGENT. The
+        # secret key has to live where the agent can use it, so a compromised or
+        # prompt-injected agent reads everything it could read anyway — the
+        # exfiltration guard remains the recipient allowlist, not the crypto. Nor
+        # does it hide content from the model provider: the agent decrypts in
+        # order to reason, so the plaintext reaches the API either way, and (by
+        # the owner's explicit choice) decrypted content may persist in cleartext
+        # in the agent's own files.
+        gpg = {
+          enable = lib.mkEnableOption ''
+            confidential mail: a `decrypt-mail` reader and an always-encrypting
+            `send-encrypted-mail` sender, both against a CLOSED keyring rebuilt
+            from nix on every start (no keyserver, no opportunistic import).
+            Requires mail.enable, and `keys` to name at least one owner key.
+
+            Note that raw `gpg` is deliberately NOT put on the agent's PATH or in
+            safeBins — it is a general-purpose crypto, file and network tool
+            (`--recv-keys`, `--export-secret-keys`, sign-anything), which is
+            exactly the shape this module gates elsewhere for curl and sendmail.
+            The two wrappers below are the whole OpenPGP surface the agent gets'';
+
+          secretKeyFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "/run/secrets/openclaw-eva-gpg-key";
+            description = ''
+              Path to the agent's OWN exported secret key (armored or binary),
+              read at RUNTIME as a systemd credential — like telegram.tokenFile it
+              is a `str` path, not a `path`, so the key never enters the nix store
+              or this repo. Point it at a sops-nix secret, an agenix file, or any
+              out-of-band file.
+
+              The key MUST be passphrase-less. A passphrase the agent has to
+              supply from a file sitting next to the key protects nothing, and a
+              passphrase it cannot supply means it cannot decrypt its own mail.
+
+              Generate once, out of band, then import the secret half here and
+              publish the public half to whoever writes to the agent:
+
+                gpg --quick-generate-key 'Eva <e.nebot@example.com>' default default never
+                gpg --export-secret-keys --armor <fpr>   # -> the sops secret
+                gpg --export --armor <fpr>               # -> your own keyring
+
+              When null (or unreadable at start) the keyring is built without a
+              secret key: decryption and signing fail closed, and nothing is sent
+              in cleartext as a fallback.
+            '';
+          };
+
+          fingerprint = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "9E1A2B3C4D5E6F708192A3B4C5D6E7F809A1B2C3";
+            description = ''
+              Optional full fingerprint of the agent's own key, pinning WHICH key
+              signs outgoing mail (`--local-user <fpr>!`). A fingerprint is public,
+              so unlike the key itself it is fine in nix. When null, gpg picks the
+              default secret key — which is unambiguous in practice, since the
+              keyring is rebuilt from nix each start and holds exactly the one
+              secret key imported from secretKeyFile.
+            '';
+          };
+
+          keys = lib.mkOption {
+            default = [ ];
+            example = [
+              {
+                address = "me@example.com";
+                fingerprint = "9E1A2B3C4D5E6F708192A3B4C5D6E7F809A1B2C3";
+                publicKeyFile = "/etc/nixos/keys/me.asc";
+              }
+            ];
+            description = ''
+              The owner keys the agent knows about. Each entry does double duty:
+              its fingerprint is a trusted SIGNER for inbound mail (reported by
+              `decrypt-mail`), and an encryption target for outbound mail to
+              `address`.
+
+              Encryption is decided HERE, per recipient, and never by the agent per
+              message: listing an address makes encrypted mail to it the only
+              option — `send-email`/`send-trusted-mail` refuse it outright (see
+              requireEncryption). A mode the agent elects is not a boundary, since
+              whatever can talk it into "confidential" can talk it back out.
+            '';
+            type = lib.types.listOf (
+              lib.types.submodule {
+                options = {
+                  address = lib.mkOption {
+                    type = lib.types.str;
+                    example = "me@example.com";
+                    description = "Recipient address this key belongs to (matched case-insensitively).";
+                  };
+                  fingerprint = lib.mkOption {
+                    type = lib.types.str;
+                    example = "9E1A2B3C4D5E6F708192A3B4C5D6E7F809A1B2C3";
+                    description = ''
+                      Full 40-hex OpenPGP fingerprint, no spaces. Mail is encrypted
+                      to this fingerprint rather than to the address, so a key
+                      imported at runtime cannot be substituted for the pinned one;
+                      inbound signatures are checked against it too.
+                    '';
+                  };
+                  publicKeyFile = lib.mkOption {
+                    type = lib.types.path;
+                    example = "/etc/nixos/keys/me.asc";
+                    description = ''
+                      Exported PUBLIC key, imported into the agent's keyring at
+                      every start. A `path` (unlike secretKeyFile) because a public
+                      key is public — the store is a fine home for it.
+                    '';
+                  };
+                  requireEncryption = lib.mkOption {
+                    type = lib.types.bool;
+                    default = true;
+                    description = ''
+                      Whether mail to `address` MUST be encrypted. True (the
+                      default) is fail-closed: the plaintext senders refuse this
+                      recipient, so if OpenPGP breaks the agent cannot reach them at
+                      all rather than quietly falling back to cleartext — which is
+                      the point of the design, and worth being deliberate about.
+
+                      Set false to keep the key for signature verification and
+                      optional encryption while leaving plaintext allowed. Still an
+                      operator decision pinned in nix, not an agent-facing switch.
+                    '';
+                  };
+                };
+              }
+            );
+          };
         };
       };
 
