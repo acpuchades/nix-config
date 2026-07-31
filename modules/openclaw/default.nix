@@ -655,8 +655,42 @@ let
         ++ lib.optional toolkitHasContent "${toolkitSkillsDir}"
         ++ lib.optional icfg.projects.enable "${projectsSkillsDir}"
         ++ [ "${policySkillsDir}" ];
+
+      # WHY WE STAGE SKILLS INTO A WRITABLE DIR INSTEAD OF POINTING extraDirs AT THE
+      # STORE:
+      #
+      # OpenClaw's skill loader silently drops any SKILL.md whose inode is hardlinked
+      # (nlink>=2 — its `rejectHardlinks` guard), and `auto-optimise-store = true`
+      # dedups every store file into `.links/` (nlink>=2). So extraDirs pointing at
+      # the /nix/store skill dirs loads ZERO skills — proven with `openclaw skills
+      # check` → Total 0, including the always-on `policy` (security) skill, which
+      # meant the agent ran with none of its module skills in effect. This is the
+      # skills-loader analogue of the plugin hardlink guard tracked in CLAUDE.md;
+      # 2026.6.x fixed only the *plugin* loader (`rejectHardlinks:false`), not this.
+      #
+      # Fix: at start, `cp` each skill tree into a per-agent dir under /var/lib (not
+      # auto-optimised), giving every file a fresh inode (nlink=1) the loader
+      # accepts. The dir is DEDICATED (`nix-skills`, not `skills`): the seed wipes and
+      # rebuilds it on every start, and OpenClaw's own `skills install`/workshop write
+      # into the agent WORKSPACE (its own `skills` dir), so a dedicated name keeps our
+      # rm -rf from ever clobbering a skill the agent installed or authored itself.
+      skillsStageDir = "${stateDir}/nix-skills";
+      skillsStageSeed = lib.optionalString (moduleSkillDirs != [ ]) ''
+        # Rebuild the skill staging tree from scratch on EVERY start, so a
+        # `nixos-rebuild switch` (which restarts the unit when this script's store
+        # path changes) always overwrites it with the current skills — and stale
+        # skills from a prior generation never linger.
+        rm -rf ${skillsStageDir}
+        install -d -m 0750 ${skillsStageDir}
+        for d in ${lib.escapeShellArgs moduleSkillDirs}; do
+          # `cp` (no --preserve=links) copies content into new inodes, breaking the
+          # store's hardlinks; each store dir holds exactly one `<name>/SKILL.md`.
+          cp -rL --no-preserve=mode,ownership "$d"/. ${skillsStageDir}/
+        done
+        chmod -R u+w ${skillsStageDir}
+      '';
       mailConfig = lib.optionalAttrs (moduleSkillDirs != [ ]) {
-        skills.load.extraDirs = moduleSkillDirs;
+        skills.load.extraDirs = [ skillsStageDir ];
       };
 
       fullConfig = lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate defaultConfig mailConfig) icfg.settings) enforcedConfig;
@@ -938,6 +972,11 @@ let
           # unreadable file leaves the allowlist empty, so the bot answers no one.
           ExecStartPre = pkgs.writeShellScript "openclaw-seed-config" ''
             set -euo pipefail
+
+            # (0) Materialise the module skills into a writable, hardlink-free tree
+            # (see skillsStageSeed) BEFORE the gateway starts, so the loader accepts
+            # them. No-op when the instance ships no skills.
+            ${skillsStageSeed}
             tmpl=${configTemplate}
             if [ -f ${configFile} ]; then
               ${lib.getExe openclawPatched} config patch --file "$tmpl" || {
