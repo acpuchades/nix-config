@@ -62,6 +62,14 @@
         mode = "0400";
       };
 
+      # Registration token (or a PAT) for the acpuchades-site self-hosted
+      # Actions runner, consumed by services.github-runners.acpuchades-site.
+      # Only the root-run ExecStartPre reads it, so root:root 0400 is correct.
+      # Get a registration token from the repo's Settings → Actions → Runners →
+      # New self-hosted runner (it expires in ~1h, but is only needed at the
+      # first registration; the module then persists the runner credentials).
+      "github-runner/acpuchades-site" = { mode = "0400"; };
+
       "passwd/alex" = {
         key = "passwd/alex";
         neededForUsers = true;
