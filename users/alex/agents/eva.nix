@@ -323,22 +323,30 @@ in
   #   papering over them: UpToDate is BROWSER-ONLY (subscription login, so
   #   request-trusted-url can only ever fetch its login page) and is a tertiary
   #   source to be followed to its primary references, never cited itself.
-  # - `seo`: search-visibility work on acpuchades-site, the one repo outside her own
-  #   tree she can write to. Deliberately THIN on conventions: the site repo has its
-  #   own CLAUDE.md documenting them (description-vs-summary lengths, keywords
-  #   derived from tags, translationKey pairing, feature-image detection), and this
-  #   skill points at it as the authority rather than restating them into a second
-  #   copy that would drift. What it adds is the method: audit the BUILT html and
-  #   never the markdown (config plus six theme overrides sit between a front-matter
-  #   field and the emitted tag, which is how a page looks right in source and ships
-  #   a truncated snippet), a per-page check table, and the boundaries — she does not
-  #   publish (`make deploy` is a publish, and it reads a gitignored .env), does not
-  #   touch data/cv, and does not change theme overrides as an SEO pass. Its honesty
-  #   rule matters most: there is no Search Console and the analytics blocks in
-  #   params.toml are empty, so she can state what the output CONTAINS and never what
-  #   it will achieve. And it draws the line explicitly on a clinician's site — no
-  #   generated filler, no doorway pages, and no claim about ALS pitched harder than
-  #   the evidence to attract clicks.
+  # - `seo-marketing`: search-visibility and digital-marketing work on ANY property —
+  #   his site (the one repo outside her own tree she can write to), a project's
+  #   docs, a study landing page, a mailing list. Deliberately GENERIC and
+  #   deliberately THIN on conventions: a property's own repo docs are named as the
+  #   authority (front-matter fields and their lengths, how keywords derive from
+  #   taxonomies, translation pairing, image detection) rather than copied here into
+  #   a second version that would drift. What it adds is the method and the limits.
+  #   Method: establish the goal before touching anything (traffic is not one), audit
+  #   what is SERVED and never the source (config plus theme overrides sit between a
+  #   front-matter field and the emitted tag, which is how a page looks right in
+  #   source and ships a truncated snippet), a per-page check table plus site-wide
+  #   ones, and — since her fetch/browse paths are host-allowlisted — say so when a
+  #   property is unreachable instead of passing a template read off as an output
+  #   check. Its honesty rule matters most: with no Search Console and no analytics
+  #   she can state what the output CONTAINS and never what it will achieve, and she
+  #   invents no volume, difficulty or traffic number. Beyond search it covers the
+  #   other channels in the order that matters (audience → message → channel →
+  #   measurement), the identity graph as the highest-value work for a person-brand,
+  #   email consent/SPF-DKIM-DMARC, EU consent before any tracker, and a hard NEVER
+  #   list — doorway pages, generated filler as his voice, link schemes, fake
+  #   engagement, unsolicited bulk mail, dark patterns, and any health claim pitched
+  #   harder than the evidence to attract attention. Boundaries: she does not
+  #   publish, does not send a list, does not post, does not spend, and never touches
+  #   a repo's PII pipeline.
   # - `research-projects`: the scientific counterpart to `projects` (which is only
   #   about a repo's ENVIRONMENT). The dossier/decision-log layout under
   #   ~/workspace/research, the patient-data rule (identifiable data never leaves
