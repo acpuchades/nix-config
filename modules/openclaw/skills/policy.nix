@@ -100,7 +100,22 @@ pkgs.writeTextDir "policy/SKILL.md" ''
               into a sender — the invitation is then gated exactly like any other
               mail to that recipient. The `check-email` skill has the full workflow:
                   make-invite --to <addr> --summary "…" --start "2026-08-05 10:00" > invite.eml
-                  send-trusted-mail <addr> < invite.eml''}${lib.optionalString icfg.actions.checkWeather.enable ''
+                  send-trusted-mail <addr> < invite.eml''}${lib.optionalString icfg.actions.zotero.enable ''
+
+            - **Read the owner's Zotero library** with `check-zotero` (GET-only against
+              a fixed endpoint, so it runs WITHOUT approval). These are your ONLY way
+              into Zotero — the API key is injected by the wrapper, so never put a key
+              in a URL and never reach for `request-trusted-url` here:
+                  check-zotero doi 10.1000/xyz
+                  check-zotero search "amyotrophic lateral sclerosis niv" --limit 10
+                  check-zotero collections
+            - **Add references to Zotero** with `zotero-add` (same pinned endpoint and
+              library, and CREATE-only — it cannot change or delete anything already
+              there — so it also runs WITHOUT approval). It takes a JSON array of items
+              on stdin or in a file, and does NOT deduplicate: run `check-zotero doi`
+              first. The `references` skill has the full workflow:
+                  zotero-add --dry-run refs.json
+                  zotero-add --collection <8-char-key> refs.json''}${lib.optionalString icfg.actions.checkWeather.enable ''
 
             - **Current weather** with `check-weather` (destination-fixed to the weather
               API, so it runs WITHOUT approval):
@@ -153,7 +168,7 @@ pkgs.writeTextDir "policy/SKILL.md" ''
 
         | You need           | Use                     | Do NOT use            |
         |--------------------|-------------------------|-----------------------|
-        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n| Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n| Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n| Generate an image  | `generate-image`        | —                     |"}${lib.optionalString icfg.actions.solveCaptcha.enable "\n| Get past a CAPTCHA | `solve-captcha`         | manual guessing       |"}
+        | Download / fetch   | `request-trusted-url`   | `curl`, `wget`        |${lib.optionalString icfg.actions.checkCalendar.enable "\n| Read a calendar    | `check-calendar <ics-url>` | `request-trusted-url` \\| by hand |"}${lib.optionalString icfg.actions.checkWeather.enable "\n| Current weather    | `check-weather`         | a weather web page    |"}${lib.optionalString icfg.actions.generateImage.enable "\n| Generate an image  | `generate-image`        | —                     |"}${lib.optionalString icfg.actions.solveCaptcha.enable "\n| Get past a CAPTCHA | `solve-captcha`         | manual guessing       |"}${lib.optionalString icfg.actions.zotero.enable "\n| Search Zotero      | `check-zotero`          | a key in a URL        |\n| Add a reference    | `zotero-add`            | `curl -X POST`        |"}
         | Send mail          | `send-trusted-mail`${lib.optionalString icfg.mail.enable " / `send-email`"}    | `sendmail`, `mail`    |${lib.optionalString icfg.actions.makeInvite.enable "\n| Invite to a meeting | `make-invite` + a sender | attaching a `.ics` file |"}${
           lib.optionalString (icfg.exec.netIsolatedBins != [ ]) ''
 

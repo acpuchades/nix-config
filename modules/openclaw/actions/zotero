@@ -1,0 +1,338 @@
+#!/bin/sh
+# Zotero access for an openclaw agent. ONE script, installed under TWO names by
+# the nix module, because the role has to be visible in the command name:
+#
+#   check-zotero   READ  — search / doi / collections / item   (ZOTERO_ROLE=read)
+#   zotero-add     WRITE — create items                        (ZOTERO_ROLE=add)
+#
+# It is one FILE (against the module's usual one-file-per-command) for exactly one
+# reason: both roles share the credential handling and the library resolution, and
+# that is the security-critical part. Splitting the file would duplicate it, and a
+# credential path maintained twice is a credential path that drifts.
+#
+# WHY THE READ SIDE EXISTS AT ALL, rather than letting the agent do
+# `request-trusted-url "…/items?key=<key>&q=…"`: that form only works if the agent
+# KNOWS the key, so the key ends up in a command line it composed — and therefore
+# in its transcript, its exec log, its memory index, and one step away from a chat
+# reply. Here the key is read from a file by the wrapper and injected as a header,
+# so it never enters anything the agent writes. api.zotero.org is deliberately NOT
+# a trusted site any more; this is the whole Zotero surface.
+#
+# What is pinned by nix, not passed as an argument:
+#   * the HOST and the endpoint shape — the agent supplies query text and item
+#     data, never a URL, so neither role can become a generic fetch or POST;
+#   * the LIBRARY — resolved from the key that the wrapper reads, so it is by
+#     construction the library that key owns;
+#   * the METHOD per role — `check-zotero` only ever issues GET, and `zotero-add`
+#     only ever POSTs new items. Items carrying `key`/`version` (what a Zotero
+#     UPDATE looks like) are refused and DELETE is never issued, so nothing already
+#     in the library can be modified or destroyed by either name.
+#
+# Residual channel, deliberately accepted: item fields are agent-supplied text
+# going into the owner's OWN library, readable only with his key. That is a place
+# to write nonsense, not a place to exfiltrate to.
+set -eu
+
+role=${ZOTERO_ROLE:-add}
+
+usage_read() {
+  cat >&2 <<'EOF'
+usage: check-zotero search TEXT [--collection KEY] [--limit N] [--json]
+       check-zotero doi DOI [--limit N] [--json]
+       check-zotero collections [--limit N] [--json]
+       check-zotero item ITEMKEY [--json]
+
+Reads the owner's Zotero library. GET only — it cannot change anything.
+
+    check-zotero doi 10.1000/xyz          # ALWAYS do this before zotero-add
+    check-zotero search "amyotrophic lateral sclerosis niv" --limit 10
+    check-zotero collections              # the 8-char keys zotero-add --collection takes
+EOF
+  exit 2
+}
+
+usage_add() {
+  cat >&2 <<'EOF'
+usage: zotero-add [--collection KEY] [--dry-run] [FILE]
+
+Creates Zotero items from a JSON ARRAY read from FILE (or stdin, or "-"). Only
+creates — it can neither modify nor delete what is already there.
+
+    zotero-add --dry-run refs.json
+    zotero-add --collection ABCD2345 refs.json
+
+Each element is a Zotero item object: an `itemType` plus that type's fields, e.g.
+
+    [
+      {
+        "itemType": "journalArticle",
+        "title": "…",
+        "creators": [{"creatorType":"author","firstName":"A","lastName":"B"}],
+        "publicationTitle": "…", "date": "2025", "DOI": "10.1000/xyz",
+        "extra": "PMID: 12345678"
+      }
+    ]
+
+Take the field VALUES from a Crossref/PubMed response, never from memory. This
+action does NOT deduplicate: run `check-zotero doi <doi>` first, because a
+duplicate is invisible until it reaches a bibliography.
+EOF
+  exit 2
+}
+
+api_base=${ZOTERO_API_BASE:-https://api.zotero.org}
+max_items=${ZOTERO_MAX_ITEMS:-50}
+
+if [ -z "${ZOTERO_TOKEN_FILE:-}" ] || [ ! -r "$ZOTERO_TOKEN_FILE" ]; then
+  echo "refused: no readable Zotero API key file (ZOTERO_TOKEN_FILE)" >&2
+  exit 3
+fi
+key=$(head -n1 "$ZOTERO_TOKEN_FILE" | tr -d ' \t\r\n')
+if [ -z "$key" ]; then
+  echo "refused: the Zotero API key file is empty" >&2
+  exit 3
+fi
+
+# The key goes in a 0600 config file, never in argv — the process table is
+# world-readable. --disable still ignores ~/.curlrc; --config is explicit.
+cfg=$(mktemp)
+body=
+trap 'rm -f "$cfg" ${body:+"$body"}' EXIT
+chmod 600 "$cfg"
+printf 'header = "Zotero-API-Key: %s"\nheader = "Zotero-API-Version: 3"\n' "$key" > "$cfg"
+
+zotero_curl() {
+  curl --disable --config "$cfg" --silent --show-error \
+    --proto '=https' --max-redirs 0 \
+    --connect-timeout 10 --max-time 60 --max-filesize 10M "$@"
+}
+
+# The library. Pinned by nix when the operator set it; otherwise resolved from the
+# key itself, so the only thing anyone has to supply is the key — and the reachable
+# library is by construction the one that key owns.
+library=${ZOTERO_LIBRARY:-}
+if [ -z "$library" ]; then
+  whoami_json=$(zotero_curl --url "$api_base/keys/current") || {
+    echo "zotero: could not reach the Zotero API to resolve the library" >&2
+    exit 4
+  }
+  user_id=$(printf '%s' "$whoami_json" | jq -r '.userID // empty')
+  if [ -z "$user_id" ]; then
+    echo "zotero: the API key did not resolve to a user — is it valid? Ask the owner to set actions.zotero.library explicitly (e.g. \"users/1234567\")." >&2
+    exit 4
+  fi
+  library="users/$user_id"
+fi
+
+case $library in
+  users/[0-9]* | groups/[0-9]*) ;;
+  *) echo "refused: library must be users/<id> or groups/<id> (got '$library')" >&2; exit 3 ;;
+esac
+
+# A collection key is 8 uppercase alphanumerics. Validated in both roles because it
+# is interpolated into a URL or a payload, and because a typo would silently file
+# references somewhere unfindable.
+check_collection() {
+  case $1 in
+    *[!A-Z0-9]*) echo "refused: --collection must be an 8-character Zotero collection key" >&2; exit 2 ;;
+  esac
+  if [ ${#1} -ne 8 ]; then
+    echo "refused: --collection must be an 8-character Zotero collection key" >&2
+    exit 2
+  fi
+}
+
+urlencode() { jq -rn --arg s "$1" '$s|@uri'; }
+
+if [ "$role" = read ]; then
+  verb=${1:-}
+  [ -n "$verb" ] || usage_read
+  shift
+
+  arg=
+  collection=
+  limit=25
+  as_json=0
+  case $verb in
+    search|doi|item)
+      arg=${1:-}
+      [ -n "$arg" ] || usage_read
+      shift ;;
+    collections) ;;
+    -h|--help) usage_read ;;
+    *) echo "unknown subcommand: $verb" >&2; usage_read ;;
+  esac
+
+  while [ "$#" -gt 0 ]; do
+    case $1 in
+      --collection) collection=${2:-}; shift 2 || usage_read ;;
+      --limit) limit=${2:-}; shift 2 || usage_read ;;
+      --json) as_json=1; shift ;;
+      -h|--help) usage_read ;;
+      *) echo "unknown argument: $1" >&2; usage_read ;;
+    esac
+  done
+
+  case $limit in
+    ''|*[!0-9]*|0) echo "refused: --limit must be a positive whole number" >&2; exit 2 ;;
+  esac
+  [ "$limit" -gt 100 ] && limit=100
+
+  # The URL is BUILT here from the verb — the agent never supplies one.
+  case $verb in
+    search)
+      path="/$library"
+      if [ -n "$collection" ]; then
+        check_collection "$collection"
+        path="$path/collections/$collection"
+      fi
+      url="$api_base$path/items?q=$(urlencode "$arg")&qmode=everything&limit=$limit" ;;
+    doi)
+      url="$api_base/$library/items?q=$(urlencode "$arg")&qmode=everything&limit=$limit" ;;
+    collections)
+      url="$api_base/$library/collections?limit=$limit" ;;
+    item)
+      case $arg in
+        *[!A-Za-z0-9]*) echo "refused: an item key is alphanumeric" >&2; exit 2 ;;
+      esac
+      url="$api_base/$library/items/$arg" ;;
+  esac
+
+  body=$(mktemp)
+  status=$(zotero_curl --output "$body" --write-out '%{http_code}' --url "$url") || {
+    echo "check-zotero: the request to the Zotero API failed" >&2
+    exit 4
+  }
+
+  case $status in
+    200) ;;
+    403) echo "check-zotero: refused by Zotero (403) — the API key lacks access to $library" >&2; exit 4 ;;
+    404) echo "check-zotero: not found in $library" >&2; exit 1 ;;
+    *) echo "check-zotero: Zotero returned HTTP $status" >&2; head -c 2000 "$body" >&2; echo >&2; exit 4 ;;
+  esac
+
+  if [ "$as_json" = 1 ]; then
+    jq . < "$body"
+    exit 0
+  fi
+
+  if [ "$verb" = collections ]; then
+    jq -r '
+      (if type == "array" then . else [.] end)
+      | if length == 0 then "no collections" else
+          "\(length) collection(s):",
+          (.[] | "  \(.key)  \(.data.name)  (\(.meta.numItems // 0) items)")
+        end
+    ' < "$body"
+    exit 0
+  fi
+
+  # Items, one line each, carrying what deduplication and citing actually need: the
+  # item key, the year, the first author, the title and the DOI.
+  jq -r '
+    (if type == "array" then . else [.] end)
+    | if length == 0 then "no matching items — nothing in the library for this query" else
+        "\(length) item(s):",
+        (.[] | "  \(.key)  \(.data.itemType)  \((.meta.parsedDate // .data.date // "n.d.")[0:4])  "
+               + "\(.meta.creatorSummary // "—")  \(.data.title // .data.caseName // "(no title)")"
+               + (if (.data.DOI // "") != "" then "  doi:\(.data.DOI)" else "" end))
+      end
+  ' < "$body"
+  exit 0
+fi
+
+# ---------------------------------------------------------------- write (add)
+
+collection=
+dry_run=0
+source=-
+
+while [ "$#" -gt 0 ]; do
+  case $1 in
+    --collection) collection=${2:-}; shift 2 || usage_add ;;
+    --dry-run) dry_run=1; shift ;;
+    -h|--help) usage_add ;;
+    -*) echo "unknown argument: $1" >&2; usage_add ;;
+    *) source=$1; shift ;;
+  esac
+done
+
+[ -n "$collection" ] && check_collection "$collection"
+
+if [ "$source" = "-" ]; then
+  raw=$(cat)
+else
+  [ -r "$source" ] || { echo "refused: cannot read '$source'" >&2; exit 2; }
+  raw=$(cat "$source")
+fi
+
+# Validate and normalise BEFORE anything leaves the host. jq's error() aborts with
+# the message, so a malformed payload never reaches the API — which matters because
+# a partially-valid batch creates the valid half and leaves the library in a state
+# nobody chose.
+payload=$(printf '%s' "$raw" | jq -c \
+  --argjson max "$max_items" --arg coll "$collection" '
+  if type != "array" then error("payload must be a JSON array of item objects") else . end
+  | if length == 0 then error("payload is an empty array — nothing to add") else . end
+  | if length > $max then error("payload has \(length) items; at most \($max) per request") else . end
+  | map(
+      if type != "object" then error("every element must be a JSON object") else . end
+      | if has("key") or has("version")
+        then error("items must not carry \"key\" or \"version\": this action only CREATES, it never updates an existing item")
+        else . end
+      | if (.itemType | type) != "string" or (.itemType | length) == 0
+        then error("every item needs a non-empty \"itemType\" (e.g. journalArticle)")
+        else . end
+      | if $coll != "" then .collections = [$coll] else . end
+    )
+') || exit 5
+
+count=$(printf '%s' "$payload" | jq 'length')
+
+if [ "$dry_run" = 1 ]; then
+  echo "dry run — nothing sent. $count item(s) would be created in $library${collection:+, collection $collection}:" >&2
+  printf '%s' "$payload" | jq -r '.[] | "  \(.itemType): \(.title // .caseName // .subject // "(no title)")"'
+  exit 0
+fi
+
+body=$(mktemp)
+status=$(printf '%s' "$payload" | zotero_curl \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --data-binary @- \
+  --output "$body" --write-out '%{http_code}' \
+  --url "$api_base/$library/items") || {
+  echo "zotero-add: the request to the Zotero API failed" >&2
+  exit 4
+}
+
+case $status in
+  200)
+    # Zotero reports PER ITEM, so a 200 does not mean everything landed. Print both
+    # halves; a silent partial failure is the thing to avoid here.
+    jq -r --arg lib "$library" '
+      ((.successful // {}) | to_entries) as $ok
+      | ((.failed // {}) | to_entries) as $bad
+      | "created \($ok | length) item(s) in \($lib), \($bad | length) failed",
+        ($ok[] | "  ok   \(.value.key)  \(.value.data.title // .value.data.caseName // "(no title)")"),
+        ($bad[] | "  FAIL index \(.key): \(.value.code) \(.value.message)")
+    ' < "$body"
+    # Exit non-zero when any item failed, so a partial batch cannot be mistaken for
+    # a clean one by whatever called this.
+    if ! jq -e '((.failed // {}) | length) == 0' < "$body" > /dev/null; then
+      echo "zotero-add: some items were rejected — fix them and re-send ONLY those" >&2
+      exit 6
+    fi
+    ;;
+  403)
+    echo "zotero-add: refused by Zotero (403) — the API key lacks write access to $library" >&2
+    exit 4 ;;
+  413)
+    echo "zotero-add: the batch is too large for the API — split it" >&2
+    exit 4 ;;
+  *)
+    echo "zotero-add: Zotero returned HTTP $status" >&2
+    head -c 2000 "$body" >&2
+    echo >&2
+    exit 4 ;;
+esac

@@ -42,6 +42,20 @@ let
     "ssl.gstatic.com" # static assets
     "*.googleusercontent.com" # images embedded/uploaded in the form
     "www.google.com" # reCAPTCHA on submit (some forms)
+    # UpToDate (Wolters Kluwer) — point-of-care clinical reference. BROWSER-ONLY by
+    # necessity: it is a subscription site behind an interactive login, so
+    # request-trusted-url (GET, no cookies, no auth header, no redirects) can only
+    # ever fetch its login page. That is why it is here and deliberately NOT in
+    # actions.requestUrl.trustedSites — putting it there would advertise a read path
+    # that returns nothing but a paywall stub. Credentials are handed to the agent
+    # directly (she records them in her TOOLS.md), not pinned in this repo.
+    #
+    # `*.` is subdomains-only, so www.uptodate.com is covered and the bare apex is
+    # not — navigate to https://www.uptodate.com/… . If the login bounces through an
+    # institutional identity provider (OpenAthens, a hospital/university SSO), THAT
+    # host has to be added here too, once observed; the SSRF allowlist blocks the
+    # redirect target otherwise and the login just dead-ends.
+    "*.uptodate.com"
   ];
 
   # Eva's Python + R library sets, defined ONCE as functions so BOTH the
@@ -284,6 +298,41 @@ in
   #   modules/r-dev/system.nix already serves) instead of `import <nixpkgs> {}`. That
   #   keeps a project self-contained and sidesteps the host's ICU/V8 skew entirely —
   #   which is why she needs no per-user overlay to build gt/gtsummary in a project.
+  # - `calendar`: the protocol for anything with a date and a time. The module's
+  #   generated skills already say WHICH command to use (policy: `check-calendar`;
+  #   check-email: the `make-invite` + sender workflow); this one supplies the
+  #   PROCEDURE those commands sit inside — a `TOOLS.md` registry mapping each of
+  #   his calendars to the address an invitation must be sent to (the fix for
+  #   "wrong calendar"), a conflict check that is run before every booking and
+  #   knows check-calendar's two window traps (the window starts NOW, so a far date
+  #   needs a wide `--days`; and `--max` truncates the LATEST events, so a wide
+  #   window with the default 50 silently drops the very date being checked and
+  #   reads as "free"), and a fixed `calendar.md` line shape carrying `cal:`/`uid:`/
+  #   `seq:` so an event can actually be moved or cancelled later. It restates the
+  #   gtd trust rule for this surface: she never RSVPs for him, and a third-party
+  #   meeting request is a proposal for @owner, not a booking.
+  # - `references`: how a search is run and how references are handled — PICO
+  #   question, a reproducible MeSH+[tiab] query recorded verbatim with its date and
+  #   hit count, screen/appraise (including a retraction check via efetch's
+  #   publication types), legal full text only, and Zotero through the check-zotero /
+  #   zotero-add wrappers. Named `references`, not `literature`, so it cannot be read
+  #   as a creative-writing skill. Its headline rule is the anti-hallucination one:
+  #   no identifier reaches a document until it has resolved against a real API
+  #   response in that session — a fabricated citation is invisible in review and
+  #   ends up attributed to him. It also states the two limits honestly instead of
+  #   papering over them: UpToDate is BROWSER-ONLY (subscription login, so
+  #   request-trusted-url can only ever fetch its login page) and is a tertiary
+  #   source to be followed to its primary references, never cited itself.
+  # - `research-projects`: the scientific counterpart to `projects` (which is only
+  #   about a repo's ENVIRONMENT). The dossier/decision-log layout under
+  #   ~/workspace/research, the patient-data rule (identifiable data never leaves
+  #   the host — no repo, no mail, no API), manuscript versioning (`vNN_date_initials`,
+  #   never edit a version that has been sent), circulating drafts to co-authors
+  #   through the ordinary approval gate, authorship as never hers to change,
+  #   journal/reporting-guideline selection before the draft is finished, AoE
+  #   congress deadlines, and the point-by-point reviewer response built BEFORE the
+  #   edits. It hands off to `calendar` for every date and to `projects` for the
+  #   analysis repo.
   extraSkillDirs = [ ./skills ];
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
@@ -331,7 +380,13 @@ in
         # following). github.com is deliberately kept OUT (see the browser SSRF
         # note below): the one plausibly attacker-steerable host.
         "eutils.ncbi.nlm.nih.gov" # PubMed E-utilities (keyless)
-        "api.zotero.org" # Zotero Web API (key passed as ?key= query param)
+        # api.zotero.org is DELIBERATELY ABSENT (removed 2026-08-01). Reaching it
+        # here meant `…/items?key=<key>&q=…`, which only works if eva KNOWS the key —
+        # putting it in a command line she composed, and so in her transcript, her
+        # exec log, her memory index and one step from a Telegram reply. Zotero now
+        # goes exclusively through check-zotero / zotero-add (actions.zotero below),
+        # which inject the key as a header from a file she never has to read. Do not
+        # add it back: it would re-open the key-in-URL path the wrappers exist to close.
         "api.ouraring.com" # Oura API v2 — trusted host kept, but note its
         # Bearer-header auth can't ride request-trusted-url, so eva reaches it
         # from an action SHE implements (raw curl now; a destination-pinned
@@ -410,6 +465,25 @@ in
     # through send-trusted-mail / send-email, so the recipient gates are unchanged
     # and there is no invitation-shaped way around them.
     makeInvite.enable = true;
+    # Eva's ENTIRE Zotero surface: `check-zotero` (search/doi/collections/item, GET
+    # only) and `zotero-add` (create). Two names over one wrapper, so the role is
+    # visible in the command and the exec gate can govern them separately.
+    #
+    # Enabling this is why api.zotero.org left trustedSites above: the wrappers read
+    # the key from the sops file and inject it as a header, so it never appears in
+    # anything eva writes — whereas the request-trusted-url route required the key in
+    # the URL. Reads and writes are now the same credential reached the same way, and
+    # nothing about Zotero belongs in her TOOLS.md.
+    #
+    # `library` is deliberately unset: the wrapper resolves it from the key itself
+    # (GET /keys/current), so the ONLY thing that has to exist is the sops secret —
+    # no user ID to look up, and no way to aim it at a library the key does not own.
+    # The write half is create-only (items carrying key/version are refused), so a bad
+    # turn can add junk references but cannot damage the library he already has.
+    zotero = {
+      enable = true;
+      tokenFile = config.sops.secrets."zotero/token".path;
+    };
     # CAPTCHA solving via 2Captcha, so a form eva was asked to fill (Google Forms
     # in particular — that is why www.google.com/reCAPTCHA is a browsable host)
     # doesn't dead-end on a challenge she cannot answer. The API key is a runtime
