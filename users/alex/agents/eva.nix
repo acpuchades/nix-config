@@ -323,6 +323,22 @@ in
   #   papering over them: UpToDate is BROWSER-ONLY (subscription login, so
   #   request-trusted-url can only ever fetch its login page) and is a tertiary
   #   source to be followed to its primary references, never cited itself.
+  # - `seo`: search-visibility work on acpuchades-site, the one repo outside her own
+  #   tree she can write to. Deliberately THIN on conventions: the site repo has its
+  #   own CLAUDE.md documenting them (description-vs-summary lengths, keywords
+  #   derived from tags, translationKey pairing, feature-image detection), and this
+  #   skill points at it as the authority rather than restating them into a second
+  #   copy that would drift. What it adds is the method: audit the BUILT html and
+  #   never the markdown (config plus six theme overrides sit between a front-matter
+  #   field and the emitted tag, which is how a page looks right in source and ships
+  #   a truncated snippet), a per-page check table, and the boundaries — she does not
+  #   publish (`make deploy` is a publish, and it reads a gitignored .env), does not
+  #   touch data/cv, and does not change theme overrides as an SEO pass. Its honesty
+  #   rule matters most: there is no Search Console and the analytics blocks in
+  #   params.toml are empty, so she can state what the output CONTAINS and never what
+  #   it will achieve. And it draws the line explicitly on a clinician's site — no
+  #   generated filler, no doorway pages, and no claim about ALS pitched harder than
+  #   the evidence to attract clicks.
   # - `research-projects`: the scientific counterpart to `projects` (which is only
   #   about a repo's ENVIRONMENT). The dossier/decision-log layout under
   #   ~/workspace/research, the patient-data rule (identifiable data never leaves
