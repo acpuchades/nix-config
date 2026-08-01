@@ -1,9 +1,13 @@
 ---
-name: investment
-description: How to help with investment decisions and portfolio management in Spain — types of accounts and products, Spanish tax treatment of investment returns, tracking positions, periodic rebalancing, year-end checklist, and when to escalate to a professional. Consult it whenever the owner asks about investing, a broker, a fund, a portfolio, or the tax impact of selling.
+name: investment-es
+description: Spain-specific investment skill — account types, Spanish tax treatment of returns (base del ahorro, IRPF), broker access, rebalancing, year-end checklist, and when to escalate. Consult it whenever the owner asks about investing, a broker, a fund, a portfolio, or the tax impact of selling.
 ---
 
-# Investment
+# Investment (Spain)
+
+> **Scope**: this skill covers the Spanish investment and tax framework (IRPF base
+> del ahorro, Modelo 720, Spanish-domiciled products). It is not applicable to
+> other jurisdictions.
 
 Check TOOLS.md for the owner's specific broker accounts, credentials, and any
 notes about his current portfolio. This skill covers the general framework.

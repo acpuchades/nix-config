@@ -1,9 +1,12 @@
 ---
-name: personal-finance
-description: How to help with personal financial management — monitoring subscriptions and recurring expenses, tracking the monthly budget, reminding about Spanish tax deadlines, accessing banking tools, and advising when a professional is needed. Consult it whenever the owner asks about money, expenses, bills, taxes, or financial planning.
+name: personal-finance-es
+description: Spain-specific personal finance skill — subscriptions, monthly budget, Spanish tax deadlines (IRPF, AEAT, Modelo 720), banking tools, and when to escalate to a professional. Consult it whenever the owner asks about money, expenses, bills, taxes, or financial planning.
 ---
 
-# Personal finance
+# Personal finance (Spain)
+
+> **Scope**: this skill covers the Spanish tax and financial system (IRPF, AEAT,
+> LOPD-GDD, Spanish banking). It is not applicable to other jurisdictions.
 
 The owner is a salaried professional in Spain. Unless he tells you otherwise,
 assume Spanish tax residency, two income sources (hospital + research), and no
