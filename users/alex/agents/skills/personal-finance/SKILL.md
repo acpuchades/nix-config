@@ -64,6 +64,80 @@ Other taxes that may apply depending on his situation:
 - **Retenciones sobre rendimientos de capital**: withheld at source by brokers and
   banks; appears in the borrador but verify it matches your broker's certificate
 
+## Recording invoices and financial documents
+
+Before processing any invoice, receipt, or financial document, ask the owner
+which system he uses to store them — do not assume. Common setups include:
+
+- A dedicated folder in cloud storage (Nextcloud, Google Drive, Dropbox)
+- A bookkeeping app (Freeagent, Holded, Contasimple, a spreadsheet)
+- A document management system with tags/categories
+- Paper + physical folder
+
+Once you know his system, use it consistently: file documents where he expects
+to find them, in the format and naming convention he already uses. If no system
+exists yet, suggest one and let him decide — do not create one unilaterally.
+
+For deductible expenses (see below), flag them explicitly at the moment of
+filing so they are easy to retrieve at renta time.
+
+## Tax deductions and allowances (desgravaciones)
+
+Spain offers a range of deductions at national, regional (autonómica), and local
+level. The applicable ones depend on the owner's specific situation — always
+verify current rules with the Agencia Tributaria or a gestor, as amounts and
+conditions change yearly.
+
+### National deductions (all taxpayers)
+
+- **Aportaciones a plan de pensiones**: up to 1,500€/year deductible from the
+  general base (more if employer contributes)
+- **Rendimientos del trabajo** (employed income): standard deduction applied
+  automatically in the borrador
+- **Donativos a entidades sin ánimo de lucro**: 80% for the first 150€, 35% or
+  40% for amounts above (Law 49/2002 entities — NGOs, foundations, universities)
+- **Deducciones por familia numerosa / discapacidad** if applicable
+- **Inversión en empresas de nueva creación** (startups): 50% deduction on
+  investment, subject to conditions
+
+### Autónomo and professional income deductions
+
+If the owner has any self-employed activity (honorary fees, clinical trial
+payments declared as actividad económica, consulting):
+
+- General rule: expenses must be **necessary for the activity** and
+  **documented with invoice** (factura, not just ticket)
+- Deductible: professional subscriptions, equipment (amortised), books and
+  training, professional insurance, dedicated phone/internet proportion, home
+  office if formally constituted
+- A receipt (ticket) suffices for small amounts in some contexts but a proper
+  factura with NIF is required for deduction claims — always prefer factura
+
+### Autonómica and local deductions
+
+Vary significantly by Comunidad Autónoma. In Cataluña (where the owner is based)
+notable deductions include:
+
+- **Alquiler de vivienda habitual** (tenants): if the rental contract predates
+  certain dates; verify current eligibility
+- **Inversión en residencia habitual**: if he purchased before 2013 (transitional
+  regime)
+- **Donaciones a entidades catalanas** (additional regional deduction on top of
+  national)
+- **Nacimiento/adopción de hijos** and family situation deductions
+
+Check the Agència Tributària de Catalunya (ATC) website or the Agencia Tributaria
+IRPF guide for Cataluña each year for the updated list — these change.
+
+### What to track during the year
+
+Keep a running list of potentially deductible expenses:
+- Subscriptions that relate to professional activity (journals, databases,
+  professional organisation fees)
+- Training courses and conference fees (with factura)
+- Equipment purchased for work use (prorate if also personal)
+- Charitable donations (entity must provide a certificate for > 150€)
+
 ## Banking tools and access
 
 If the owner shares bank credentials or gives you access to a banking API or
