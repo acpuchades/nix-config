@@ -102,7 +102,7 @@ in
       # local server has no auth, so workers must talk to it directly.
       (lib.mapAttrs'
         (name: _: lib.nameValuePair "prefect-worker-${name}" {
-          environment.PREFECT_API_URL = "http://127.0.0.1:${toString cfg.port}/api";
+          environment.PREFECT_API_URL = lib.mkForce "http://127.0.0.1:${toString cfg.port}/api";
         })
         cfg.workerPools)
     ];
