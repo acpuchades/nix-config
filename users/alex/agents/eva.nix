@@ -379,7 +379,7 @@ in
   #   off to `policy` for the approval gate, `seo-marketing` for the identity graph and
   #   link-preview metadata, `references` for anything citing literature, and
   #   `calendar` for scheduling around a date.
-  extraSkillDirs = [ ./skills ];
+  extraSkillDirs = [ ../../../skills ];
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
   # These addresses (all the owner's own) send with no approval; every
