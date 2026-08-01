@@ -101,6 +101,78 @@ When the owner shares portfolio data or gives access to a broker:
   pre-fill is often incomplete for foreign broker accounts)
 - Include foreign withheld tax as a deduction or credit where applicable
 
+## Traspaso de fondos vs selling ETFs — the key Spanish tax advantage
+
+The **traspaso** is a transfer between investment funds (fondos de inversión UCITS)
+that does not trigger a taxable event in Spain. The investor switches from one fund
+to another without paying capital gains tax — tax is deferred until the final
+redemption (reembolso).
+
+**Why this matters for long-term indexing:**
+- Rebalancing a portfolio of index funds can be done with zero tax drag
+- Switching from accumulation fund to a cheaper share class, or from one provider
+  to another, is free from a fiscal standpoint
+- Compounding works on the full pre-tax amount for as long as the position is held
+
+**The ETF trap**: ETFs traded on a stock exchange — even identical UCITS ETFs —
+do not qualify for the traspaso regime. Selling an ETF to buy another (even the
+same index, different provider) is a taxable event. For a Spanish resident with
+meaningful accumulated gains, switching ETFs can be expensive.
+
+**Practical rule**: for long-term indexed portfolio, favour fondos de inversión
+over ETFs when the product is available, unless the TER difference is large enough
+to outweigh the tax cost of periodic rebalancing. For tactical or short-term
+positions, or when no equivalent fund exists, ETFs are fine.
+
+## Cryptocurrencies (fiscalidad en España)
+
+Spain taxes crypto gains as **capital gains in the base del ahorro** (same rates
+as shares/funds: 19–28%). Key points:
+
+- **Taxable events**: selling for fiat, exchanging one crypto for another,
+  spending crypto on goods or services, receiving crypto as payment
+- **Non-taxable**: buying crypto with fiat, transferring between your own wallets
+- **Cost basis**: FIFO per currency; losses can offset gains in the same year and
+  carry forward 4 years
+- **Staking and DeFi yields**: treated as earned income (rendimientos del trabajo
+  or del capital mobiliario depending on structure) — taxed at the general rate,
+  not the ahorro rate. This distinction matters significantly for the marginal rate.
+
+**Reporting obligations (from 2024):**
+- **Modelo 172**: annual declaration of crypto held at Spanish providers (exchanges
+  with Spanish licence). Filed in January for the prior year.
+- **Modelo 173**: annual declaration of operations (buy/sell/exchange) at Spanish
+  providers. Same window as 172.
+- **Modelo 721**: foreign crypto assets (held at non-Spanish exchanges) exceeding
+  50,000€ — analogous to Modelo 720 for financial assets. Annual, March deadline.
+- Operations appear in the IRPF return (Modelo 100) in the capital gains section;
+  the Modelos 172/173/721 are informational filings, not tax payment forms.
+
+If the owner holds any crypto, flag the obligation to file the informational models
+and ensure gains/losses are included in the renta. Foreign exchange holdings above
+50,000€ trigger Modelo 721 — do not overlook it.
+
+## Deposit and investment protection
+
+**Fondo de Garantía de Depósitos (FGD)**: protects up to **100,000€ per depositor
+per institution** for cash deposits (current accounts, savings accounts, fixed-term
+deposits) at Spanish banks. Joint accounts count at 100,000€ per holder.
+
+**Fondo de Garantía de Inversiones (FOGAIN)**: protects securities accounts
+(valores) up to **100,000€ per investor per institution** in the event of broker
+insolvency — covers the securities themselves, not market losses.
+
+For foreign brokers (DeGiro, IBKR):
+- DeGiro is Dutch; covered by the Dutch DGS (up to 100k€ in cash) and the Dutch
+  SIPC-equivalent (20k€ for securities). Securities are held in a separate
+  custodial structure (SPV) which reduces — but does not eliminate — insolvency risk.
+- IBKR US entity: covered by SIPC (up to $500k, including $250k cash); EU entity
+  varies by registration.
+- Always verify the specific entity and its coverage before depositing large amounts.
+
+Practical implication: if total investable assets at a single institution approach
+100,000€, consider spreading across entities to stay within guarantee limits.
+
 ## When to involve a professional
 
 Recommend a *gestor* or tax adviser if:

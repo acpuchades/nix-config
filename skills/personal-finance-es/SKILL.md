@@ -152,6 +152,69 @@ For read-only analysis tasks (categorising transactions, computing monthly
 totals), ask him to export a CSV or PDF from his bank and share it. Most Spanish
 banks (CaixaBank, BBVA, Santander, ING) offer transaction exports.
 
+## Understanding a Spanish nómina (payslip)
+
+A standard Spanish payslip has three main blocks:
+
+**Devengos (gross earnings)**
+- Salario base — the base salary set in the contract or convenio colectivo
+- Complementos salariales — seniority, on-call, responsibility supplements
+- Horas extraordinarias, dietas, plus de transporte (if applicable)
+- Total devengos = **salario bruto**
+
+**Deducciones (deductions)**
+- Cuota obrera a la Seguridad Social:
+  - Contingencias comunes: 4.70% of the cotisation base
+  - Desempleo: 1.55% (salaried workers)
+  - Formación profesional: 0.10%
+  - FOGASA: 0.20% (negligible, often omitted)
+- **Retención IRPF**: variable percentage withheld by the employer on account of the annual income tax. Determined at the start of the year based on expected income, family situation, and deductions (Modelo 145). Can be adjusted mid-year if circumstances change.
+
+**Líquido a percibir = bruto − deducciones** (the net amount transferred).
+
+Key point: the employer also pays Social Security contributions on top of the gross salary (roughly 29–31% additional), but this does not appear on the worker's payslip — it is a cost borne by the employer directly.
+
+When reviewing a nómina, check: that the IRPF retention percentage matches what was declared in Modelo 145, that the SS bases are within legal limits, and that any variable complement is correctly reflected. Flag discrepancies before the renta campaign — correcting them mid-year is easier than dealing with underpayment notices.
+
+## IVA (Value Added Tax)
+
+For a salaried employee with no autónomo activity, IVA is generally invisible — purchases include IVA but it is not recoverable, and no VAT return is filed. The standard rates:
+
+- **21%**: general rate (most goods and services)
+- **10%**: reduced (food not at 4%, transport, hospitality, construction)
+- **4%**: super-reduced (basic foodstuffs, books, medicines)
+
+**If the owner has any freelance or professional income (actividad económica)**:
+- He must charge IVA on his invoices (typically 21%) and file quarterly Modelo 303
+- He can deduct IVA paid on expenses **directly related to the activity** (equipment, professional services, subscriptions with factura)
+- Mixed-use expenses (phone, home office) require a justified proportion
+- Annual summary: Modelo 390 (filed in January for the prior year)
+
+**Facturas with IVA**: a valid factura must include the issuer's NIF, the recipient's NIF (for deductible B2B invoices), the IVA rate and amount broken out, and a unique invoice number. A ticket or simplified factura suffices for retail purchases under 400€ but is not deductible for business IVA purposes.
+
+Even without autónomo activity, understanding IVA matters when evaluating whether professional service invoices he receives are correctly issued.
+
+## Reviewing the borrador IRPF
+
+The Agencia Tributaria makes a pre-filled draft (*borrador*) available from early April via the Renta WEB app or Cl@ve. Do not confirm it without reviewing — it is frequently incomplete or wrong in predictable ways:
+
+**What the borrador usually gets right:**
+- Salary and withholdings from Spanish employers (reported via Modelo 190)
+- Bank interest and dividends from Spanish entities
+- Mortgage deductions under the transitional 2013 regime (if applicable)
+- Previous-year loss carryforwards (usually)
+
+**What the borrador commonly misses or gets wrong:**
+- Investment gains/losses from foreign brokers (DeGiro, IBKR) — must add manually
+- Dividends from foreign companies net of foreign withholding tax (credit applies)
+- Rental income, if not reported by the tenant
+- Autónomo or professional income not reported by a paying entity
+- Pension plan contributions made directly (not via payroll)
+- Charitable donations (unless the entity reported them electronically)
+- Deductions specific to the Comunitat Autònoma (check the regional annex)
+
+**Workflow**: download the borrador as PDF, compare it line by line against the broker's annual tax certificate and any other income sources. Only confirm once all sources are reconciled. If something is missing, use Renta WEB to add it manually rather than editing the PDF.
+
 ## When to escalate to a professional
 
 Recommend a *gestor* or *asesor fiscal* if:
