@@ -198,6 +198,20 @@
         mode = "0440";
       };
 
+      # Zotero API key for the zotero-add action
+      # (my.openclaw.instances.<agent>.actions.zoteroAdd.tokenFile), read at RUNTIME
+      # by the zotero-add wrapper (runs AS the agent). It must be a key with WRITE
+      # access to the library; the library itself is resolved from this key, so it is
+      # the only thing that has to be supplied. The same key is what an agent uses
+      # for Zotero READS through request-trusted-url (`?key=` query param), so it
+      # also belongs in that agent's TOOLS.md — reads and writes are the same
+      # credential, reached two different ways. Create it at
+      # https://www.zotero.org/settings/keys.
+      "zotero/token" = {
+        group = "agents";
+        mode = "0440";
+      };
+
     };
 
     templates = {

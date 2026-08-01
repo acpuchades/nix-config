@@ -473,6 +473,57 @@ let
               ) "--set CAPTCHA_API_BASE ${lib.escapeShellArg icfg.actions.solveCaptcha.apiBase}"}
           '';
 
+      # `check-zotero` / `zotero-add`: the agent's WHOLE Zotero surface, as two names
+      # over one script so the role is legible in the command itself — `check-*` is
+      # already this module's read prefix (check-calendar, check-weather,
+      # check-email), and the exec gate is per-binary, so read and write stay
+      # separately governable.
+      #
+      # The read half is not a convenience. The alternative — letting the agent call
+      # `request-trusted-url ".../items?key=<key>&q=…"` — only works if the agent
+      # KNOWS the key, which puts it in a command line the agent composed and thus in
+      # its transcript, exec log and memory index. Here the wrapper reads the key from
+      # a file and injects it as a header, so it never enters anything the agent
+      # writes; api.zotero.org is correspondingly NOT in trustedSites.
+      #
+      # Both names are destination-pinned (the agent supplies query text or item data,
+      # never a URL) and the library is the one the key owns. `zotero-add` refuses any
+      # item carrying `key`/`version` — what a Zotero UPDATE looks like — and never
+      # issues DELETE, so it can create references and nothing else. That is what
+      # makes both safe to bless whole-binary despite one of them being a write. The
+      # API key stays a runtime FILE (tokenFile), never a nix value.
+      zoteroBin =
+        let
+          wrapArgs = [
+            "--prefix PATH : ${
+              lib.makeBinPath [
+                pkgs.curl
+                pkgs.jq
+                pkgs.coreutils
+              ]
+            }"
+            "--set ZOTERO_TOKEN_FILE ${lib.escapeShellArg icfg.actions.zotero.tokenFile}"
+            "--set ZOTERO_MAX_ITEMS ${toString icfg.actions.zotero.maxItems}"
+          ]
+          ++ lib.optional (
+            icfg.actions.zotero.library != null
+          ) "--set ZOTERO_LIBRARY ${lib.escapeShellArg icfg.actions.zotero.library}"
+          ++ lib.optional (
+            icfg.actions.zotero.apiBase != null
+          ) "--set ZOTERO_API_BASE ${lib.escapeShellArg icfg.actions.zotero.apiBase}";
+          wrapped = lib.concatStringsSep " \\\n  " wrapArgs;
+        in
+        pkgs.runCommandLocal "openclaw-zotero" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/zotero} $out/libexec/zotero
+            makeWrapper $out/libexec/zotero $out/bin/check-zotero \
+              --set ZOTERO_ROLE read \
+              ${wrapped}
+            makeWrapper $out/libexec/zotero $out/bin/zotero-add \
+              --set ZOTERO_ROLE add \
+              ${wrapped}
+          '';
+
       # `check-calendar`: list upcoming events from an .ics calendar (python +
       # icalendar + recurring-ical-events). It takes the calendar SOURCE directly
       # — an https:// URL (fetched by DELEGATING to request-trusted-url, so the
@@ -800,7 +851,14 @@ let
             # make-invite only writes a message to stdout — no network, no send, no
             # destination of any kind — so the whole binary is safe. What it composes
             # still has to pass a SENDER's recipient gate to go anywhere.
-            ++ lib.optionals icfg.actions.makeInvite.enable [ "make-invite" ];
+            ++ lib.optionals icfg.actions.makeInvite.enable [ "make-invite" ]
+            # check-zotero is GET-only against a fixed endpoint; zotero-add is a WRITE
+            # but a doubly-pinned one — the endpoint is fixed (the agent supplies item
+            # data, never a URL), the library is the one its key owns, and it is
+            # create-only (items carrying key/version are refused), so nothing already
+            # in the library can be changed or destroyed. Blessing either whole-binary
+            # therefore opens no destination and no deletion path.
+            ++ lib.optionals icfg.actions.zotero.enable [ "check-zotero" "zotero-add" ];
         }
         // lib.optionalAttrs (icfg.exec.safeBinProfiles != { }) {
           safeBinProfiles = icfg.exec.safeBinProfiles;
@@ -945,6 +1003,15 @@ let
           message = "my.openclaw.instances.${name}.actions.makeInvite: needs mail.fromAddress — it becomes the invitation's ORGANIZER, which clients require to match the sender.";
         }
         {
+          # A malformed library would only fail at the API, after the agent had
+          # already composed a batch — and the error there ("404") does not point at
+          # the config. Catch the shape at eval instead.
+          assertion =
+            icfg.actions.zotero.enable && icfg.actions.zotero.library != null
+            -> builtins.match "(users|groups)/[0-9]+" icfg.actions.zotero.library != null;
+          message = "my.openclaw.instances.${name}.actions.zotero.library: must be \"users/<id>\" or \"groups/<id>\" (or null, to resolve it from the API key).";
+        }
+        {
           assertion = icfg.mail.gpg.enable -> icfg.mail.enable;
           message = "my.openclaw.instances.${name}.mail.gpg: requires mail.enable — confidential mail is the mail capability, encrypted.";
         }
@@ -1007,6 +1074,7 @@ let
       ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
       ++ lib.optionals icfg.actions.makeInvite.enable [ makeInviteBin ]
       ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
+      ++ lib.optionals icfg.actions.zotero.enable [ zoteroBin ]
       ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher
       ++ icfg.extraPackages;
 
@@ -2192,6 +2260,79 @@ let
             `request-trusted-url <url> | parse-ics` pipe into one command. Needs
             `python3` with `icalendar` + `recurring-ical-events`, pulled in
             automatically'';
+        };
+        zotero = {
+          enable = lib.mkEnableOption ''
+            the Zotero actions — the agent's whole reference-manager surface, as TWO
+            command names over one script so the role is legible in the command:
+            `check-zotero` (GET only — search / doi / collections / item) and
+            `zotero-add` (CREATE items from a JSON array on stdin or in a file, so a
+            reference verified against Crossref/PubMed reaches the library instead of
+            being handed over as a .ris to import by hand). Needs `tokenFile`.
+
+            The READ half is a security feature, not a convenience: the alternative is
+            the agent calling `request-trusted-url ".../items?key=<key>&q=…"`, which
+            only works if the agent KNOWS the key — putting it in a command line the
+            agent composed, and therefore in its transcript, its exec log and its
+            memory index. Here the wrapper reads the key from a file and injects it as
+            a header, so it never enters anything the agent writes. Enabling this means
+            api.zotero.org does NOT belong in `actions.requestUrl.trustedSites`.
+
+            Both names are blessed whole-binary, one of them despite being a write,
+            because what matters is pinned rather than passed: the ENDPOINT is fixed
+            (the agent supplies query text or item data, never a URL, so neither can
+            become a generic fetch or POST the way a blessed raw `curl` would), the
+            LIBRARY is the one the API key owns, and the write is CREATE-ONLY — items
+            carrying `key` or `version` (what a Zotero update looks like) are refused
+            and DELETE is never issued, so no existing reference can be overwritten or
+            destroyed. The residual channel is item text going into the owner's own
+            library, which is a place to write nonsense rather than a place to
+            exfiltrate to.
+
+            `zotero-add` does NOT deduplicate — `check-zotero doi <doi>` first'';
+          tokenFile = lib.mkOption {
+            type = lib.types.str;
+            example = "/run/secrets/openclaw-zotero-token";
+            description = ''
+              Path to a file holding the Zotero API key (single line), read at RUNTIME —
+              a `str` path (not a `path`), so the key never enters the store or this
+              repo. The key must have write access to the target library. It is passed
+              to curl through a 0600 config file, so it is not visible in the process
+              table.
+            '';
+          };
+          library = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "users/1234567";
+            description = ''
+              The library both commands act on, as `users/<id>` or `groups/<id>`. NULL (the
+              default) resolves it at runtime from the API key itself
+              (`GET /keys/current`), which means the operator only ever has to supply
+              the key, and the reachable library is by construction the one that key
+              owns. Set it explicitly to pin a group library, or when the key's own
+              user is not the target.
+            '';
+          };
+          maxItems = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 50;
+            description = ''
+              Maximum items `zotero-add` accepts per invocation. The Zotero API itself
+              caps a write at 50; lowering this makes the agent send smaller, more
+              reviewable batches.
+            '';
+          };
+          apiBase = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "https://api.zotero.org";
+            description = ''
+              Override the API base URL (default https://api.zotero.org). The wrapper
+              uses raw curl, so whatever host this resolves to must be reachable; it is
+              not bound by `actions.requestUrl.trustedSites`.
+            '';
+          };
         };
       };
 
