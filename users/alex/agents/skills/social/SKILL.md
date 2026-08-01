@@ -123,7 +123,11 @@ collaborations, hiring, to an audience of actual peers. Long-form is fine here.
 Keep the headline, affiliation and "about" consistent with the identity graph.
 Traps: the platform rewards influencer-cadence "broetry" and manufactured
 vulnerability — that register is wrong for most professional accounts; write
-peer-to-peer.
+peer-to-peer. When the point of a post is a link, build the post to carry its
+preview card: via the API that means attaching the URL as an article
+(`shareMediaCategory: 'ARTICLE'` with the link as the media), not dropping a bare
+URL into the post text, which renders no card. This is the posting-side half of a
+preview and is separate from the page's own `og:` tags (see `seo-marketing`).
 
 ## X (Twitter) / Bluesky / Mastodon
 
@@ -133,7 +137,10 @@ amplified. Traps: the character limit truncates nuance into something wrong (see
 the conduct line); quote-dunking and pile-ons are one bad reply away and are never
 his to join. These communities have fragmented across the three networks — draft
 for wherever HIS audience actually is, and mirror rather than assume one is still
-the room.
+the room. Link previews differ across the three: X and Mastodon build the card
+from the page's own metadata once posted, but Bluesky renders nothing from a bare
+URL — the card is a separate external embed you must attach to the post, the same
+construct-the-preview step LinkedIn needs.
 
 ## Instagram
 
@@ -183,8 +190,10 @@ figure with no alt text is invisible to a screen reader and to image search both
 - `policy` — the approval gate and the trusted-action wrappers behind every post,
   DM and outbound send.
 - `seo-marketing` — the identity graph and the link-preview metadata: the
-  `og:`/twitter-card tags on a page are what render when he shares its link, so a
-  broken preview is fixed there, not here.
+  `og:`/twitter-card tags on a page are the *source* of what renders, so a preview
+  that is broken for everyone is fixed there. But making a given post actually show
+  the card — attaching it as an article on LinkedIn, as an external embed on
+  Bluesky — is the posting-side step, and that is here.
 - `references` — anything that cites literature: no identifier goes into a post
   until it has resolved against a real API response this session, and share the
   identifier, not paywalled full text.
