@@ -84,15 +84,49 @@ If he has a target allocation, suggest a rebalancing review annually or after
 contributions rather than selling (avoids taxable events). For funds, use
 traspasos where possible.
 
-## What brokers are common among Spanish investors
+## The owner's current setup
 
-- **MyInvestor**: funds and ETFs, Spanish, good fund selection including
-  indexed funds
-- **Indexa Capital**: robo-advisor, automatic rebalancing, low TER
-- **DeGiro**: ETFs and stocks, European, no Spanish tax-at-source withholding
-  (owner must self-report)
-- **Interactive Brokers**: broad asset access, complex but powerful; also
-  no Spanish withholding
+### MyInvestor — plan de pensiones
+The owner holds a plan de pensiones at MyInvestor. Key things to track:
+- Annual contribution limit: **1,500€ personal** (deducts from IRPF general base)
+- MyInvestor also offers low-cost indexed funds (Amundi, Vanguard equivalents)
+  — if he wants to use traspasos for rebalancing, he can do it all within
+  MyInvestor without changing brokers
+- The plan de pensiones annual statement (extracto) comes in January; useful
+  for verifying the IRPF deduction matches contributions made the prior year
+- Withdrawal strategy matters: if he rescues the pension in a year with low
+  income (sabbatical, retirement), the tax hit is much lower
+
+### DeGiro — taxable brokerage (cuenta de valores)
+The owner has assets at DeGiro. Important specifics:
+- **DeGiro does NOT withhold Spanish tax** at source — he must self-report all
+  dividends and capital gains in the declaración de la renta
+- DeGiro provides an **Informe Anual / Annual Tax Report** each January (available
+  in the platform under Documents). This is the primary input for the tax return
+- **Dutch withholding**: for ETFs domiciled in Ireland (most Vanguard/iShares EU
+  ETFs) there is typically no Dutch withholding. For Dutch-domiciled assets,
+  15% is withheld; it can be recovered via double-taxation treaty (but requires
+  filing with the Dutch tax authority, which is rarely worth the effort for small
+  amounts)
+- Cost basis: DeGiro uses FIFO for shares. Spanish law also uses FIFO for
+  shares (not weighted average). Match these when calculating gains
+- If total foreign assets at DeGiro exceed 50,000€, **Modelo 720** must be filed
+  by March 31 each year
+
+### What to do at year-end (December)
+1. Review unrealised losses at DeGiro — if any position is down, consider
+   whether selling before Dec 31 to realise the loss is worthwhile (offsets
+   gains or carries forward)
+2. Verify MyInvestor plan de pensiones contributions — top up to 1,500€ if
+   not yet reached, before Dec 31
+3. DeGiro annual report will arrive in January — save it for the renta campaign
+
+## What other brokers are common among Spanish investors
+
+- **Indexa Capital**: robo-advisor, automatic rebalancing, low TER; good
+  alternative if he wants a hands-off approach
+- **Interactive Brokers**: broad asset access, complex but powerful; same
+  self-reporting requirement as DeGiro
 - **Banco tradicional** (CaixaBank, BBVA, Santander): high-fee funds, avoid
   for indexed investing
 
