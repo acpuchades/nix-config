@@ -214,6 +214,35 @@ pkgs.writeTextDir "policy/SKILL.md" ''
         module action (or add it to the allowlist granularly). That way repetitive
         work stops interrupting without widening the risk surface.
 
+        ## Scheduling recurring work (cron jobs)
+        ${lib.optionalString (icfg.agentRuntime == "claude-cli") ''
+
+          Your agent runtime is the Claude CLI backend, which CANNOT enforce a
+          per-job tool allow-list. So when you schedule work (the `cron` tool /
+          `openclaw cron add`):
+
+          - Use session target **`main`** with a **system-event** payload: the
+            event text says what to do, and you deliver the result YOURSELF
+            (e.g. end the text with "send a summary to Telegram"). Main-session
+            jobs run correctly under this runtime.
+          - Do NOT use session target **`isolated`**, and do not set a per-job
+            tool allow-list. Isolated jobs impose a restricted tool policy this
+            runtime cannot enforce, so they are ACCEPTED when created but CRASH
+            when they fire — a silent failure you will not notice until the
+            scheduled time passes with no result.
+          - Do NOT pass delivery flags (`--announce`/`--no-deliver`) on a main
+            job — they are rejected for the main session. Put the "notify the
+            owner" step in the event text instead.''}${lib.optionalString (icfg.agentRuntime != "claude-cli") ''
+
+          Your agent runtime enforces per-job tool policy, so both session
+          targets are available when you schedule work (the `cron` tool /
+          `openclaw cron add`): a `main` job with a **system-event** payload
+          runs inside your main session (deliver the result yourself), while an
+          `isolated` job with a **message** payload runs a self-contained turn
+          and MAY carry a tool allow-list and `--announce` delivery. Pick
+          `isolated` when the task should run with a narrowed toolset outside
+          your main context; pick `main` when it should react in-context.''}
+
         ## Access tokens the owner gives you
 
         When the owner hands you a credential for a service you are to use — an API
