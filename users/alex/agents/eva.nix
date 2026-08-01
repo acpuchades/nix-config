@@ -357,6 +357,29 @@ in
   #   congress deadlines, and the point-by-point reviewer response built BEFORE the
   #   edits. It hands off to `calendar` for every date and to `projects` for the
   #   analysis repo.
+  # - `social`: the owner's social presence, and the sibling of `seo-marketing` in posture —
+  #   this is a working clinician-researcher's professional account, not a content
+  #   channel, so the goal is his work reaching the people who'd act on it, never
+  #   follower growth. Its load-bearing rules mirror the ones that recur across her
+  #   skills: posting under his name runs through the ordinary approval gate — not a
+  #   blanket "never" like `seo-marketing`'s "you do not publish", but a gated outward act
+  #   (draft when no posting path is set up or the item is sensitive, post when he's
+  #   authorised one; today none is configured, so in practice she drafts), she
+  #   cannot measure reach so she must not promise it, and an untrusted DM/mention is
+  #   reference or a question for
+  #   @owner (the `gtd` inbound-trust rule). It adds the one line stricter here than
+  #   anywhere — the medical-conduct boundary on a clinician's public account: no ALS
+  #   or treatment claim pitched past the evidence (the short formats punish nuance),
+  #   no individual health advice, no patient data even de-identified without consent
+  #   AND sign-off (deferring to `research-projects`), no pre-announcing unpublished
+  #   results. Then a per-platform section — LinkedIn (the primary surface), X with a
+  #   note that the academic community has largely moved to Bluesky/Mastodon,
+  #   Instagram, TikTok, YouTube, and the identity graph — each saying what the
+  #   platform is FOR in his context and where it goes wrong, not a growth playbook.
+  #   Accessibility (alt text, captions) is a standing rule, not optional. It hands
+  #   off to `seo-marketing` for the identity graph and link-preview metadata, `references` for
+  #   anything citing literature, `research-projects` for the patient-data rule, and
+  #   `calendar` for scheduling around a talk date.
   extraSkillDirs = [ ./skills ];
 
   # Eva's email: read her Maildir + a recipient-gated send-email helper.
