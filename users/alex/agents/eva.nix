@@ -795,6 +795,17 @@ in
 
   settings.tools.web.fetch.enabled = true;
 
+  # Dreaming: background memory consolidation. Runs nightly at 03:00 as a
+  # managed sweep (light → REM → deep phases) that promotes short-term daily
+  # notes into MEMORY.md and writes a human-readable DREAMS.md diary.
+  # allowModelOverride is required for the dream-diary subagent to use the
+  # configured model instead of the gateway default.
+  settings.plugins.entries.memory-core.subagent.allowModelOverride = true;
+  settings.plugins.entries.memory-core.subagent.allowedModels = [ "anthropic/claude-sonnet-4-6" ];
+  settings.plugins.entries.memory-core.config.dreaming.enabled = true;
+  settings.plugins.entries.memory-core.config.dreaming.frequency = "0 3 * * *";
+  settings.plugins.entries.memory-core.config.dreaming.model = "anthropic/claude-sonnet-4-6";
+
   # Text-to-speech via ElevenLabs, through the module's tts options. The
   # CAPABILITY stays on (enable = true) so eva can generate audio on demand
   # — when you ask her to, or when she chooses to speak — but auto = "off"
