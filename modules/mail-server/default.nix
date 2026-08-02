@@ -108,25 +108,42 @@ in
     acmeEmail = lib.mkOption {
       type = lib.types.str;
       default = "admin@acpuchades.com";
-      description = "Contact email for the inbound-TLS ACME cert.";
+      description = "Contact email for the inbound-TLS ACME cert (unused when acmeCertName is set).";
     };
 
     acmeEnvironmentFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.nullOr lib.types.path;
+      default = null;
       description = ''
         Environment file for the ACME dns-01 challenge, containing
         CLOUDFLARE_DNS_API_TOKEN=<token> (lego's var name — note it differs from
-        Caddy's CLOUDFLARE_API_TOKEN).
+        Caddy's CLOUDFLARE_API_TOKEN). Required when acmeCertName is null.
+      '';
+    };
+
+    acmeCertName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Name of an existing security.acme.certs entry to use for Postfix STARTTLS.
+        When set, the module will not request its own ACME certificate; the named
+        entry must already configure group = "postfix" and include postfix.service
+        in reloadServices. When null (default), the module manages its own cert
+        for cfg.hostname using acmeEnvironmentFile.
       '';
     };
   };
 
-  config = lib.mkIf cfg.enable {
-    # Inbound STARTTLS certificate for the MX hostname, via Cloudflare dns-01.
-    # security.acme drops a self-signed placeholder in place immediately, so
-    # Postfix can start before the real cert is issued, then gets reloaded when
-    # it arrives. Group is postfix so the smtpd can read the key.
-    security.acme = {
+  config =
+    let
+      certName = if cfg.acmeCertName != null then cfg.acmeCertName else cfg.hostname;
+    in
+    lib.mkIf cfg.enable {
+    # Inbound STARTTLS certificate — managed here only when acmeCertName is not set.
+    # When acmeCertName points to an existing security.acme.certs entry (e.g. a
+    # wildcard cert), that entry must already grant group = "postfix" and reload
+    # postfix.service on renewal.
+    security.acme = lib.mkIf (cfg.acmeCertName == null) {
       acceptTerms = true;
       defaults.email = cfg.acmeEmail;
       certs.${cfg.hostname} = {
@@ -158,8 +175,8 @@ in
         home_mailbox = "Maildir/";
 
         # --- inbound TLS (opportunistic STARTTLS on :25) ---
-        smtpd_tls_cert_file = "/var/lib/acme/${cfg.hostname}/fullchain.pem";
-        smtpd_tls_key_file = "/var/lib/acme/${cfg.hostname}/key.pem";
+        smtpd_tls_cert_file = "/var/lib/acme/${certName}/fullchain.pem";
+        smtpd_tls_key_file = "/var/lib/acme/${certName}/key.pem";
         smtpd_tls_security_level = "may";
         smtpd_tls_loglevel = "1";
 
