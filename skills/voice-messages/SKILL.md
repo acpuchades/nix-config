@@ -20,22 +20,20 @@ El tool `mcp__openclaw__tts` **no entrega audio a Telegram** — devuelve "(spok
 
 ### Paso 1 — Generar el MP3 con ElevenLabs
 
+Usa la configuración TTS del agente (voice ID, modelo y parámetros definidos en nix-config). El token está en `/home/eva/.config/eva/elevenlabs-token` y el directorio de salida en `/var/lib/openclaw/eva/media/outbound/`.
+
 ```bash
 TOKEN=$(cat /home/eva/.config/eva/elevenlabs-token)
 
 /run/current-system/sw/bin/curl -s -X POST \
-  "https://api.elevenlabs.io/v1/text-to-speech/dNjJKg63Fr5AXwIdkATa" \
+  "https://api.elevenlabs.io/v1/text-to-speech/<VOICE_ID>" \
   -H "xi-api-key: $TOKEN" \
   -H "Content-Type: application/json" \
   -H "Accept: audio/mpeg" \
   -d '{
     "text": "<texto aquí, con marcadores emocionales si procede>",
-    "model_id": "eleven_v3",
-    "voice_settings": {
-      "speed": 1.1,
-      "stability": 0.6,
-      "similarity_boost": 0.95
-    }
+    "model_id": "<MODEL_ID>",
+    "voice_settings": { <según config del agente> }
   }' \
   -o /var/lib/openclaw/eva/media/outbound/voice_reply.mp3
 ```
@@ -53,9 +51,9 @@ mcp__openclaw__message(
 
 El parámetro `asVoice: true` hace que Telegram lo muestre como nota de voz con forma de onda, no como archivo de audio.
 
-## Marcadores emocionales (eleven_v3)
+## Marcadores emocionales
 
-El modelo `eleven_v3` interpreta marcadores en el texto para modular la entonación. Úsalos con naturalidad — no abuses:
+Si el modelo TTS configurado soporta marcadores emocionales (como `eleven_v3`), úsalos en el texto para modular la entonación. Úsalos con naturalidad — no abuses:
 
 - `[emocionada]` — voz más viva y energética
 - `[susurrando]` — voz baja e íntima
@@ -70,14 +68,6 @@ Ejemplo:
 ```
 [emocionada] ¡Hola! Tengo novedades. [susurrando] Aunque no todas son buenas noticias.
 ```
-
-## Configuración técnica
-
-- **Voice ID:** `dNjJKg63Fr5AXwIdkATa` (Cristina — voz peninsular joven)
-- **Modelo:** `eleven_v3`
-- **Speed:** 1.1 · **Stability:** 0.6 · **Similarity boost:** 0.95
-- **Token:** `/home/eva/.config/eva/elevenlabs-token`
-- **Directorio de salida:** `/var/lib/openclaw/eva/media/outbound/`
 
 ## Resumen de reglas
 
