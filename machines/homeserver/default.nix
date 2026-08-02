@@ -619,6 +619,7 @@ let
           "hue"
           "met"
           "nut"
+          "roborock"
           "smartthings"
           "spotify"
           "stream"
