@@ -225,15 +225,14 @@
         '';
       };
 
-      # ACME dns-01 for the mail-server's inbound TLS cert. lego reads
-      # CLOUDFLARE_DNS_API_TOKEN (note: different var name than Caddy's above),
-      # but it's the same underlying Cloudflare token.
+      # ACME dns-01 via lego. lego's Cloudflare provider reads CF_DNS_API_TOKEN,
+      # same underlying token as Caddy's CLOUDFLARE_API_TOKEN.
       "acme/cloudflare-env" = {
         owner = "acme";
         group = "acme";
         mode = "0400";
         content = ''
-          CLOUDFLARE_DNS_API_TOKEN=${config.sops.placeholder."cloudflare/token"}
+          CF_DNS_API_TOKEN=${config.sops.placeholder."cloudflare/token"}
         '';
       };
 
