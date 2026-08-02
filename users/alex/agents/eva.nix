@@ -837,12 +837,17 @@ in
     voiceId = "dNjJKg63Fr5AXwIdkATa";
     modelId = "eleven_v3";
     label = "Eva (español)";
-    speed = 1.1;
+    speed = 0.95;
     auto = "off";
     mode = "final";
     maxTextLength = 800;
     timeoutMs = 15000;
   };
+
+  # ElevenLabs voice parameters not exposed as module options — injected raw.
+  # stability 0.45 = more expressive/variable delivery; similarityBoost 0.95 = close to voice clone.
+  settings.tts.personas.default.providers.elevenlabs.voiceSettings.stability = 0.45;
+  settings.tts.personas.default.providers.elevenlabs.voiceSettings.similarityBoost = 0.95;
 
   # Inbound speech-to-text: local whisper.cpp so eva understands voice
   # notes (the claude-cli runtime can't ingest audio itself). The
