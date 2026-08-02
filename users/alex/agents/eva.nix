@@ -800,6 +800,22 @@ in
   # notes into MEMORY.md and writes a human-readable DREAMS.md diary.
   # allowModelOverride is required for the dream-diary subagent to use the
   # configured model instead of the gateway default.
+  # Active Memory: a blocking sub-agent that runs before each reply and
+  # injects relevant memories into context automatically. Scoped to the main
+  # agent on direct-message sessions only; inherits the session model so no
+  # extra auth is needed. Haiku fallback keeps latency low if primary is slow.
+  settings.plugins.entries.active-memory.enabled = true;
+  settings.plugins.entries.active-memory.config.enabled = true;
+  settings.plugins.entries.active-memory.config.agents = [ "main" ];
+  settings.plugins.entries.active-memory.config.allowedChatTypes = [ "direct" ];
+  settings.plugins.entries.active-memory.config.modelFallback = "anthropic/claude-haiku-4-5-20251001";
+  settings.plugins.entries.active-memory.config.queryMode = "recent";
+  settings.plugins.entries.active-memory.config.promptStyle = "balanced";
+  settings.plugins.entries.active-memory.config.timeoutMs = 15000;
+  settings.plugins.entries.active-memory.config.maxSummaryChars = 220;
+  settings.plugins.entries.active-memory.config.persistTranscripts = false;
+  settings.plugins.entries.active-memory.config.logging = true;
+
   settings.plugins.entries.memory-core.subagent.allowModelOverride = true;
   settings.plugins.entries.memory-core.subagent.allowedModels = [ "anthropic/claude-sonnet-4-6" ];
   settings.plugins.entries.memory-core.config.dreaming.enabled = true;
