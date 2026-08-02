@@ -520,6 +520,21 @@ let
         };
       };
 
+      # Wildcard cert for *.acpuchades.com, shared by Postfix (mail STARTTLS) and
+      # any other service that needs a NixOS-managed cert for this domain.
+      # Caddy manages its own certs independently via the acme-cloudflare module.
+      security.acme = {
+        acceptTerms = true;
+        defaults.email = "admin@acpuchades.com";
+        certs."acpuchades.com" = {
+          extraDomainNames = [ "*.acpuchades.com" ];
+          dnsProvider = "cloudflare";
+          environmentFile = config.sops.templates."acme/cloudflare-env".path;
+          group = "postfix";
+          reloadServices = [ "postfix.service" ];
+        };
+      };
+
       my.mail-server = {
         enable = true;
         hostname = "mail.acpuchades.com";
@@ -536,7 +551,8 @@ let
         trustedSenders = config.my.openclaw.instances.eva.mail.unpromptedRecipients;
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
-        acmeEnvironmentFile = config.sops.templates."acme/cloudflare-env".path;
+        # Use the shared wildcard cert instead of managing a per-hostname cert.
+        acmeCertName = "acpuchades.com";
       };
 
       # Encrypted off-site backups to Backblaze B2 (restic, client-side AES-256).
