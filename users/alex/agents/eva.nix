@@ -835,7 +835,7 @@ in
     enable = true;
     provider = "elevenlabs";
     voiceId = "dNjJKg63Fr5AXwIdkATa";
-    modelId = "eleven_multilingual_v2";
+    modelId = "eleven_v3";
     label = "Eva (español)";
     speed = 1.1;
     auto = "off";
