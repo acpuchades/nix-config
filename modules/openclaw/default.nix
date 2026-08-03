@@ -739,7 +739,13 @@ let
             label = icfg.tts.label;
             provider = icfg.tts.provider;
             providers.${icfg.tts.provider} = {
-              voiceId = icfg.tts.voiceId;
+              # NB: `speakerVoiceId`, not `voiceId`. OpenClaw 2026.6.x treats the
+              # provider speaker-selection fields voice/voiceName/voiceId as LEGACY
+              # and rejects the config at load ("use speakerVoice or speakerVoiceId")
+              # — emitting `voiceId` fails the ExecStartPre `config patch` validation
+              # and crash-loops the seed. The `tts.voiceId` module option keeps its
+              # name; only the rendered JSON key changed.
+              speakerVoiceId = icfg.tts.voiceId;
             }
             // lib.optionalAttrs (icfg.tts.modelId != null) {
               modelId = icfg.tts.modelId;
