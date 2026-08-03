@@ -935,7 +935,38 @@ let
       # secrets — the bot token is a systemd credential and the allowlisted ID is
       # patched in at start from icfg.telegram.allowedIdFile — so the store is a safe
       # home for it, and the module needs no knowledge of sops/agenix/etc.
-      configTemplate = settingsFormat.generate "openclaw.json" fullConfig;
+      #
+      # BUILD-TIME VALIDATION: the rendered blueprint is run through
+      # `openclaw config validate` as a derivation step, so a config the schema
+      # REJECTS fails `nixos-rebuild` right here — loudly, with the exact error —
+      # instead of switching to a generation whose ExecStartPre then crash-loops
+      # on the live box (a restart can't fix a deterministic bad config, so eva
+      # just stays down until someone edits + rebuilds). Two real breakages — a
+      # legacy `voiceId` key and a mis-nested top-level `tts` — reached the
+      # running service before this guard existed.
+      #
+      # `config validate` prints "… is invalid" / "Invalid input" but STILL
+      # exits 0, so the check asserts on the OUTPUT TEXT, not $?: fail if it
+      # flags invalidity, and also fail if it does not positively confirm
+      # "Config valid" (catches a CLI crash or a future output change). It only
+      # WARNS about the empty telegram allowFrom (that ID is patched in at
+      # runtime), which is fine — warnings don't contain "invalid". HOME/state
+      # point at $TMPDIR because validate wants a writable home; no network.
+      configTemplate =
+        let
+          raw = settingsFormat.generate "openclaw-unchecked.json" fullConfig;
+        in
+        pkgs.runCommandLocal "openclaw.json" { nativeBuildInputs = [ cfg.package ]; } ''
+          export HOME="$TMPDIR" OPENCLAW_STATE_DIR="$TMPDIR/state"
+          mkdir -p "$OPENCLAW_STATE_DIR"
+          OPENCLAW_CONFIG_PATH=${raw} openclaw config validate > validate.log 2>&1 || true
+          cat validate.log
+          if grep -qE 'is invalid|Invalid input' validate.log || ! grep -q 'Config valid' validate.log; then
+            echo "=== openclaw config INVALID for instance '${name}' — refusing to build (see errors above) ===" >&2
+            exit 1
+          fi
+          cp ${raw} "$out"
+        '';
 
       # The operator-declared exec-approval globs, rendered as ONE JSON file in the
       # openclaw exec-approvals schema (pattern-only entries — OpenClaw backfills the
