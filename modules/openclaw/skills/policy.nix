@@ -232,7 +232,25 @@ pkgs.writeTextDir "policy/SKILL.md" ''
             scheduled time passes with no result.
           - Do NOT pass delivery flags (`--announce`/`--no-deliver`) on a main
             job — they are rejected for the main session. Put the "notify the
-            owner" step in the event text instead.''}${lib.optionalString (icfg.agentRuntime != "claude-cli") ''
+            owner" step in the event text instead.
+
+          ### Jobs with CONDITIONAL notification (only alert if a threshold is met)
+
+          A `main` job reacts INSIDE your main session, which is the owner's
+          visible conversation: **everything you write as prose during that turn
+          reaches him** (Telegram), your deliberation included. There is no
+          separate internal channel under this runtime. So for a job that should
+          alert ONLY when something is relevant:
+
+          - Do ALL the triage silently: via tool calls, and if you need to jot
+            things down, by WRITING to a file in your workspace (a log). That
+            work is not turn prose, so it is not shown.
+          - Do NOT narrate your decision. Never write "only 1 result… below the
+            threshold… not notifying" — that text IS the notification you were
+            trying to avoid.
+          - End the turn one of two ways: (a) if something clears the threshold,
+            emit ONLY the alert; (b) if not, **emit no prose at all** — end the
+            turn without a message.''}${lib.optionalString (icfg.agentRuntime != "claude-cli") ''
 
           Your agent runtime enforces per-job tool policy, so both session
           targets are available when you schedule work (the `cron` tool /
