@@ -845,9 +845,13 @@ in
   };
 
   # ElevenLabs voice parameters not exposed as module options — injected raw.
+  # NB: the path is `messages.tts.…`, NOT top-level `tts.…`. `settings.*` merges
+  # into the config ROOT, so `settings.tts` creates a top-level `tts` key, which
+  # the schema rejects ("<root>: Invalid input") and crash-loops the seed. These
+  # deep-merge with the module-emitted `messages.tts.…voiceSettings.speed`.
   # stability 0.45 = more expressive/variable delivery; similarityBoost 0.95 = close to voice clone.
-  settings.tts.personas.default.providers.elevenlabs.voiceSettings.stability = 0.45;
-  settings.tts.personas.default.providers.elevenlabs.voiceSettings.similarityBoost = 0.95;
+  settings.messages.tts.personas.default.providers.elevenlabs.voiceSettings.stability = 0.45;
+  settings.messages.tts.personas.default.providers.elevenlabs.voiceSettings.similarityBoost = 0.95;
 
   # Inbound speech-to-text: local whisper.cpp so eva understands voice
   # notes (the claude-cli runtime can't ingest audio itself). The
