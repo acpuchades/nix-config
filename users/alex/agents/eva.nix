@@ -804,8 +804,26 @@ in
   # injects relevant memories into context automatically. Scoped to the main
   # agent on direct-message sessions only; inherits the session model so no
   # extra auth is needed. Haiku fallback keeps latency low if primary is slow.
+  #
+  # config.enabled = false (2026-08-04): recall OFF for now. Unlike the main
+  # conversational turn (interactive `claude` live-session → billed to eva's
+  # subscription plan), this sub-agent runs via runEmbeddedAgent, which POSTs
+  # straight to api.anthropic.com/v1/messages. Anthropic bills that raw-API
+  # path as a THIRD-PARTY app — drawn from the metered "extra usage" pool, not
+  # the plan — so with the pool empty every recall failed with reason=billing
+  # (HTTP 400 "Third-party apps now draw from your extra usage"). It degrades
+  # gracefully (skips recall, replies still work) but spammed the logs for
+  # nothing. There is NO knob to route an embedded sub-agent through the
+  # subscription — the live-session is exclusive to the main turn — so recall
+  # can only stop hitting the pool by being turned off here. Memory FILES
+  # (MEMORY.md + memory/*.md) and the LOCAL keyless memorySearch above are
+  # untouched: eva keeps her memory, only the automatic pre-reply LLM recall
+  # is off. The entry stays `enabled` (plugin loaded, `/active-memory` command
+  # still works); only the feature flag is flipped. Re-enable by setting this
+  # back to true once the pool is topped up, or point config.model at its own
+  # Anthropic API key / a local chat model (ollama) to avoid the pool.
   settings.plugins.entries.active-memory.enabled = true;
-  settings.plugins.entries.active-memory.config.enabled = true;
+  settings.plugins.entries.active-memory.config.enabled = false;
   settings.plugins.entries.active-memory.config.agents = [ "main" ];
   settings.plugins.entries.active-memory.config.allowedChatTypes = [ "direct" ];
   settings.plugins.entries.active-memory.config.modelFallback = "anthropic/claude-haiku-4-5-20251001";
