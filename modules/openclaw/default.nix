@@ -1020,6 +1020,38 @@ let
         fi
         rm -f "$tmp"
       '';
+
+      # The self-gating action wrappers (plus mblaze's mlist/mscan/… Maildir tools)
+      # that the agent invokes BY NAME. They must live in TWO places:
+      #   (1) environment.systemPackages below — so OpenClaw's safe-bin trust check,
+      #       which only honors binaries it resolves from the system profile
+      #       (/run/current-system/sw/bin), treats them as blessed; and
+      #   (2) the service `path` below — so the agent's OWN shell can resolve them.
+      #       Under the claude-cli runtime the agent's Bash tool runs `bash -c` with
+      #       exactly the service PATH (the system profile is NOT on it), so a wrapper
+      #       shipped to only (1) is trusted-but-unresolvable: `generate-image` existed
+      #       in the store yet "was not on the agent's PATH". Same belt-and-braces
+      #       reasoning already applied to icfg.extraPackages.
+      # NB: ffmpeg-headless (STT) is deliberately NOT here — it is resolved via
+      # requireSystemBin and belongs in systemPackages ONLY (see below).
+      actionWrapperBins =
+        lib.optionals icfg.mail.enable [
+          mailSendBin
+          pkgs.mblaze
+        ]
+        ++ lib.optionals gpgEnabled [
+          encryptedMailBin
+          decryptMailBin
+        ]
+        ++ lib.optionals icfg.actions.requestUrl.enable [ requestUrlBin ]
+        ++ lib.optionals icfg.actions.trustedMail.enable [ trustedMailBin ]
+        ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
+        ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
+        ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
+        ++ lib.optionals icfg.actions.makeInvite.enable [ makeInviteBin ]
+        ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
+        ++ lib.optionals icfg.actions.zotero.enable [ zoteroBin ]
+        ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher;
     in
     {
       # Fail at eval (not runtime) on a memory-search misconfig: the local embedder
@@ -1087,6 +1119,12 @@ let
       # Packages likewise go here (trusted + resolvable) AND on the service `path`
       # below (so bash -c can also resolve them) — belt-and-braces across both
       # resolution paths.
+      #
+      # The action wrappers (and mblaze) come in via actionWrapperBins, which is
+      # ALSO spliced onto the service `path` below — see its definition for why
+      # both. The gnupg wrappers deliberately ship WITHOUT pkgs.gnupg, so the agent
+      # has no raw `gpg` to reach for (it carries its own network and key-import
+      # surface).
       environment.systemPackages = [
         openclawPatched
         pkgs.claude-code
@@ -1094,25 +1132,7 @@ let
         pkgs.ripgrep
       ]
       ++ lib.optionals icfg.stt.enable [ pkgs.ffmpeg-headless ]
-      ++ lib.optionals icfg.mail.enable [
-        mailSendBin
-        pkgs.mblaze
-      ]
-      # The wrappers only — deliberately NOT pkgs.gnupg, so the agent has no raw
-      # `gpg` to reach for (it carries its own network and key-import surface).
-      ++ lib.optionals gpgEnabled [
-        encryptedMailBin
-        decryptMailBin
-      ]
-      ++ lib.optionals icfg.actions.requestUrl.enable [ requestUrlBin ]
-      ++ lib.optionals icfg.actions.trustedMail.enable [ trustedMailBin ]
-      ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
-      ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
-      ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
-      ++ lib.optionals icfg.actions.makeInvite.enable [ makeInviteBin ]
-      ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
-      ++ lib.optionals icfg.actions.zotero.enable [ zoteroBin ]
-      ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher
+      ++ actionWrapperBins
       ++ icfg.extraPackages;
 
       users.users.${icfg.user} = {
@@ -1249,6 +1269,11 @@ let
         ]
         ++ lib.optionals (icfg.agentRuntime == "claude-cli") [ pkgs.claude-code ]
         ++ lib.optionals icfg.stt.enable [ icfg.stt.package ]
+        # The self-gating action wrappers (generate-image, check-weather,
+        # send-email, …) and mblaze — the agent invokes these by name from its own
+        # shell, so they must resolve on the service PATH, not only in the system
+        # profile that OpenClaw's safe-bin trust check reads. See actionWrapperBins.
+        ++ actionWrapperBins
         # Host-supplied tools the agent may invoke by name (still gated by the
         # exec allowlist for whether a run needs approval — see icfg.exec). Also in
         # environment.systemPackages above so the safe-bin trust check honors them.
