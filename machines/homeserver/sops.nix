@@ -136,15 +136,14 @@
       # session. Generate with: openssl rand -base64 48
       "fugazi/jwt-secret" = { mode = "0400"; };
 
-      # GitHub PAT that lets the nix DAEMON fetch the PRIVATE acpuchades/fugazi-web
-      # source at BUILD time. Rendered into the nix/netrc template below;
-      # nix.settings.netrc-file (machines/homeserver/default.nix) points the daemon
-      # at it. fetchFromGitHub downloads via curl, which honors netrc — NOT nix's
-      # `access-tokens` (that only covers `github:`/builtins.fetch* flake refs) and
-      # NOT your shell's $GITHUB_TOKEN (the fetch runs in the daemon's build
-      # sandbox, which doesn't inherit your login environment). Root-owned 0400:
-      # only the daemon reads it, and it must never land in world-readable
-      # /etc/nix/nix.conf (which is why netrc, not access-tokens). A fine-grained
+      # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
+      # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
+      # (machines/homeserver/default.nix) points nix at it. The module fetches the
+      # source with builtins.fetchTarball, and that choice is deliberate: only nix's
+      # BUILT-IN fetchers (fetchTarball/fetchGit, flake inputs) consult netrc-file /
+      # access-tokens. NOT your shell's $GITHUB_TOKEN (the fetch has no login
+      # environment). Root-owned 0400 so it never lands in world-readable
+      # /etc/nix/nix.conf (the reason for netrc over access-tokens). A fine-grained
       # token needs Contents:read on the repo; a classic token needs `repo`.
       "github/token" = { mode = "0400"; };
 
@@ -317,13 +316,18 @@
         '';
       };
 
-      # netrc consumed by the nix daemon (nix.settings.netrc-file) so its curl-based
-      # fetchers — fetchFromGitHub here — can authenticate to github.com for private
+      # netrc consumed by nix (nix.settings.netrc-file) so its BUILT-IN fetchers —
+      # builtins.fetchTarball here — can authenticate to github.com for private
       # sources (currently acpuchades/fugazi-web). Root 0400; only the daemon reads
       # it. NOTE: sops renders this at ACTIVATION, i.e. AFTER the build/fetch, so the
       # FIRST switch that introduces it can't see it yet — bootstrap /etc/nix/netrc
       # by hand once (see the fugazi-web module header); this then keeps it in place
       # for every later rebuild.
+      #
+      # Only a github.com entry is needed. fetchTarball requests the archive from
+      # github.com, which 302-redirects to codeload.github.com — but for an
+      # authenticated request GitHub bakes a signed `?token=` into that redirect
+      # URL, so the codeload leg authenticates itself and needs no netrc entry.
       "nix/netrc" = {
         mode = "0400";
         content = ''

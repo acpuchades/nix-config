@@ -9,25 +9,28 @@
 # frontend for everything else (with SPA-history fallback to index.html).
 #
 # NOTE: the fugazi-web repo is PRIVATE, so the machine building this config needs
-# GitHub credentials reachable by the NIX DAEMON at build time. fetchFromGitHub
-# downloads via curl, which honors a netrc file (NOT nix's `access-tokens`, and
-# NOT your shell's $GITHUB_TOKEN — the fetch runs in the daemon's sandbox). Without
-# it the fetchFromGitHub below 404s at build time. On the homeserver this is wired
-# declaratively: a sops secret (github/token) is rendered into a netrc that
-# nix.settings.netrc-file points at — see machines/homeserver/{sops.nix,default.nix}.
-# Because sops renders at ACTIVATION (after the build), the first switch that
-# introduces it needs /etc/nix/netrc seeded by hand once; the machine default.nix
-# note has the one-liner. Bump `rev`+`hash` together to update.
+# GitHub credentials reachable by the NIX DAEMON at fetch time. We fetch with the
+# BUILT-IN `builtins.fetchTarball`, NOT `pkgs.fetchFromGitHub`, and that choice is
+# load-bearing: only Nix's built-in fetchers consult `nix.settings.netrc-file` /
+# `access-tokens`. `pkgs.fetchFromGitHub` runs its own curl inside a fixed-output
+# build sandbox and that curl is NEVER handed a netrc (nixpkgs' fetchurl adds
+# `--netrc-file` only when a `netrcPhase` attr is set, which fetchFromGitHub does
+# not) — so against a private repo it 404s no matter what /etc/nix/netrc holds.
+# fetchTarball authenticates via the daemon's netrc-file: a sops secret
+# (github/token) rendered into a netrc that nix.settings.netrc-file points at —
+# see machines/homeserver/{sops.nix,default.nix}. Because sops renders at
+# ACTIVATION (after the build), the first switch that introduces it needs
+# /etc/nix/netrc seeded by hand once; the machine default.nix note has the
+# one-liner. The `sha256` is the hash of the UNPACKED tree (identical to what
+# fetchFromGitHub's `hash` was); bump `rev`+`sha256` together to update.
 
 let
   cfg = config.my.fugazi-web;
   python = pkgs.python313;
 
-  src = pkgs.fetchFromGitHub {
-    owner = "acpuchades";
-    repo = "fugazi-web";
-    rev = "875b63503791fe2a6600bb4d5b8403806943ccb4";
-    hash = "sha256-xL/ViyvdpmDcgsdSi3Ro6odiIsBx/XMLjh9kyuf0b28=";
+  src = builtins.fetchTarball {
+    url = "https://github.com/acpuchades/fugazi-web/archive/fa713dd6b28835f80231ec825b53ca90dfc1a159.tar.gz";
+    sha256 = "sha256-y34TEMeWZtoZlybcMdP6lnZoZA4XTSXynVEpX8yg44g=";
   };
 
   # fugazi is the Rust core's Python bindings (pyo3/abi3 wheel), published to
@@ -82,8 +85,10 @@ let
   frontend = pkgs.buildNpmPackage {
     pname = "fugazi-web-frontend";
     version = "0.0.1";
-    inherit src;
-    sourceRoot = "${src.name}/frontend";
+    # `src` is builtins.fetchTarball's already-unpacked tree — a store-path
+    # STRING, not a derivation — so point straight at the frontend subdir
+    # (`${src.name}` no longer works: a string has no `.name`).
+    src = "${src}/frontend";
     npmDepsHash = "sha256-RgfAkz1oOEBTyxFGLvFxObXDYCIri281JramN2NbMEI=";
     installPhase = ''
       runHook preInstall
