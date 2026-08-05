@@ -90,6 +90,7 @@ let
         ../../modules/ups-monitor
         ../../modules/backup
         ../../modules/ntfy-alert
+        ../../modules/fugazi-web
       ];
 
       systemd.network.networks = {
@@ -305,6 +306,7 @@ let
           { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
+          { domain = "fugazi.acpuchades.com";    answer = homeServerLocalAddress; }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
           # clients resolving through AdGuard, and just saves them a NAT hairpin.
           { domain = "ntfy.acpuchades.com";      answer = homeServerLocalAddress; }
@@ -325,6 +327,14 @@ let
             redirect = "https://www.acpuchades.com/blog";
           };
         };
+      };
+
+      my.fugazi-web = {
+        enable = true;
+        hostName = "fugazi.acpuchades.com";
+        # Internal-only: reachable from the LAN/VPN, not the public internet.
+        allowedNetworks = privateNetworks;
+        environmentFile = config.sops.templates."fugazi/env".path;
       };
 
       my.postgresql-server = {

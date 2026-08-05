@@ -131,6 +131,11 @@
       #   sops machines/homeserver/secrets/default.yml
       "samba/alex" = { mode = "0400"; };
 
+      # JWT signing key for fugazi-web (rendered into the fugazi/env template
+      # below, injected as FUGAZI_SERVICE_JWT_SECRET). A change invalidates every
+      # session. Generate with: openssl rand -base64 48
+      "fugazi/jwt-secret" = { mode = "0400"; };
+
       # Agent-IDENTITY secrets (the Telegram bot token + allowlisted ID) go under
       # openclaw/<agent>/ — each agent is its OWN bot, so a second agent is added
       # as a sibling openclaw/<name>/ subtree. The shared SERVICE API keys are NOT
@@ -286,6 +291,17 @@
         mode = "0400";
         content = ''
           [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${config.sops.placeholder."mailjet/secret"}
+        '';
+      };
+
+      # JWT signing key for the fugazi-web backend, loaded as its EnvironmentFile.
+      # Owned by the fugazi service user (== databaseName) that runs uvicorn.
+      "fugazi/env" = {
+        owner = "fugazi";
+        group = "fugazi";
+        mode = "0400";
+        content = ''
+          FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi/jwt-secret"}
         '';
       };
 
