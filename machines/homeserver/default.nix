@@ -337,6 +337,18 @@ let
         environmentFile = config.sops.templates."fugazi/env".path;
       };
 
+      # fugazi-web's source is a PRIVATE GitHub repo. fetchFromGitHub authenticates
+      # via netrc (curl), so point the nix daemon at a sops-rendered netrc carrying
+      # a GitHub PAT (github/token → nix/netrc template in sops.nix). Your shell's
+      # $GITHUB_TOKEN can't help — the fetch runs in the daemon's build sandbox, not
+      # your login shell. BOOTSTRAP: this template only exists after the first
+      # switch activates, so seed /etc/nix/netrc by hand once before that switch:
+      #   printf 'machine github.com\n  login x-access-token\n  password ghp_…\n' \
+      #     | sudo tee /etc/nix/netrc >/dev/null && sudo chmod 0400 /etc/nix/netrc
+      # (the running daemon still reads the default /etc/nix/netrc at that point).
+      # After the switch, netrc-file points here and every later rebuild is unattended.
+      nix.settings.netrc-file = config.sops.templates."nix/netrc".path;
+
       my.postgresql-server = {
         enable = true;
         dataDir = "/srv/encrypted/postgresql";

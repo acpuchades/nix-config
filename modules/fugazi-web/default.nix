@@ -9,9 +9,15 @@
 # frontend for everything else (with SPA-history fallback to index.html).
 #
 # NOTE: the fugazi-web repo is PRIVATE, so the machine building this config needs
-# GitHub credentials available to Nix (an `access-tokens github.com=…` line or a
-# `~/.netrc`/`netrc-file` reachable by the nix daemon). Without it the
-# fetchFromGitHub below 404s at build time. Bump `rev`+`hash` together to update.
+# GitHub credentials reachable by the NIX DAEMON at build time. fetchFromGitHub
+# downloads via curl, which honors a netrc file (NOT nix's `access-tokens`, and
+# NOT your shell's $GITHUB_TOKEN — the fetch runs in the daemon's sandbox). Without
+# it the fetchFromGitHub below 404s at build time. On the homeserver this is wired
+# declaratively: a sops secret (github/token) is rendered into a netrc that
+# nix.settings.netrc-file points at — see machines/homeserver/{sops.nix,default.nix}.
+# Because sops renders at ACTIVATION (after the build), the first switch that
+# introduces it needs /etc/nix/netrc seeded by hand once; the machine default.nix
+# note has the one-liner. Bump `rev`+`hash` together to update.
 
 let
   cfg = config.my.fugazi-web;
