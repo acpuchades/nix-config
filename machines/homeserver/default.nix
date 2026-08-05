@@ -337,12 +337,15 @@ let
         environmentFile = config.sops.templates."fugazi/env".path;
       };
 
-      # fugazi-web's source is a PRIVATE GitHub repo. fetchFromGitHub authenticates
-      # via netrc (curl), so point the nix daemon at a sops-rendered netrc carrying
-      # a GitHub PAT (github/token → nix/netrc template in sops.nix). Your shell's
-      # $GITHUB_TOKEN can't help — the fetch runs in the daemon's build sandbox, not
-      # your login shell. BOOTSTRAP: this template only exists after the first
-      # switch activates, so seed /etc/nix/netrc by hand once before that switch:
+      # fugazi-web's source is a PRIVATE GitHub repo. The module fetches it with the
+      # built-in builtins.fetchTarball, which authenticates via netrc, so point nix
+      # at a sops-rendered netrc carrying a GitHub PAT (github/token → nix/netrc
+      # template in sops.nix). Your shell's $GITHUB_TOKEN can't help — the fetch has
+      # no login environment. BOOTSTRAP: this template only exists after the first
+      # switch activates, so seed /etc/nix/netrc by hand once before that switch.
+      # A single github.com entry is enough — GitHub 302-redirects the archive to
+      # codeload.github.com with a signed `?token=` in the URL, so that leg needs
+      # no netrc of its own:
       #   printf 'machine github.com\n  login x-access-token\n  password ghp_…\n' \
       #     | sudo tee /etc/nix/netrc >/dev/null && sudo chmod 0400 /etc/nix/netrc
       # (the running daemon still reads the default /etc/nix/netrc at that point).
@@ -554,6 +557,12 @@ let
           environmentFile = config.sops.templates."acme/cloudflare-env".path;
           group = "postfix";
           reloadServices = [ "postfix.service" ];
+          # This host's own resolver (AdGuard, 127.0.0.1) split-horizons
+          # acpuchades.com to the LAN IP and returns no SOA for the apex, which
+          # breaks lego's DNS-01 zone-walk ("cloudflare: failed to find zone com.").
+          # Point lego at a public resolver so zone detection + propagation checks
+          # see the real Cloudflare SOA instead of the local rewrite.
+          dnsResolver = "1.1.1.1:53";
         };
       };
 
