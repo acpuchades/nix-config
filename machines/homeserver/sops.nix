@@ -136,6 +136,18 @@
       # session. Generate with: openssl rand -base64 48
       "fugazi/jwt-secret" = { mode = "0400"; };
 
+      # GitHub PAT that lets the nix DAEMON fetch the PRIVATE acpuchades/fugazi-web
+      # source at BUILD time. Rendered into the nix/netrc template below;
+      # nix.settings.netrc-file (machines/homeserver/default.nix) points the daemon
+      # at it. fetchFromGitHub downloads via curl, which honors netrc — NOT nix's
+      # `access-tokens` (that only covers `github:`/builtins.fetch* flake refs) and
+      # NOT your shell's $GITHUB_TOKEN (the fetch runs in the daemon's build
+      # sandbox, which doesn't inherit your login environment). Root-owned 0400:
+      # only the daemon reads it, and it must never land in world-readable
+      # /etc/nix/nix.conf (which is why netrc, not access-tokens). A fine-grained
+      # token needs Contents:read on the repo; a classic token needs `repo`.
+      "github/token" = { mode = "0400"; };
+
       # Agent-IDENTITY secrets (the Telegram bot token + allowlisted ID) go under
       # openclaw/<agent>/ — each agent is its OWN bot, so a second agent is added
       # as a sibling openclaw/<name>/ subtree. The shared SERVICE API keys are NOT
@@ -302,6 +314,22 @@
         mode = "0400";
         content = ''
           FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi/jwt-secret"}
+        '';
+      };
+
+      # netrc consumed by the nix daemon (nix.settings.netrc-file) so its curl-based
+      # fetchers — fetchFromGitHub here — can authenticate to github.com for private
+      # sources (currently acpuchades/fugazi-web). Root 0400; only the daemon reads
+      # it. NOTE: sops renders this at ACTIVATION, i.e. AFTER the build/fetch, so the
+      # FIRST switch that introduces it can't see it yet — bootstrap /etc/nix/netrc
+      # by hand once (see the fugazi-web module header); this then keeps it in place
+      # for every later rebuild.
+      "nix/netrc" = {
+        mode = "0400";
+        content = ''
+          machine github.com
+          login x-access-token
+          password ${config.sops.placeholder."github/token"}
         '';
       };
 
