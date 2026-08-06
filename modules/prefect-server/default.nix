@@ -100,9 +100,19 @@ in
       # public baseUrl (https://.../api), which sits behind Caddy basic_auth and
       # answers 401 — so the worker can never reach api/work_pools/<pool>. The
       # local server has no auth, so workers must talk to it directly.
+      #
+      # The upstream module bakes PREFECT_API_URL=${baseUrl}/api into the worker's
+      # `serviceConfig.Environment` LIST. Setting the top-level `environment`
+      # attr only ADDS a second `Environment=` line, and systemd applies the last
+      # one — the upstream (public) URL — so a top-level override is silently
+      # ignored. Force-replace the whole list instead, keeping the PREFECT_HOME
+      # entry upstream also sets (StateDirectory = prefect-worker-${name}).
       (lib.mapAttrs'
         (name: _: lib.nameValuePair "prefect-worker-${name}" {
-          environment.PREFECT_API_URL = lib.mkForce "http://127.0.0.1:${toString cfg.port}/api";
+          serviceConfig.Environment = lib.mkForce [
+            "PREFECT_HOME=%S/prefect-worker-${name}"
+            "PREFECT_API_URL=http://127.0.0.1:${toString cfg.port}/api"
+          ];
         })
         cfg.workerPools)
     ];
