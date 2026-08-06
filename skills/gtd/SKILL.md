@@ -26,13 +26,26 @@ The owner may use any tool: CalDAV, Todoist, Things, Notion, etc. Consult the re
 ## Contexts
 
 **For the agent's own tasks — execution triggers (when to act, not where):**
-Each task can carry a context tag indicating which scheduled cycle it belongs to. This is open-ended: any recurring cron job or workflow can define its own context. Examples: `@heartbeat`, `@mailcheck`, `@gtdreview`, `@dailybrief`. When a cycle runs, check for tasks tagged with its context and process them.
+
+Each task can carry a context tag indicating which scheduled cycle it belongs to. Any recurring cron job or workflow can define its own context. Core contexts:
+
+- `@heartbeat` — standard checks on every heartbeat cycle (server health, inbox, readiness scores, etc.)
+- `@mailcheck` — run when processing the inbox (triage, archive, capture to owner's list)
+- `@gtdreview` — run during the weekly GTD review cycle
+- `@nixupdate` — run during the daily NixOS update check
+- `@morning` — morning-specific actions (readiness summary, day preview, calendar scan)
+
+When a cycle runs, process any pending tasks tagged with its context.
 
 **For the owner's tasks — situational triggers (when to surface, not when to execute):**
-Contexts help decide when to proactively mention a task to the owner. Detectable sources:
-- **Calendar**: a hospital appointment, a research meeting, a conference → surface tasks related to that setting
-- **Conversation**: the owner mentions where they are or what they are doing → adapt which tasks to propose
-- **Time of day**: weekday mornings (clinical), afternoons (research/admin), weekends (personal)
+
+Contexts help decide when to proactively mention a task to the owner. Useful contexts detectable from calendar or conversation:
+
+- `@hospital` — calendar shows a hospital or clinical day → surface patient-related or administrative clinical tasks
+- `@research` — meeting or day at a research institute → surface tasks related to studies, manuscripts, collaborators
+- `@conference` — attending a symposium or congress → surface networking or presentation tasks
+- `@phone` — task requires making a call; surface when the owner has a free slot or mentions availability
+- `@computer` — task requires being at a computer (baseline for most tasks; use only when it distinguishes from phone-only or in-person tasks)
 
 When relevant context is detected, proactively mention matching tasks from the owner's list — without waiting to be asked.
 
