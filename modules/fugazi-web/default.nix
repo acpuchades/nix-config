@@ -78,17 +78,6 @@ let
     # Tests need live data providers / the fugazi engine; skip at build time.
     doCheck = false;
     pythonImportsCheck = [ "fugazi_service" ];
-    # The service self-migrates in-process on startup: PostgresDatabase.upgrade()
-    # runs `alembic upgrade head` against alembic.ini/alembic/ located at
-    # parents[4] of the RESOLVED installed postgres.py — i.e. `$out/lib/pythonX.Y/`
-    # (resolve() follows the env symlink back into THIS derivation). Those files
-    # live at the repo root and buildPythonPackage only installs the importable
-    # package, so without this the app raises "no alembic.ini beside the package"
-    # and crash-loops. Drop the migration tree exactly where upgrade() probes.
-    postInstall = ''
-      cp ${src}/alembic.ini "$out/${python.sitePackages}/../alembic.ini"
-      cp -r ${src}/alembic "$out/${python.sitePackages}/../alembic"
-    '';
   };
 
   pythonEnv = python.withPackages (_: [ fugazi-service ]);
