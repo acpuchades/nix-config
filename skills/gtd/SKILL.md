@@ -30,12 +30,27 @@ The owner may use any tool: CalDAV, Todoist, Things, Notion, etc. Consult the re
 Each task can carry a context tag indicating which scheduled cycle it belongs to. Any recurring cron job or workflow can define its own context. Core contexts:
 
 - `@heartbeat` — standard checks on every heartbeat cycle (server health, inbox, readiness scores, etc.)
+- `@morning` — morning-specific actions (readiness summary, day preview, calendar scan); sub-context of `@heartbeat`, triggered when the heartbeat fires in the morning
+- `@evening` — end-of-day actions (day recap, flag unprocessed captures, pending follow-ups); sub-context of `@heartbeat`, triggered when the heartbeat fires in the evening
 - `@mailcheck` — run when processing the inbox (triage, archive, capture to owner's list)
 - `@gtdreview` — run during the weekly GTD review cycle
 - `@nixupdate` — run during the daily NixOS update check
-- `@morning` — morning-specific actions (readiness summary, day preview, calendar scan)
 
 When a cycle runs, process any pending tasks tagged with its context.
+
+## Context linking mechanism
+
+Context tags connect tasks in `next-actions.md` to the cycle that should process them:
+
+1. **Tag tasks when capturing:** add the relevant `@context` to the task text in `next-actions.md`.
+   Example: `- Check CIBERER deadline for Alejandro @gtdreview`
+
+2. **Check in cron prompts:** each cron prompt should include an explicit instruction like:
+   > Before starting, read `gtd/next-actions.md` and process any tasks tagged `@<context>`.
+
+3. **For owner's tasks in CalDAV:** store the context in the `CATEGORIES` field of the VTODO so it survives across clients.
+
+Without step 2, the tag in the file is never consulted — the link between task and cycle must be explicit in the prompt.
 
 **For the owner's tasks — situational triggers (when to surface, not when to execute):**
 
