@@ -29,8 +29,8 @@ let
   python = pkgs.python313;
 
   src = builtins.fetchTarball {
-    url = "https://github.com/acpuchades/fugazi-web/archive/fa713dd6b28835f80231ec825b53ca90dfc1a159.tar.gz";
-    sha256 = "sha256-y34TEMeWZtoZlybcMdP6lnZoZA4XTSXynVEpX8yg44g=";
+    url = "https://github.com/acpuchades/fugazi-web/archive/1e9e9f1a3b5c18d7fe2a5e6efb3f82bee299fb9a.tar.gz";
+    sha256 = "sha256-NHlZ1gXVbXlFG8/K0OJ+dTtIGhHDnX3HZ4pQ5scYEXk=";
   };
 
   # fugazi is the Rust core's Python bindings (pyo3/abi3 wheel), published to
@@ -70,6 +70,7 @@ let
       pyjwt
       httpx
       sqlalchemy
+      alembic # DB schema migrations (added in 1e9e9f1)
       psycopg # psycopg[binary] → v3
       python-multipart
       pyyaml
