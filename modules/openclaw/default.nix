@@ -1352,7 +1352,17 @@ let
             ${allowlistSeedMerge}
           '';
           ExecStart = "${lib.getExe openclawPatched} gateway";
-          Restart = "on-failure";
+          # `always`, NOT `on-failure`: openclaw's own restart paths (the
+          # gateway-restart tool, a config-reload restart) do a "full process
+          # restart (supervisor restart)" — the gateway EXITS 0 expecting a
+          # supervisor to re-exec it. Under `on-failure` systemd treats that
+          # clean exit as success and leaves the unit dead, so any self-initiated
+          # restart silently takes the agent down until someone runs `systemctl
+          # start` (bit eva on 2026-08-06). `always` honours the exit-0 restart.
+          # Crash-loops on a genuinely bad config are still bounded by the
+          # StartLimit below, and a schema-invalid config can't even reach the
+          # box (the configTemplate `config validate` derivation fails the build).
+          Restart = "always";
           RestartSec = 5;
           # The seed above is now two fast config patches plus one jq merge, but
           # keep a margin over systemd's 90s default so a momentarily loaded box
