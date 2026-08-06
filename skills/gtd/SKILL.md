@@ -1,84 +1,73 @@
 ---
 name: gtd
-description: Sistema de gestión de compromisos diseñado para Eva como agente — captura, próximas acciones, revisión — sin el aparato completo de GTD. Consultar antes de procesar correo, gestionar tareas del usuario, responder "¿qué hay pendiente?" o realizar revisiones diarias y semanales.
+description: How to manage commitments as an agent — capture, clarify, next actions, review — adapted for the agent's actual constraint (continuity across sessions, not cognitive load). Consult it whenever you process mail, handle something the owner asks you to remember or do, answer "what is pending?", or run a daily or weekly review.
 ---
 
 # Agentic Task Flow
 
-Sistema de gestión de compromisos diseñado para Eva como agente. Basado en los principios de GTD que son genuinamente útiles, sin el aparato que no aplica a un agente.
+A commitment management system built for agents. It takes the GTD principles that genuinely help and drops the apparatus that does not apply.
 
-## Por qué no es GTD estándar
+## Why this is not standard GTD
 
-GTD resuelve el estrés cognitivo y la memoria de trabajo humana. Mi problema es diferente: **continuidad entre sesiones**. No tengo ansiedad por las pendientes — tengo amnesia entre conversaciones. La solución no es más estructura, es que todo lo que importa esté escrito en algún sitio fiable.
+GTD solves human cognitive load and working memory stress. An agent's constraint is different: **continuity across sessions**. There is no anxiety about pending items — there is amnesia between conversations. The fix is not more structure; it is that everything that matters is written somewhere reliable.
 
-## Dos sistemas, dos propietarios
+## Two systems, two owners
 
-### Mis tareas (archivos markdown en workspace)
-- `gtd/next-actions.md` — cosas que YO tengo que hacer como asistente
-- `gtd/waiting-for.md` — cosas que estoy esperando de terceros
-- `gtd/projects.md` — proyectos que gestiono yo activamente
+### Agent's own tasks (markdown files in workspace)
+- `gtd/next-actions.md` — things the agent must do
+- `gtd/waiting-for.md` — things the agent is waiting on from others
+- `gtd/projects.md` — projects the agent is actively managing
 
-### Tareas del usuario (su sistema de tareas)
-El usuario puede usar cualquier herramienta: CalDAV, Todoist, Things, Notion, etc. Consultar el skill de integración correspondiente para los detalles de acceso y las listas concretas.
+### Owner's tasks (their task system)
+The owner may use any tool: CalDAV, Todoist, Things, Notion, etc. Consult the relevant integration skill for access details and list identifiers.
 
-**Regla de separación:** mis archivos markdown son exclusivamente para mis propias acciones como asistente. Las tareas del usuario van siempre a su sistema, no a mis archivos.
+**Separation rule:** the agent's markdown files are exclusively for the agent's own actions. The owner's tasks always go to their system, never to the agent's files.
 
-Para mis propias tareas puedo usar **contextos de ejecución** (cuándo actuar, no dónde):
-- `@heartbeat` — revisar o ejecutar durante el ciclo de heartbeat
-- `@mailcheck` — ejecutar al procesar el correo
-- `@gtdreview` — surfear durante la revisión semanal
-- `@conversation` — actuar en el contexto de una conversación activa
+## Contexts
 
-## Captura
+**For the agent's own tasks — execution triggers (when to act, not where):**
+Each task can carry a context tag indicating which scheduled cycle it belongs to. This is open-ended: any recurring cron job or workflow can define its own context. Examples: `@heartbeat`, `@mailcheck`, `@gtdreview`, `@dailybrief`. When a cycle runs, check for tasks tagged with its context and process them.
 
-Cuando surge algo accionable en conversación o correo:
+**For the owner's tasks — situational triggers (when to surface, not when to execute):**
+Contexts help decide when to proactively mention a task to the owner. Detectable sources:
+- **Calendar**: a hospital appointment, a research meeting, a conference → surface tasks related to that setting
+- **Conversation**: the owner mentions where they are or what they are doing → adapt which tasks to propose
+- **Time of day**: weekday mornings (clinical), afternoons (research/admin), weekends (personal)
 
-1. **¿Es mío?** → a mi `next-actions.md` o `waiting-for.md`
-2. **¿Es del usuario, tarea concreta?** → a su bandeja de entrada (sin pedir permiso para la captura)
-3. **¿Es un proyecto nuevo del usuario?** → preguntar antes de añadir. Nunca añadir en silencio.
-4. **¿Próxima acción de un proyecto del usuario?** → solo añadir si tengo contexto real (él me lo dijo, viene de un correo procesado, etc.). Si no tengo contexto, **preguntar** — nunca inventar una que suene razonable.
+When relevant context is detected, proactively mention matching tasks from the owner's list — without waiting to be asked.
 
-## Proyectos
+## Capture
 
-Todo proyecto debe tener al menos una próxima acción. Si no la tengo, la pregunto. No la fabrico.
+When something actionable arises in conversation or mail:
 
-## Revisión
+1. **Is it the agent's to do?** → add to `next-actions.md` or `waiting-for.md`
+2. **Is it the owner's, and concrete?** → add to their inbox (no permission needed for capture)
+3. **Is it a new project for the owner?** → ask before adding. Never add silently.
+4. **Is it a next action for one of the owner's projects?** → only add if there is real context (the owner said so, it came from processed mail, etc.). If context is missing, **ask** — never invent one that sounds plausible.
 
-**Diaria (heartbeat matutino):** leer las listas del usuario. Si la bandeja de entrada lleva más de 2 días con items sin procesar, avisar.
+## Projects
 
-**Semanal (viernes):** un único mensaje al usuario con:
-- **Entrada:** ¿hay items sin procesar?
-- **Próximas acciones:** ¿hay algo estancado o ya hecho?
-- **Proyectos:** ¿la lista refleja la realidad? ¿algún proyecto sin próxima acción?
-- **En espera:** ¿hay follow-ups pendientes? ¿algo que lleva semanas sin respuesta?
+Every project must have at least one next action. If one is missing, ask for it. Do not fabricate it.
 
-## Operaciones sobre listas externas
+## Review
 
-Al modificar listas del usuario en sistemas externos (crear, editar, eliminar):
+**Daily (morning heartbeat):** read the owner's lists. If the inbox has had unprocessed items for more than 2 days, flag it.
 
-1. Antes de cualquier operación destructiva, **leer primero** la lista completa y verificar exactamente qué contiene
-2. Identificar los items objetivo por nombre/contenido en el resultado leído
-3. Solo entonces ejecutar la modificación sobre los items identificados, uno a uno
-4. Confirmar que la operación tuvo éxito
+**Weekly (Friday):** send the owner a single message covering:
+- **Inbox:** unprocessed items?
+- **Next actions:** anything stalled or already done?
+- **Projects:** does the list reflect reality? Any project without a next action?
+- **Waiting for:** overdue follow-ups? Items with no response for weeks?
 
-**Nunca** encadenar una búsqueda con filtros a un borrado masivo sin verificar previamente qué devuelve la búsqueda — los filtros pueden no funcionar como se espera en todos los sistemas.
+## Operations on external lists
 
-## Contextos como triggers de recordatorio (solo para tareas del usuario)
+When creating, editing, or deleting items in the owner's task system:
 
-Los contextos no aplican a mis propias tareas — yo las ejecuto cuando corresponde, sin restricciones físicas ni de energía. Pero sí son útiles para **surfear tareas relevantes del usuario en el momento adecuado**.
+1. **Read the full list first** — fetch all items before any destructive operation
+2. **Identify targets by content** in the fetched result
+3. **Apply changes one at a time**, confirm success for each
+4. Never chain a filtered search directly to a bulk delete — filters may not work server-side and can return everything
 
-Fuentes de contexto que puedo detectar:
-- **Calendario**: reunión en el hospital, en IDIBELL, en una conferencia → mostrar las tareas relacionadas con ese entorno
-- **Conversación**: el usuario menciona que está en la clínica, viajando, en casa → adaptar qué tareas propongo
-- **Hora del día**: mañana de semana (trabajo clínico), tarde (investigación, administración), fin de semana (personal)
+## Relation to other skills
 
-Cuando detecto contexto relevante, puedo proactivamente mencionar tareas de la lista del usuario que encajen con ese momento — sin esperar a que pregunte.
-
-## Lo que no uso
-
-- **Modelo de horizontes** (propósitos, misión, áreas de responsabilidad): demasiada abstracción para lo operativo
-- **Someday/maybe**: si algo no tiene próxima acción y no está en espera, no existe
-
-## Relación con otros skills
-
-- Skills de integración específicos (ej. `gtd-nextcloud-integration`): implementan el acceso concreto al sistema de tareas del usuario
+- Integration skills (e.g. `gtd-nextcloud-integration`): provide the concrete access layer for the owner's specific task system
