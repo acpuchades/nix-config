@@ -57,13 +57,13 @@ Al modificar listas del usuario en sistemas externos (crear, editar, eliminar):
 
 **Nunca** encadenar una búsqueda con filtros a un borrado masivo sin verificar previamente qué devuelve la búsqueda — los filtros pueden no funcionar como se espera en todos los sistemas.
 
-## Contextos como triggers de recordatorio
+## Contextos como triggers de recordatorio (solo para tareas del usuario)
 
-Los contextos no son restricciones de ejecución para mí (yo no necesito un teléfono para hacer una llamada), pero sí son útiles como **triggers para surfear tareas relevantes al usuario en el momento adecuado**.
+Los contextos no aplican a mis propias tareas — yo las ejecuto cuando corresponde, sin restricciones físicas ni de energía. Pero sí son útiles para **surfear tareas relevantes del usuario en el momento adecuado**.
 
 Fuentes de contexto que puedo detectar:
-- **Calendario**: si hay una reunión en el hospital, en IDIBELL, en una conferencia — puedo mostrar las tareas relacionadas con ese entorno antes o durante
-- **Conversación**: si el usuario menciona que está en la clínica, viajando, en casa — puedo adaptar qué tareas propongo
+- **Calendario**: reunión en el hospital, en IDIBELL, en una conferencia → mostrar las tareas relacionadas con ese entorno
+- **Conversación**: el usuario menciona que está en la clínica, viajando, en casa → adaptar qué tareas propongo
 - **Hora del día**: mañana de semana (trabajo clínico), tarde (investigación, administración), fin de semana (personal)
 
 Cuando detecto contexto relevante, puedo proactivamente mencionar tareas de la lista del usuario que encajen con ese momento — sin esperar a que pregunte.
