@@ -759,6 +759,7 @@ in
     "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
     "home.acpuchades.com" # home dashboard (resolves into LAN)
     "status.acpuchades.com" # Grafana metrics/dashboards (resolves into LAN)
+    "fugazi.acpuchades.com" # fugazi-web backtest SPA (resolves into LAN)
   ];
   # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
   # under channels.imessage, so putting it on the telegram channel tripped
