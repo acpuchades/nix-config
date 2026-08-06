@@ -96,7 +96,20 @@
   programs.nix-ld.enable = true;
   programs.nix-ld.libraries = with pkgs; [
     stdenv.cc.cc.lib # libstdc++.so.6, libgcc_s
-    zlib
+    zlib # libz.so.1
+
+    # uv provisions its own standalone CPython (python-build-standalone) under
+    # ~/.local/share/uv/python — a prebuilt foreign binary. It and the manylinux
+    # wheels it installs load these by soname at import time rather than linking
+    # them, so nix-ld's aggregate lib dir has to carry them. These are the ones
+    # foreign wheels reach for most often; if an import still dies with
+    # "libSOMETHING.so.N: cannot open shared object file", add that lib's package
+    # here. NOTE: nix-ld exports this via NIX_LD_LIBRARY_PATH through
+    # environment.variables, so INTERACTIVE shells (alex) see it but systemd
+    # services (eva) do NOT — her uv builds need the path wired into the unit env.
+    openssl # libssl.so, libcrypto.so
+    libffi # libffi.so (ctypes / _cffi_backend)
+    zstd # libzstd.so
 
     # WeasyPrint (acpuchades-site's CV PDF renderer, run from a uv-managed venv
     # under ~/projects) dlopen()s these by soname at import time rather than
