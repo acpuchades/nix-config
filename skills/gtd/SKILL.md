@@ -23,6 +23,12 @@ El usuario puede usar cualquier herramienta: CalDAV, Todoist, Things, Notion, et
 
 **Regla de separación:** mis archivos markdown son exclusivamente para mis propias acciones como asistente. Las tareas del usuario van siempre a su sistema, no a mis archivos.
 
+Para mis propias tareas puedo usar **contextos de ejecución** (cuándo actuar, no dónde):
+- `@heartbeat` — revisar o ejecutar durante el ciclo de heartbeat
+- `@mailcheck` — ejecutar al procesar el correo
+- `@gtdreview` — surfear durante la revisión semanal
+- `@conversation` — actuar en el contexto de una conversación activa
+
 ## Captura
 
 Cuando surge algo accionable en conversación o correo:
