@@ -29,8 +29,8 @@ let
   python = pkgs.python313;
 
   src = builtins.fetchTarball {
-    url = "https://github.com/acpuchades/fugazi-web/archive/73c6f9c452d0fcd40ccb7a465404d01816b1ae0f.tar.gz";
-    sha256 = "sha256-nLG//UarKYiu8oV+vIJdYPnds92a+jdjo86pmRvx9vA=";
+    url = "https://github.com/acpuchades/fugazi-web/archive/d810646b5eddff9a887b37e2eaeb8a392569c520.tar.gz";
+    sha256 = "sha256-TmqSlU9A839V3lKX1x4WN4pXqv4IMX7gQmwTIy7gMzw=";
   };
 
   # fugazi is the Rust core's Python bindings (pyo3/abi3 wheel), published to
@@ -38,11 +38,11 @@ let
   # autoPatchelf fixes its rpath for the nix store.
   fugazi = python.pkgs.buildPythonPackage {
     pname = "fugazi";
-    version = "0.31.1";
+    version = "0.34.0";
     format = "wheel";
     src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/8e/e8/6e02b88ef852461fe20765db034902fb1f4a2be0a49f64d22e9d99a1832d/fugazi-0.31.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
-      hash = "sha256-wB6KaRbbL3v74RzagJYA86WUAxLWq61PSeX/xVK5O1U=";
+      url = "https://files.pythonhosted.org/packages/ff/1f/0209092b12c34f836f4cbab3b5c1f609cf93459d9d1cac95c45471fe3d72/fugazi-0.34.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
+      hash = "sha256-kpRp++00M31pDNRmQH1qeXb8UHgKPK7fuNQesqEfltk=";
     };
     nativeBuildInputs = [ pkgs.autoPatchelfHook ];
     buildInputs = [ pkgs.stdenv.cc.cc.lib ];
