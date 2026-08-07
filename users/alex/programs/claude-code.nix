@@ -10,6 +10,10 @@
     includeCoAuthoredBy = false;
 
     permissions = {
+      # Start every session in "auto" mode: a classifier decides per-action what
+      # is safe to auto-approve (not a fixed allowlist), and gates anything it
+      # judges risky. (Shift+Tab cycles modes per-session; this sets the default.)
+      defaultMode = "auto";
       # Auto-allow harmless, read-only inspection so they don't prompt.
       allow = [
         "Bash(git status:*)"
