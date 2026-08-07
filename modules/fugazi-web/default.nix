@@ -29,8 +29,8 @@ let
   python = pkgs.python313;
 
   src = builtins.fetchTarball {
-    url = "https://github.com/acpuchades/fugazi-web/archive/d0052e678ae0ca2cd2e34e5d3cace30e21808a1a.tar.gz";
-    sha256 = "sha256-tmpVA4GrY13nqqDCjpszG2I8H9242qHS5QcjYKh42dY=";
+    url = "https://github.com/acpuchades/fugazi-web/archive/1ab85f4091e961b81fd057e2beec0b3733044110.tar.gz";
+    sha256 = "sha256-vF6VCTfTh1rHcwiXXsnelCiCMjC6MkR10NgvSxSvSp0=";
   };
 
   # fugazi is the Rust core's Python bindings (pyo3/abi3 wheel), published to
