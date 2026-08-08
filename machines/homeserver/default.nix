@@ -282,6 +282,11 @@ let
         basicAuthFile = config.sops.templates."caddy/adguard-auth".path;
         virtualHost = "adguard.acpuchades.com";
         allowedNetworks = privateNetworks;
+        # Plain DNS is for the LAN and the VPN only, never the public internet.
+        # 10.0.0.0/24 (the wg subnet) is listed for defence in depth rather than
+        # necessity: wg0 is a trustedInterface, so peer traffic to 10.0.0.1:53
+        # bypasses the firewall chain entirely.
+        allowedClientNetworks = privateNetworks;
         dnsRewrites = [
           # vpn.acpuchades.com is intentionally NOT rewritten here: it must
           # always resolve to the public IP (via DDNS) so the WireGuard endpoint

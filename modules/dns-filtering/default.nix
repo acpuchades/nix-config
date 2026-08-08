@@ -1,5 +1,16 @@
 { config, lib, pkgs, ... }:
 
+let
+  # One accept rule per (network, protocol) for the plain-DNS port, emitted as
+  # bare `nixos-fw …` specs so the caller prefixes -I (insert) or -D (delete)
+  # and the two stay in sync by construction.
+  dnsFirewallRules = cfg:
+    lib.concatMap
+      (net: map
+        (proto: "nixos-fw -p ${proto} -s ${net} --dport ${toString cfg.dnsPort} -j nixos-fw-accept")
+        [ "udp" "tcp" ])
+      cfg.allowedClientNetworks;
+in
 {
   options.my.dns-filtering = {
     enable = lib.mkEnableOption "DNS filtering with AdGuard Home and DNSCrypt";
@@ -25,10 +36,24 @@
     upstreamServers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [
-        "dns4eu-unfiltered"
-        "quad9-dnscrypt-ip4-nofilter-pri"
+        "scaleway-fr"                     # Paris, maintained by dnscrypt-proxy's author
+        "dnscry.pt-madrid-ipv4"           # Madrid, lowest latency from here
+        "quad9-dnscrypt-ip4-nofilter-pri" # Swiss non-profit, anycast EU PoP
       ];
-      description = "Upstream DNS resolver server names";
+      description = ''
+        Upstream resolver names, as they appear in dnscrypt-proxy's
+        public-resolvers list. All must advertise DNSSEC + no-log + no-filter in
+        their sdns:// stamp or the require_* settings below silently drop them —
+        dnscrypt-proxy does not warn, it just reports fewer live servers.
+        NOTE the names are matched literally: an entry that does not exist is
+        ignored just as silently (this is how "dns4eu-unfiltered", which was
+        never a real name, sat here unused). Verify a change with
+        `journalctl -u dnscrypt-proxy | grep "live servers"` — the count must
+        equal the number of entries here.
+
+        Kept deliberately European and unfiltered: AdGuard does the filtering
+        locally, so the upstream only needs to be fast, honest and quiet.
+      '';
     };
 
     filterLists = lib.mkOption {
@@ -60,7 +85,32 @@
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
-      description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+      description = "Restrict web interface access to these CIDR ranges (empty = unrestricted)";
+    };
+
+    allowedClientNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        CIDR ranges allowed to send plain DNS queries (port 53). Empty opens the
+        port on every interface, which makes the box a public open resolver and
+        therefore a DNS amplification reflector — set this to the local networks
+        unless the resolver is meant to be public. Does not apply to DNS-over-TLS,
+        which exists precisely to be reached from off-LAN.
+      '';
+    };
+
+    rateLimit = lib.mkOption {
+      type = lib.types.int;
+      default = 200;
+      description = ''
+        Queries per second per client before AdGuard starts dropping them; 0
+        disables the limit. AdGuard's own default is 20, which a single machine
+        exceeds trivially (a parallel `nix` fetch or a browser opening many tabs),
+        and the symptom is silent packet loss rather than an error — so this is
+        set explicitly rather than left implicit. Keep it non-zero while port 53
+        is reachable beyond the LAN: it is the only cap on amplification abuse.
+      '';
     };
 
     dnsRewrites = lib.mkOption {
@@ -103,10 +153,29 @@
   };
 
   config = lib.mkIf config.my.dns-filtering.enable {
+    # Port 53 is opened globally only when no client networks are configured;
+    # otherwise it is accepted per-source below, so the resolver is not exposed
+    # to the internet. DoT (853) stays global on purpose — it is meant to be
+    # reached from off-LAN and its clients authenticate the server by cert.
     networking.firewall.allowedTCPPorts =
-      [ config.my.dns-filtering.dnsPort ] ++
+      lib.optionals (config.my.dns-filtering.allowedClientNetworks == [])
+        [ config.my.dns-filtering.dnsPort ] ++
       lib.optionals config.my.dns-filtering.tls.enable [ config.my.dns-filtering.tls.port ];
-    networking.firewall.allowedUDPPorts = [ config.my.dns-filtering.dnsPort ];
+    networking.firewall.allowedUDPPorts =
+      lib.optionals (config.my.dns-filtering.allowedClientNetworks == [])
+        [ config.my.dns-filtering.dnsPort ];
+
+    # Accept DNS only from the configured client networks. Inserted at the top of
+    # the nixos-fw chain so it precedes the default refuse rule (same pattern as
+    # print-server/samba-server). VPN peers are already covered by the trusted wg
+    # interface; these rules cover the LAN.
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
+      (rule: "iptables -I ${rule}")
+      (dnsFirewallRules config.my.dns-filtering);
+
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
+      (rule: "iptables -D ${rule} || true")
+      (dnsFirewallRules config.my.dns-filtering);
 
     # DNSCrypt proxy
     services.dnscrypt-proxy = {
@@ -115,6 +184,8 @@
         server_names = config.my.dns-filtering.upstreamServers;
         require_dnssec = true;
         require_nofilter = true;
+        # Only use resolvers that advertise a no-logging policy in their stamp.
+        require_nolog = true;
         listen_addresses = [
           "127.0.0.1:${toString config.my.dns-filtering.dnsResolverPort}"
           "[::1]:${toString config.my.dns-filtering.dnsResolverPort}"
@@ -132,6 +203,7 @@
           port = config.my.dns-filtering.dnsPort;
           upstream_dns = [ "127.0.0.1:${toString config.my.dns-filtering.dnsResolverPort}" ];
           bootstrap_dns = [ "1.1.1.1" "1.0.0.1" ];
+          ratelimit = config.my.dns-filtering.rateLimit;
         };
         filtering = {
           protection_enabled = true;
