@@ -118,7 +118,23 @@ in
 
     hostName = lib.mkOption {
       type = lib.types.str;
-      description = "Virtual host for the SPA + API (e.g. fugazi.acpuchades.com)";
+      description = ''
+        Canonical virtual host for the SPA + API (e.g. www.fugazitrade.com).
+        This name is baked into the verification / password-reset links the
+        backend mails out, so changing it changes what users get sent.
+      '';
+    };
+
+    aliases = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Additional names served by the same site block (legacy or vanity
+        domains). They serve the app directly rather than redirecting, so
+        bookmarks against an old name keep working. Each still needs its own
+        certificate, which Caddy gets over DNS-01 — so every name here must live
+        in a zone the Cloudflare API token can write to.
+      '';
     };
 
     port = lib.mkOption {
@@ -232,24 +248,28 @@ in
       };
     };
 
-    services.caddy.virtualHosts.${cfg.hostName}.extraConfig = ''
-      ${lib.optionalString (cfg.allowedNetworks != [])
-        "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}"}
-      route {
-        ${lib.optionalString (cfg.allowedNetworks != []) "abort @denied"}
-        handle /v1/* {
-          reverse_proxy 127.0.0.1:${toString cfg.port}
+    services.caddy.virtualHosts.${cfg.hostName} = {
+      serverAliases = cfg.aliases;
+
+      extraConfig = ''
+        ${lib.optionalString (cfg.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}"}
+        route {
+          ${lib.optionalString (cfg.allowedNetworks != []) "abort @denied"}
+          handle /v1/* {
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          }
+          handle /health {
+            reverse_proxy 127.0.0.1:${toString cfg.port}
+          }
+          handle {
+            root * ${frontend}
+            try_files {path} /index.html
+            file_server
+          }
         }
-        handle /health {
-          reverse_proxy 127.0.0.1:${toString cfg.port}
-        }
-        handle {
-          root * ${frontend}
-          try_files {path} /index.html
-          file_server
-        }
-      }
-      encode gzip
-    '';
+        encode gzip
+      '';
+    };
   };
 }
