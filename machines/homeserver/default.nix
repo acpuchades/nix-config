@@ -307,6 +307,8 @@ let
           { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "fugazi.acpuchades.com";    answer = homeServerLocalAddress; }
+          { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
+          { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
           # clients resolving through AdGuard, and just saves them a NAT hairpin.
           { domain = "ntfy.acpuchades.com";      answer = homeServerLocalAddress; }
@@ -326,12 +328,21 @@ let
           "blog.acpuchades.com" = {
             redirect = "https://www.acpuchades.com/blog";
           };
+          # The app itself lives on www (see my.fugazi-web below); the apex only
+          # bounces to it. Restricted like the app is, so the two agree.
+          "fugazitrade.com" = {
+            redirect = "https://www.fugazitrade.com";
+            allowedNetworks = privateNetworks;
+          };
         };
       };
 
       my.fugazi-web = {
         enable = true;
-        hostName = "fugazi.acpuchades.com";
+        hostName = "www.fugazitrade.com";
+        # Legacy name from before the domain existed; still serves the app so old
+        # bookmarks and mailed links keep resolving.
+        aliases = [ "fugazi.acpuchades.com" ];
         # Internal-only: reachable from the LAN/VPN, not the public internet.
         allowedNetworks = privateNetworks;
         environmentFile = config.sops.templates."fugazi/env".path;
