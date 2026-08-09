@@ -8,95 +8,34 @@
 # Caddy reverse-proxies those two prefixes to the backend and serves the built
 # frontend for everything else (with SPA-history fallback to index.html).
 #
-# NOTE: the fugazi-web repo is PRIVATE, so the machine building this config needs
-# GitHub credentials reachable by the NIX DAEMON at fetch time. We fetch with the
-# BUILT-IN `builtins.fetchTarball`, NOT `pkgs.fetchFromGitHub`, and that choice is
-# load-bearing: only Nix's built-in fetchers consult `nix.settings.netrc-file` /
-# `access-tokens`. `pkgs.fetchFromGitHub` runs its own curl inside a fixed-output
-# build sandbox and that curl is NEVER handed a netrc (nixpkgs' fetchurl adds
-# `--netrc-file` only when a `netrcPhase` attr is set, which fetchFromGitHub does
-# not) — so against a private repo it 404s no matter what /etc/nix/netrc holds.
-# fetchTarball authenticates via the daemon's netrc-file: a sops secret
-# (github/token) rendered into a netrc that nix.settings.netrc-file points at —
-# see machines/homeserver/{sops.nix,default.nix}. Because sops renders at
-# ACTIVATION (after the build), the first switch that introduces it needs
-# /etc/nix/netrc seeded by hand once; the machine default.nix note has the
-# one-liner. The `sha256` is the hash of the UNPACKED tree (identical to what
-# fetchFromGitHub's `hash` was); bump `rev`+`sha256` together to update.
+# This module owns the DEPLOYMENT topology only. The packages come from the
+# fugazi-web flake's overlay (applied in machines/homeserver/default.nix):
+#   pkgs.fugazi-service       — the backend buildPythonPackage (built against our
+#                               nixpkgs), incl. the fugazi PyPI wheel pin
+#   pkgs.fugazi-web-frontend  — the built Vite SPA (buildNpmPackage + npmDepsHash)
+# so the wheel pin and npmDepsHash are maintained upstream, not here. Bump both by
+# rolling the input: `nix flake update fugazi-web`.
+#
+# The repo is PRIVATE, so fetching the flake input needs GitHub auth. It's a
+# tarball-URL input, not a `github:` input, precisely because the `github:` fetcher
+# resolves refs through api.github.com and authenticates only via the
+# `access-tokens` setting (empty here) — it ignores netrc and 404s on a private
+# repo. The tarball fetcher instead uses Nix's ordinary downloader, which consults
+# `nix.settings.netrc-file` (unlike `pkgs.fetchFromGitHub`, whose sandboxed curl is
+# never handed a netrc). Auth is a sops secret (github/token) rendered into that
+# netrc. Flake-input fetching is client-side, and that netrc is root-only, so run
+# `sudo nixos-rebuild switch` / `sudo nix flake update fugazi-web` as ROOT (which
+# can read it); a non-root update 404s unless you pass an override
+# (`--option access-tokens github.com=<PAT>`). See flake.nix and
+# machines/homeserver/{sops.nix,default.nix} for the bootstrap.
 
 let
   cfg = config.my.fugazi-web;
   python = pkgs.python313;
 
-  src = builtins.fetchTarball {
-    url = "https://github.com/acpuchades/fugazi-web/archive/be774af61aeafa9ca2aac8e05554fc469541234f.tar.gz";
-    sha256 = "sha256-kZPcS59ioX2Mph0su3hzpG8JnHUrJEhsF00B4Y6gOyk=";
-  };
-
-  # fugazi is the Rust core's Python bindings (pyo3/abi3 wheel), published to
-  # PyPI but not in nixpkgs. The abi3 manylinux x86_64 wheel runs on 3.13;
-  # autoPatchelf fixes its rpath for the nix store.
-  fugazi = python.pkgs.buildPythonPackage {
-    pname = "fugazi";
-    version = "0.36.0";
-    format = "wheel";
-    src = pkgs.fetchurl {
-      url = "https://files.pythonhosted.org/packages/c2/e7/e19a94f0549a68236a975a293aa7c1381cc9b6e918bacc9eca09f8bce529/fugazi-0.36.0-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
-      hash = "sha256-fOhbsY9/ppI/eh4R/SFR738M8FZsIjWPLD62DsdhgiU=";
-    };
-    nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-    buildInputs = [ pkgs.stdenv.cc.cc.lib ];
-    pythonImportsCheck = [ "fugazi" ];
-  };
-
-  fugazi-service = python.pkgs.buildPythonPackage {
-    pname = "fugazi-service";
-    version = "0.0.1";
-    pyproject = true;
-    inherit src;
-    build-system = [ python.pkgs.hatchling ];
-    dependencies = with python.pkgs; [
-      fugazi
-      polars
-      fastapi
-      uvicorn
-      # uvicorn[standard] runtime extras used in production
-      uvloop
-      httptools
-      websockets
-      pydantic
-      email-validator # pydantic[email]
-      argon2-cffi
-      pyjwt
-      httpx
-      sqlalchemy
-      alembic # DB schema migrations (added in 1e9e9f1)
-      psycopg # psycopg[binary] → v3
-      python-multipart
-      pyyaml
-    ];
-    # Tests need live data providers / the fugazi engine; skip at build time.
-    doCheck = false;
-    pythonImportsCheck = [ "fugazi_service" ];
-  };
-
-  pythonEnv = python.withPackages (_: [ fugazi-service ]);
-
-  # Static production bundle. Vite emits to ./dist; ship just that.
-  frontend = pkgs.buildNpmPackage {
-    pname = "fugazi-web-frontend";
-    version = "0.0.1";
-    # `src` is builtins.fetchTarball's already-unpacked tree — a store-path
-    # STRING, not a derivation — so point straight at the frontend subdir
-    # (`${src.name}` no longer works: a string has no `.name`).
-    src = "${src}/frontend";
-    npmDepsHash = "sha256-RgfAkz1oOEBTyxFGLvFxObXDYCIri281JramN2NbMEI=";
-    installPhase = ''
-      runHook preInstall
-      cp -r dist $out
-      runHook postInstall
-    '';
-  };
+  # Backend + frontend from the fugazi-web flake overlay (see the header).
+  pythonEnv = python.withPackages (_: [ pkgs.fugazi-service ]);
+  frontend = pkgs.fugazi-web-frontend;
 
   serviceEnv = {
     # Peer auth over the Unix socket (the fugazi OS user == the fugazi role).
