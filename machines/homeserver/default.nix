@@ -614,10 +614,14 @@ let
       };
 
       # Encrypted off-site backups to Backblaze B2 (restic, client-side AES-256).
-      # Covers the irreplaceable, non-declarative state: DB dumps, eva's home +
-      # agent state, and the cloud-suite data dirs. Deliberately EXCLUDES the
-      # large/reproducible sets — Bitcoin chainstate, the Nominatim DB, and the
-      # Samba media/downloads — so the off-site copy stays small and cheap.
+      # Covers the irreplaceable, non-declarative state: DB dumps, all user homes
+      # (keys, configs, shell histories, ~/.claude memory, eva's Maildir + agent
+      # state) and the cloud-suite data dirs. Home coverage is a DENYLIST, not an
+      # allowlist — backing up all of /home and excluding the re-acquirable caches
+      # means new important dirs are caught automatically instead of silently
+      # missed (the failure mode of a curated path list). Still EXCLUDES the big
+      # reproducible sets — Bitcoin chainstate, Nominatim DB, Samba media/downloads,
+      # and per-home caches/build artifacts — so the off-site copy stays small.
       # Repo password + B2 credentials come from sops (backup/* below).
       my.backup = {
         enable = true;
@@ -626,9 +630,9 @@ let
         environmentFile = config.sops.templates."backup/b2-env".path;
 
         # Data-directory paths tracked off their owning modules' options so they
-        # follow any relocation. eva's /home covers her Maildir too.
+        # follow any relocation. /home covers both alex and eva (incl. Maildir).
         paths = [
-          "/home/eva"                                        # eva home + Maildir
+          "/home"                                            # all user homes (caches excluded below)
           "/var/lib/openclaw/eva"                            # eva agent state/memory
           "/var/lib/hass"                                    # Home Assistant config
           "/srv/prefect"                                     # Prefect data dir
@@ -643,8 +647,17 @@ let
           "/srv/shared/Media"
           "/srv/shared/Downloads"
           "/srv/shared/**/.incomplete"
-          "/home/eva/.cache"
           "/var/lib/hass/*.log*"
+          # Per-home caches / build artifacts: re-acquirable and they churn every
+          # snapshot. Drops ~7.7G of /home/alex's 8.2G while keeping keys, configs,
+          # histories, Org, and ~/.claude (memory + transcripts).
+          "/home/*/.cache"
+          "/home/*/.cargo"
+          "/home/*/.npm"
+          "/home/*/.local/share/uv"
+          "/home/*/.claude/projects/*/shell-snapshots"       # ephemeral shell captures
+          "/home/alex/nominatim"                             # Geofabrik import data, re-downloadable
+          "/home/alex/nix-config"                            # version-controlled + pushed to GitHub
         ];
 
         # PostgreSQL: dump every live DB except the huge, re-importable Nominatim
