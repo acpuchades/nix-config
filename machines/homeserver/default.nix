@@ -8,6 +8,7 @@
   home-manager,
   sops-nix,
   emacs-overlay,
+  fugazi-web,
   ...
 }:
 
@@ -342,6 +343,10 @@ let
         };
       };
 
+      # The backend + frontend packages come from the fugazi-web flake's overlay
+      # (pkgs.fugazi-service, pkgs.fugazi-web-frontend), built against our nixpkgs.
+      nixpkgs.overlays = [ fugazi-web.overlays.default ];
+
       my.fugazi-web = {
         enable = true;
         hostName = "www.fugazitrade.com";
@@ -353,12 +358,18 @@ let
         environmentFile = config.sops.templates."fugazi/env".path;
       };
 
-      # fugazi-web's source is a PRIVATE GitHub repo. The module fetches it with the
-      # built-in builtins.fetchTarball, which authenticates via netrc, so point nix
-      # at a sops-rendered netrc carrying a GitHub PAT (github/token → nix/netrc
-      # template in sops.nix). Your shell's $GITHUB_TOKEN can't help — the fetch has
-      # no login environment. BOOTSTRAP: this template only exists after the first
-      # switch activates, so seed /etc/nix/netrc by hand once before that switch.
+      # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
+      # input — a tarball URL, so Nix's ordinary downloader fetches it and
+      # authenticates via netrc (a `github:` input would go through
+      # api.github.com + access-tokens and ignore netrc; see the module header).
+      # Point nix at a sops-rendered netrc carrying a GitHub PAT (github/token →
+      # nix/netrc template in sops.nix).
+      # Your shell's $GITHUB_TOKEN can't help — the fetch has no login environment.
+      # Flake-input fetching is client-side and this netrc is root-only, so run the
+      # switch and `nix flake update fugazi-web` as ROOT (which can read it); a
+      # non-root update 404s unless you pass `--option access-tokens github.com=…`.
+      # BOOTSTRAP: this template only exists after the first switch activates, so
+      # seed /etc/nix/netrc by hand once before that switch.
       # A single github.com entry is enough — GitHub 302-redirects the archive to
       # codeload.github.com with a signed `?token=` in the URL, so that leg needs
       # no netrc of its own:

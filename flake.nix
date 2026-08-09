@@ -36,6 +36,23 @@
     # Better Zen — Betterfox-derived privacy/security user.js for Zen browser
     better-zen.url = "github:Codextor/better-zen";
     better-zen.flake = false;
+
+    # fugazi-web — PRIVATE repo for the homeserver's backtest service. It's a real
+    # flake: modules/fugazi-web consumes its overlay (pkgs.fugazi-service +
+    # pkgs.fugazi-web-frontend) so the backend wheel pin and the frontend
+    # npmDepsHash live upstream, not here. Follows our nixpkgs so its packages
+    # build against nixpkgs-26.05 and no second nixpkgs lands in the lock. Bump
+    # with `nix flake update fugazi-web`.
+    #
+    # A tarball URL, NOT a `github:` input, on purpose: the `github:` fetcher
+    # resolves refs through api.github.com and authenticates only via the
+    # `access-tokens` setting (empty on the homeserver) — it ignores netrc, so it
+    # 404s on a private repo. The tarball fetcher instead goes through Nix's
+    # ordinary downloader, which honors nix.settings.netrc-file (github/token →
+    # nix/netrc; see the modules/fugazi-web header and machines/homeserver). The
+    # `refs/heads/main` URL means `nix flake update` rolls to the latest main.
+    fugazi-web.url = "https://github.com/acpuchades/fugazi-web/archive/refs/heads/main.tar.gz";
+    fugazi-web.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -47,6 +64,7 @@
       home-manager,
       sops-nix,
       better-zen,
+      fugazi-web,
       emacs-overlay
     }:
   {
