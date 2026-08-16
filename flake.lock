@@ -63,8 +63,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1786237134,
-        "narHash": "sha256-CF5lszO7SXkP25ohuUkHNczhQouwtL2nF15+MlJQQ1U=",
+        "lastModified": 1786856398,
+        "narHash": "sha256-DDv+Xs26IpKsflTkHzI+u2ZKrML8aIgYXScfb70pkZ8=",
         "type": "tarball",
         "url": "https://github.com/acpuchades/fugazi-web/archive/refs/heads/main.tar.gz"
       },

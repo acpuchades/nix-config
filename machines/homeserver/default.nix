@@ -92,6 +92,12 @@ let
         ../../modules/backup
         ../../modules/ntfy-alert
         ../../modules/fugazi-web
+
+        # The fugazi-web service itself (`services.fugazi-web`): the uvicorn unit,
+        # the maintenance timer and the per-frequency deployment-tick timers all
+        # live upstream. ../../modules/fugazi-web is only the host topology around
+        # it (Caddy, Postgres, SMTP loopback, sops env) and drives this module.
+        fugazi-web.nixosModules.default
       ];
 
       systemd.network.networks = {
@@ -345,6 +351,7 @@ let
 
       # The backend + frontend packages come from the fugazi-web flake's overlay
       # (pkgs.fugazi-service, pkgs.fugazi-web-frontend), built against our nixpkgs.
+      # Its NixOS module (imported above) derives the units from the same pkgs.
       nixpkgs.overlays = [ fugazi-web.overlays.default ];
 
       my.fugazi-web = {

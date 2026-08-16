@@ -8,13 +8,33 @@
 # Caddy reverse-proxies those two prefixes to the backend and serves the built
 # frontend for everything else (with SPA-history fallback to index.html).
 #
-# This module owns the DEPLOYMENT topology only. The packages come from the
-# fugazi-web flake's overlay (applied in machines/homeserver/default.nix):
-#   pkgs.fugazi-service       — the backend buildPythonPackage (built against our
-#                               nixpkgs), incl. the fugazi PyPI wheel pin
-#   pkgs.fugazi-web-frontend  — the built Vite SPA (buildNpmPackage + npmDepsHash)
-# so the wheel pin and npmDepsHash are maintained upstream, not here. Bump both by
-# rolling the input: `nix flake update fugazi-web`.
+# This module owns the HOST topology only — Caddy, Postgres, the SMTP loopback
+# and the sops-backed environment. The service itself comes from upstream:
+#   fugazi-web.nixosModules.default → `services.fugazi-web`
+#     the uvicorn unit, the maintenance timer (purge expired verifications/2FA,
+#     drain + prune the mail outbox) and one deployment-tick timer per trading
+#     frequency (advance every live deployment on that cadence).
+#   fugazi-web.overlays.default
+#     pkgs.fugazi-service      — the backend buildPythonPackage (built against our
+#                                nixpkgs), incl. the fugazi PyPI wheel pin
+#     pkgs.fugazi-web-frontend — the built Vite SPA (buildNpmPackage + npmDepsHash)
+# Both are wired in machines/homeserver/default.nix. The wheel pin, the
+# npmDepsHash and the unit definitions are therefore maintained upstream, not
+# here; bump them all by rolling the input: `nix flake update fugazi-web`.
+#
+# We deliberately do NOT re-expose every upstream knob through `my.fugazi-web`.
+# Anything this module doesn't set (`maintenanceInterval`,
+# `deploymentTickFrequencies`, Sentry/log-format vars via `environment`, …) is
+# set directly on `services.fugazi-web` in the host config.
+#
+# Not wired, on purpose: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
+# broker-credential vault. Without it the backend composes a NullVault — paper
+# wallets are unaffected and connecting a real broker account fails loudly
+# instead of persisting a plaintext API secret. Enabling it means a new sops
+# secret, so it stays out until a broker account is actually needed:
+#   openssl rand -base64 32 | tr '+/' '-_'   # urlsafe-base64 32 bytes
+# then add `fugazi/secret-key` to machines/homeserver/secrets/default.yml and a
+# second line to the `fugazi/env` template in sops.nix.
 #
 # The repo is PRIVATE, so fetching the flake input needs GitHub auth. It's a
 # tarball-URL input, not a `github:` input, precisely because the `github:` fetcher
@@ -31,25 +51,8 @@
 
 let
   cfg = config.my.fugazi-web;
-  python = pkgs.python313;
 
-  # Backend + frontend from the fugazi-web flake overlay (see the header).
-  pythonEnv = python.withPackages (_: [ pkgs.fugazi-service ]);
   frontend = pkgs.fugazi-web-frontend;
-
-  serviceEnv = {
-    # Peer auth over the Unix socket (the fugazi OS user == the fugazi role).
-    FUGAZI_SERVICE_DATABASE_URL =
-      "postgresql+psycopg://${cfg.databaseName}@/${cfg.databaseName}?host=/run/postgresql";
-    FUGAZI_SERVICE_MAILER = "smtp";
-    FUGAZI_SERVICE_SMTP_HOST = cfg.smtpHost;
-    FUGAZI_SERVICE_SMTP_PORT = toString cfg.smtpPort;
-    FUGAZI_SERVICE_MAIL_FROM = cfg.mailFrom;
-    FUGAZI_SERVICE_REQUIRE_VERIFIED_EMAIL = if cfg.requireVerifiedEmail then "1" else "0";
-    # Verification / reset links land on the SPA's public routes.
-    FUGAZI_SERVICE_VERIFY_URL = "https://${cfg.hostName}/verify-email";
-    FUGAZI_SERVICE_RESET_URL = "https://${cfg.hostName}/reset-password";
-  };
 in
 {
   options.my.fugazi-web = {
@@ -123,7 +126,8 @@ in
       description = ''
         systemd EnvironmentFile providing FUGAZI_SERVICE_JWT_SECRET (the JWT
         signing key). A restart with a fresh secret invalidates every session, so
-        this must be a stable, out-of-store secret.
+        this must be a stable, out-of-store secret. Shared by the API, the
+        maintenance job and every deployment tick.
       '';
     };
 
@@ -135,6 +139,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Upstream only provisions its own default `fugazi-web` user/group; we run as
+    # the role name instead so the Postgres connection can use peer auth.
     users.users.${cfg.databaseName} = {
       isSystemUser = true;
       group = cfg.databaseName;
@@ -160,28 +166,44 @@ in
       "127.0.0.1" = [ "mail.acpuchades.com" ];
     };
 
+    services.fugazi-web = {
+      enable = true;
+      host = "127.0.0.1";
+      inherit (cfg) port;
+      user = cfg.databaseName;
+      group = cfg.databaseName;
+      # Peer auth over the Unix socket (the fugazi OS user == the fugazi role).
+      databaseUrl =
+        "postgresql+psycopg://${cfg.databaseName}@/${cfg.databaseName}?host=/run/postgresql";
+      environmentFile = cfg.environmentFile;
+      # Reaches the API, the maintenance job and every deployment tick — the mail
+      # settings matter to all three, since the outbox is drained from both the
+      # API's in-process loop and the maintenance timer.
+      environment = {
+        FUGAZI_SERVICE_MAILER = "smtp";
+        FUGAZI_SERVICE_SMTP_HOST = cfg.smtpHost;
+        FUGAZI_SERVICE_SMTP_PORT = toString cfg.smtpPort;
+        FUGAZI_SERVICE_MAIL_FROM = cfg.mailFrom;
+        FUGAZI_SERVICE_REQUIRE_VERIFIED_EMAIL = if cfg.requireVerifiedEmail then "1" else "0";
+        # Verification / reset links land on the SPA's public routes.
+        FUGAZI_SERVICE_VERIFY_URL = "https://${cfg.hostName}/verify-email";
+        FUGAZI_SERVICE_RESET_URL = "https://${cfg.hostName}/reset-password";
+      };
+    };
+
+    # Host-side additions to upstream's unit. It orders itself after
+    # postgresql.service, but on NixOS the database and role are created by
+    # postgresql-setup.service — and the API runs Alembic to head on startup, so
+    # it must not win that race on a first boot. `after`/`requires` are
+    # list-merged with upstream's, not replaced.
     systemd.services.fugazi-web = {
-      description = "fugazi-web backend (uvicorn)";
-      after = [ "network.target" "postgresql-setup.service" "postfix.service" ];
+      after = [ "postgresql-setup.service" "postfix.service" ];
       requires = [ "postgresql-setup.service" ];
-      wantedBy = [ "multi-user.target" ];
-      environment = serviceEnv;
       serviceConfig = {
-        User = cfg.databaseName;
-        Group = cfg.databaseName;
-        EnvironmentFile = cfg.environmentFile;
-        ExecStart =
-          "${pythonEnv}/bin/uvicorn fugazi_service.api.app:app "
-          + "--host 127.0.0.1 --port ${toString cfg.port}";
-        Restart = "on-failure";
         RestartSec = 5;
-        StateDirectory = "fugazi-web";
         WorkingDirectory = "/var/lib/fugazi-web";
-        # Hardening (kept light: the backend forks a process pool for runs).
-        NoNewPrivileges = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
+        # Hardening beyond upstream's (kept light: the backend forks a process
+        # pool for runs).
         ProtectControlGroups = true;
         ProtectKernelTunables = true;
       };
