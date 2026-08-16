@@ -24,8 +24,18 @@
 #
 # We deliberately do NOT re-expose every upstream knob through `my.fugazi-web`.
 # Anything this module doesn't set (`maintenanceInterval`,
-# `deploymentTickFrequencies`, Sentry/log-format vars via `environment`, …) is
-# set directly on `services.fugazi-web` in the host config.
+# `deploymentTickFrequencies`, signup/maintenance-window vars via `environment`,
+# …) is set directly on `services.fugazi-web` in the host config.
+#
+# Not used, on purpose: upstream's `enableNginx`. It serves the SPA, terminates
+# TLS and adds the response CSP + edge rate limiting — but this host's :443 is
+# Caddy's, so the two would fight over the port. The parts of it that are policy
+# rather than plumbing (the real CSP, the security headers, the immutable-asset
+# caching, the body cap) are replicated in the Caddy vhost below; the one part
+# that isn't is nginx's `limit_req` zones, which have no built-in Caddy
+# equivalent (they'd need the caddy-ratelimit plugin, and so another hash to pin
+# — see modules/acme-cloudflare). The in-process limiter covers those routes as
+# long as `trustedProxies` is right, which is why it is set below.
 #
 # Not wired, on purpose: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
 # broker-credential vault. Without it the backend composes a NullVault — paper
@@ -176,10 +186,24 @@ in
       databaseUrl =
         "postgresql+psycopg://${cfg.databaseName}@/${cfg.databaseName}?host=/run/postgresql";
       environmentFile = cfg.environmentFile;
+      # Caddy is the only thing that ever talks to the backend, and it does so
+      # over loopback — so loopback is exactly the peer whose X-Forwarded-For may
+      # be believed, and nothing wider. Without this every request reads as
+      # coming from 127.0.0.1, which collapses all users into ONE rate-limit
+      # bucket: the 10r/m budget on login/register/reset is shared, so one person
+      # fumbling a password locks everyone out. Set wider than the proxy and the
+      # header becomes unauthenticated input (a fresh bucket per request).
+      trustedProxies = [ "127.0.0.1/32" "::1/128" ];
       # Reaches the API, the maintenance job and every deployment tick — the mail
       # settings matter to all three, since the outbox is drained from both the
       # API's in-process loop and the maintenance timer.
       environment = {
+        # Turns on the startup preflight (refuse to boot without a JWT secret, a
+        # database URL or a real mailer — each of which otherwise fails silently)
+        # and takes /docs, /redoc and /openapi.json off the air. All four
+        # preflight conditions are satisfied here; it exists to keep them that
+        # way, loudly, if one ever regresses.
+        FUGAZI_SERVICE_ENVIRONMENT = "production";
         FUGAZI_SERVICE_MAILER = "smtp";
         FUGAZI_SERVICE_SMTP_HOST = cfg.smtpHost;
         FUGAZI_SERVICE_SMTP_PORT = toString cfg.smtpPort;
@@ -202,10 +226,13 @@ in
       serviceConfig = {
         RestartSec = 5;
         WorkingDirectory = "/var/lib/fugazi-web";
-        # Hardening beyond upstream's (kept light: the backend forks a process
-        # pool for runs).
-        ProtectControlGroups = true;
-        ProtectKernelTunables = true;
+        # No hardening here any more: upstream now applies one shared sandbox to
+        # all three unit families (API, maintenance, every deployment tick),
+        # which supersedes the two settings this used to add. It is stricter than
+        # what ran before — a seccomp filter, no AF_NETLINK, ProtectProc — and
+        # the backend forks a native process pool for runs, so if a backtest or
+        # an SMTP send starts failing after an input bump, look here first:
+        # `journalctl -u fugazi-web | grep -i 'signal\|denied'`.
       };
     };
 
@@ -215,8 +242,46 @@ in
       extraConfig = ''
         ${lib.optionalString (cfg.allowedNetworks != [])
           "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}"}
+        # Vite fingerprints everything under /assets, so it may be cached
+        # forever; index.html must not be, or a deploy is invisible until the
+        # browser gives up its copy. Two matchers rather than two bare `header`
+        # lines because directives inside a handle are sorted by Caddy's own
+        # order, not the order written — mutually exclusive matchers make that
+        # sort irrelevant.
+        @assets path /assets/*
+        @nocache not path /assets/*
         route {
           ${lib.optionalString (cfg.allowedNetworks != []) "abort @denied"}
+
+          # The SPA's real Content-Security-Policy. The build-time <meta> one
+          # that Vite injects is a stopgap: a meta CSP cannot express
+          # frame-ancestors at all, and has to allow any https connect-src. This
+          # is the same policy upstream's `enableNginx` branch serves, minus the
+          # Sentry ingest origin (no DSN is compiled into our bundle — add it to
+          # connect-src here if that changes, or the reports are blocked).
+          #
+          # 'unsafe-inline' on style-src is not slack: React writes style
+          # attributes and recharts computes its layout that way, and there is no
+          # nonce path for an attribute.
+          header {
+            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            Referrer-Policy "no-referrer"
+            Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
+            # The SPA keeps its session token in localStorage, so a single
+            # plaintext request hands it to anyone on the path.
+            Strict-Transport-Security "max-age=63072000; includeSubDomains"
+          }
+
+          # Bounds an upload at the edge as well as in the app. The app's own cap
+          # (FUGAZI_SERVICE_MAX_UPLOAD_BYTES, 64 MiB) is the real one — it also
+          # covers a chunked body — this just stops a large one being buffered
+          # here first.
+          request_body {
+            max_size 64MB
+          }
+
           handle /v1/* {
             reverse_proxy 127.0.0.1:${toString cfg.port}
           }
@@ -225,6 +290,8 @@ in
           }
           handle {
             root * ${frontend}
+            header @assets Cache-Control "public, max-age=31536000, immutable"
+            header @nocache Cache-Control "no-cache"
             try_files {path} /index.html
             file_server
           }
