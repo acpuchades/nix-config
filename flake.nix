@@ -38,11 +38,14 @@
     better-zen.flake = false;
 
     # fugazi-web — PRIVATE repo for the homeserver's backtest service. It's a real
-    # flake: modules/fugazi-web consumes its overlay (pkgs.fugazi-service +
-    # pkgs.fugazi-web-frontend) so the backend wheel pin and the frontend
-    # npmDepsHash live upstream, not here. Follows our nixpkgs so its packages
-    # build against nixpkgs-26.05 and no second nixpkgs lands in the lock. Bump
-    # with `nix flake update fugazi-web`.
+    # flake, and we consume BOTH of its outputs: `overlays.default` for the
+    # packages (pkgs.fugazi-service + pkgs.fugazi-web-frontend, so the backend
+    # wheel pin and the frontend npmDepsHash live upstream) and
+    # `nixosModules.default` for the units (`services.fugazi-web`: uvicorn, the
+    # maintenance timer, the per-frequency deployment ticks). modules/fugazi-web
+    # is then just the host topology around it. Follows our nixpkgs so its
+    # packages build against nixpkgs-26.05 and no second nixpkgs lands in the
+    # lock. Bump with `nix flake update fugazi-web`.
     #
     # A tarball URL, NOT a `github:` input, on purpose: the `github:` fetcher
     # resolves refs through api.github.com and authenticates only via the
