@@ -56,6 +56,11 @@ let
     # host has to be added here too, once observed; the SSRF allowlist blocks the
     # redirect target otherwise and the login just dead-ends.
     "*.uptodate.com"
+    # fugazi-web's SPA. Listed by name because it is not under acpuchades.com and
+    # so the wildcard above doesn't reach it; it resolves into the LAN (AdGuard
+    # rewrite), so it needs allowedHostnames below as well. Replaces
+    # fugazi.acpuchades.com, retired along with its rewrite.
+    "www.fugazitrade.com"
   ];
 
   # Eva's Python + R library sets, defined ONCE as functions so BOTH the
@@ -759,7 +764,7 @@ in
     "cloud.acpuchades.com" # Nextcloud (resolves into LAN)
     "home.acpuchades.com" # home dashboard (resolves into LAN)
     "status.acpuchades.com" # Grafana metrics/dashboards (resolves into LAN)
-    "fugazi.acpuchades.com" # fugazi-web backtest SPA (resolves into LAN)
+    "www.fugazitrade.com" # fugazi-web backtest SPA (resolves into LAN)
   ];
   # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
   # under channels.imessage, so putting it on the telegram channel tripped

@@ -318,7 +318,6 @@ let
           { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "fugazi.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
           { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
@@ -357,12 +356,31 @@ let
       my.fugazi-web = {
         enable = true;
         hostName = "www.fugazitrade.com";
-        # Legacy name from before the domain existed; still serves the app so old
-        # bookmarks and mailed links keep resolving.
-        aliases = [ "fugazi.acpuchades.com" ];
+        # No aliases: fugazi.acpuchades.com (the legacy name from before the
+        # domain existed) was retired with its AdGuard rewrite — it has no public
+        # record, so the rewrite was the only thing making it resolve, and a vhost
+        # for it would just hold a certificate nobody can reach.
         # Internal-only: reachable from the LAN/VPN, not the public internet.
         allowedNetworks = privateNetworks;
         environmentFile = config.sops.templates."fugazi/env".path;
+      };
+
+      # Knobs modules/fugazi-web deliberately doesn't re-expose go straight on the
+      # upstream option; `environment` is an attrsOf, so these merge with the keys
+      # the module sets rather than replacing them.
+      services.fugazi-web.environment = {
+        # Only @fugazitrade.com addresses may register, for now. Signup stays
+        # "open" (no codes to distribute or rotate) — the domain gate is the whole
+        # policy. Checked in POST /v1/auth/register: a non-matching address gets a
+        # 403 with no account and no verification mail, so the SPA surfaces it as
+        # a failed registration rather than a pending inbox. Comma-separated and
+        # compared lowercased; unset (upstream's default) means any domain, so
+        # widening this list is how more people get in.
+        #
+        # Note fugazitrade.com's MX is a registrar forwarder, so a name only
+        # receives the verification mail if a forwarder exists for it —
+        # `requireVerifiedEmail` is on, and an unverified account can't log in.
+        FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
       };
 
       # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
