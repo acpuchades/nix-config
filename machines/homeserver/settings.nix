@@ -10,6 +10,19 @@
       "flakes"
     ];
     auto-optimise-store = true;
+
+    # Build off /tmp. /tmp is an 8 GB tmpfs that also carries live working data
+    # (analysis scratch, venvs), so builds only ever see ~6 GB of it — and a
+    # rust dep graph blows past that, since tmpfs pages are unreclaimable and
+    # can only spill to a swap cushion that already runs near full. / has ~290 GB
+    # spare, so point builds at disk and let the 8 GB cap keep guarding the rest.
+    build-dir = "/var/tmp/nix-build";
+
+    # 16 jobs x all-16-cores oversubscribes a box running bitcoind, Jellyfin and
+    # Prefect 24/7, and multiplies peak build-scratch by the job count. 4x4
+    # saturates the CPU without starving the services. Raise for faster rebuilds.
+    max-jobs = 4;
+    cores = 4;
   };
 
   nix.gc = {
@@ -35,6 +48,9 @@
   # analysis job from silently eating into RAM (point big jobs at a disk TMPDIR).
   boot.tmp.useTmpfs = true;
   boot.tmp.tmpfsSize = "8G";
+
+  # Backing store for nix.settings.build-dir above.
+  systemd.tmpfiles.rules = [ "d /var/tmp/nix-build 0755 root root -" ];
 
   # This box does Bitcoin validation and Jellyfin transcoding 24/7; bias the
   # AMD cores toward responsiveness rather than the default powersave.
