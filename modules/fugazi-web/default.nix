@@ -165,6 +165,27 @@ in
         input, and a caller mints a fresh bucket per request by writing one.
       '';
     };
+
+    maxRequestBodySize = lib.mkOption {
+      type = lib.types.str;
+      default = "65MiB";
+      description = ''
+        Caddy's cap on a request body. It has to sit at or above the backend's
+        own transport ceiling, or the edge quietly becomes the real upload limit
+        and a caller gets a connection cut instead of the parser's 413.
+
+        That ceiling is the largest archive any tier may upload PLUS a megabyte
+        of multipart headroom, because the body is the archive *plus* its
+        multipart framing and the name/description/tags fields sent beside it. A
+        cap equal to the archive size makes the largest legal archive
+        unuploadable — the backend has its own constant for this, and this option
+        exists to keep the edge from reintroducing the bug it fixes.
+
+        Mind the unit. Caddy reads `MB` as 10^6 and `MiB` as 2^20, while every
+        limit on the backend side is binary: `64MB` is about 3 MiB SHORT of
+        64 MiB. Spell it in MiB.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -290,12 +311,13 @@ in
             Strict-Transport-Security "max-age=63072000; includeSubDomains"
           }
 
-          # Bounds an upload at the edge as well as in the app. The app's own cap
-          # (FUGAZI_SERVICE_MAX_UPLOAD_BYTES, 64 MiB) is the real one — it also
-          # covers a chunked body — this just stops a large one being buffered
-          # here first.
+          # Bounds an upload at the edge as well as in the app. The app's own
+          # caps — per tier, with FUGAZI_SERVICE_MAX_UPLOAD_BYTES as the backstop
+          # — are the real ones, and they also cover a chunked body; this just
+          # stops a large one being buffered here first. See the option for why
+          # it sits a megabyte above the archive cap and why the unit is MiB.
           request_body {
-            max_size 64MB
+            max_size ${cfg.maxRequestBodySize}
           }
 
           handle /v1/* {

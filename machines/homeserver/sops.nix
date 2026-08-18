@@ -285,15 +285,38 @@
         '';
       };
 
+      # Two zones, one credential. ddclient reads `zone` per host and options
+      # accumulate top-down until the next bare host line, so the shared block
+      # below is followed by one `zone=` + host list per domain. Two properties
+      # worth knowing before editing this:
+      #   * The update is a PATCH of {"content": <ip>} and nothing else, so
+      #     Cloudflare's `proxied` flag SURVIVES it. That matters — fugazitrade.com
+      #     is orange-clouded, and un-proxying it would expose this box's address
+      #     and strand the Cloudflare ranges in my.fugazi-web.trustedProxies.
+      #   * ddclient UPDATES records, it never creates them. A name with no A
+      #     record in the zone logs "no 'A' record at Cloudflare" and is skipped,
+      #     which looks like a no-op rather than an error.
       "ddclient/config".content = ''
           cache=/var/cache/ddclient/ddclient.cache
           usev4=webv4, webv4=checkip.amazonaws.com
           protocol=cloudflare
-          zone=acpuchades.com
           ttl=120
           login=token
           password=${config.sops.placeholder."cloudflare/token"}
+
+          zone=acpuchades.com
           acpuchades.com,analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,mail.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
+
+          # fugazi-web went public (see machines/homeserver/default.nix), and its
+          # origin is this box's dynamic address, so both names need the same DDNS
+          # treatment the zone above gets — otherwise the Cloudflare origin record
+          # is static against an address that moves. The apex is here beside www
+          # because it serves the public redirect to www; a stale record there
+          # breaks that bounce even while www itself resolves.
+          # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
+          # the same prerequisite Caddy's DNS-01 already has for these names.
+          zone=fugazitrade.com
+          fugazitrade.com,www.fugazitrade.com
       '';
 
       "postfix/sasl_passwd" = {
