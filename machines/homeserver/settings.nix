@@ -59,6 +59,26 @@
 
   # This box does Bitcoin validation and Jellyfin transcoding 24/7; bias the
   # AMD cores toward responsiveness rather than the default powersave.
+  #
+  # The kernel param is what makes the governor below actually take. amd-pstate
+  # comes up in *active* mode (the amd-pstate-epp driver), where the hardware
+  # chooses the frequency and the only governors that exist are `performance` and
+  # `powersave` — so `schedutil` was silently unavailable and the cores sat on
+  # powersave, which is precisely what the line below claims to avoid. Found by
+  # reading the machine rather than the config: scaling_governor said `powersave`
+  # and scaling_available_governors listed only those two.
+  #
+  # `guided` over `passive`: both restore the generic governors, but guided still
+  # lets the hardware pick a frequency autonomously *within* the bounds schedutil
+  # sets, so it keeps the sub-millisecond response that passive hands back to the
+  # kernel. `performance` was the other candidate and is rejected on purpose — it
+  # pins the ceiling on a machine that idles most of the day.
+  #
+  # Verify after a REBOOT. A kernel parameter does not take on `nixos-rebuild
+  # switch` alone, so both of these still read the old values until then:
+  #   cat /sys/devices/system/cpu/amd_pstate/status              # -> guided
+  #   cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor  # -> schedutil
+  boot.kernelParams = [ "amd_pstate=guided" ];
   powerManagement.cpuFreqGovernor = "schedutil";
 
   # Compressed RAM-backed swap. Costs nothing until used, and gives the kernel
