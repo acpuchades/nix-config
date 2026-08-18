@@ -208,6 +208,47 @@
       "d ${config.my.cloud-suite.immich.mediaLocation} 0750 immich immich -"
     ];
 
+    # Order every unit after the filesystem holding the data dir it writes to.
+    #
+    # These dirs are options, so they may well sit on a separate disk (they all
+    # do here). Without this a unit can start while that filesystem is still
+    # mounting and operate on the empty stub directory *underneath* the
+    # mountpoint — the tmpfiles rules above will even have created it. Two
+    # distinct failure modes, depending on how the unit is sandboxed:
+    #
+    #   * With RootDirectory= (a constructed root), the sandbox sees only what
+    #     was explicitly bound in, and the bind is a one-time snapshot: the real
+    #     filesystem arriving later is invisible for the lifetime of the process.
+    #   * Without it (the case here — vaultwarden et al. inherit the host mount
+    #     tree), the real mount does propagate in and shadows the stale bind, so
+    #     the path self-heals. What does NOT heal is whatever the unit wrote to
+    #     the stub during the startup window; it is stranded on the parent
+    #     filesystem, invisible under the mountpoint.
+    #
+    # systemd derives an implicit mount dependency only from RootDirectory=,
+    # WorkingDirectory= and RootImage= — never from BindPaths=/ReadWritePaths=,
+    # which is what vaultwarden's DATA_FOLDER exception below uses. So it has to
+    # be declared. RequiresMountsFor takes a path and resolves it to whichever
+    # mount unit actually provides it, so it stays correct if these options are
+    # pointed somewhere else (and is a harmless no-op when they are on /).
+    systemd.services.vaultwarden.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.bitwarden.dataDir ];
+
+    systemd.services.immich-server.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.immich.mediaLocation config.my.cloud-suite.immich.cacheLocation ];
+
+    systemd.services.immich-machine-learning.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.immich.cacheLocation ];
+
+    systemd.services.nextcloud-setup.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.nextcloud.dataDir ];
+
+    systemd.services.nextcloud-cron.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.nextcloud.dataDir ];
+
+    systemd.services.phpfpm-nextcloud.unitConfig.RequiresMountsFor =
+      [ config.my.cloud-suite.nextcloud.dataDir ];
+
     # NextCloud
     services.nextcloud = {
       enable = true;

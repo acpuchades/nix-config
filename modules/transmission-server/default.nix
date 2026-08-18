@@ -106,6 +106,21 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Order the daemon after the filesystem holding downloadDir is mounted.
+    #
+    # The upstream module sandboxes the daemon with RootDirectory= + BindPaths=,
+    # and systemd derives an implicit mount dependency only from RootDirectory=/
+    # WorkingDirectory=/RootImage= — never from BindPaths=. So when downloadDir
+    # lives on a separate filesystem, transmission.service can (and does) win the
+    # race against that mount: the bind then captures the empty stub directory
+    # *underneath* the mountpoint, and because it is a private mount namespace,
+    # the real filesystem appearing seconds later is invisible to the daemon
+    # forever. Every torrent then reports "No data found!" while the files sit
+    # untouched on disk. RequiresMountsFor pulls in the mount unit and orders
+    # after it, which also covers the privileged ExecStartPre= that would
+    # otherwise mkdir the stub onto the root filesystem.
+    systemd.services.transmission.unitConfig.RequiresMountsFor = [ cfg.downloadDir ];
+
     services.transmission = {
       enable = true;
       # stateVersion < 25.11 makes the package default a `throw`; set it explicitly.

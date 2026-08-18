@@ -202,6 +202,16 @@
 
   };
 
+  # bitcoind's dataDir is on a separate disk and nothing orders the daemon after
+  # that mount — systemd only infers mount dependencies from RootDirectory=,
+  # WorkingDirectory= and RootImage=, none of which apply here. Starting before
+  # the mount lands means bitcoind finds no chainstate at its datadir and begins
+  # laying down a fresh one on the parent filesystem, under the mountpoint, where
+  # it is both invisible afterwards and a genuine risk of filling the root disk.
+  # Read from the option so it follows wherever dataDir is set above.
+  systemd.services.bitcoind-main.unitConfig.RequiresMountsFor =
+    [ config.services.bitcoind.main.dataDir ];
+
   # Web root for www.acpuchades.com (my.web-server.virtualHosts). Setgid so the
   # tree the runner rsyncs in keeps the group, and group-writable so alex can
   # still deploy over ssh by hand. Not recursive — this only fixes the top
