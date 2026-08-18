@@ -18,6 +18,22 @@ let
   adminEmailAddress = "admin@acpuchades.com";
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
 
+  # Cloudflare's published edge ranges (cloudflare.com/ips-v4 + ips-v6, fetched
+  # 2026-08-18). fugazitrade.com is proxied through Cloudflare — its public A
+  # records are CF anycast addresses — so these, not the visitor, are the peers
+  # Caddy sees, and they are the hops the backend has to skip to find the real
+  # caller. Used only by my.fugazi-web.trustedProxies below; nothing else on this
+  # host is fronted by a CDN. Cloudflare changes the list rarely and announces it;
+  # re-fetch if public callers start sharing a rate-limit bucket.
+  cloudflareNetworks = [
+    "173.245.48.0/20" "103.21.244.0/22" "103.22.200.0/22" "103.31.4.0/22"
+    "141.101.64.0/18" "108.162.192.0/18" "190.93.240.0/20" "188.114.96.0/20"
+    "197.234.240.0/22" "198.41.128.0/17" "162.158.0.0/15" "104.16.0.0/13"
+    "104.24.0.0/14" "172.64.0.0/13" "131.0.72.0/22"
+    "2400:cb00::/32" "2606:4700::/32" "2803:f800::/32" "2405:b500::/32"
+    "2405:8100::/32" "2a06:98c0::/29" "2c0f:f248::/32"
+  ];
+
   configuration =
     inputs@{ config, options, lib, pkgs, ... }:
     {
@@ -318,6 +334,10 @@ let
           { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
           { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
+          # fugazitrade.com is public AND proxied through Cloudflare, so these two
+          # rewrites do more than save a hairpin: a client resolving through
+          # AdGuard reaches Caddy directly instead of going out to the CF edge and
+          # back. Same app, same certificate, one less party in the path.
           { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
           { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
@@ -340,10 +360,9 @@ let
             redirect = "https://www.acpuchades.com/blog";
           };
           # The app itself lives on www (see my.fugazi-web below); the apex only
-          # bounces to it. Restricted like the app is, so the two agree.
+          # bounces to it. Unrestricted like the app is, so the two agree.
           "fugazitrade.com" = {
             redirect = "https://www.fugazitrade.com";
-            allowedNetworks = privateNetworks;
           };
         };
       };
@@ -360,8 +379,17 @@ let
         # domain existed) was retired with its AdGuard rewrite — it has no public
         # record, so the rewrite was the only thing making it resolve, and a vhost
         # for it would just hold a certificate nobody can reach.
-        # Internal-only: reachable from the LAN/VPN, not the public internet.
-        allowedNetworks = privateNetworks;
+        # PUBLIC. No allowedNetworks: this is reachable from the internet, not
+        # just the LAN/VPN. What replaces the network boundary as the thing
+        # standing between a stranger and this box is the tier table below, plus
+        # upstream's own per-caller budgets on /v1/auth — and those budgets are
+        # only as good as trustedProxies, hence the next line.
+        #
+        # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
+        # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
+        # loopback would make that edge the rate-limit bucket and every visitor
+        # routed through it would share one register/login budget.
+        trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
         environmentFile = config.sops.templates."fugazi/env".path;
       };
 
@@ -369,18 +397,23 @@ let
       # upstream option; `environment` is an attrsOf, so these merge with the keys
       # the module sets rather than replacing them.
       services.fugazi-web.environment = {
-        # Only @fugazitrade.com addresses may register, for now. Signup stays
-        # "open" (no codes to distribute or rotate) — the domain gate is the whole
-        # policy. Checked in POST /v1/auth/register: a non-matching address gets a
-        # 403 with no account and no verification mail, so the SPA surfaces it as
-        # a failed registration rather than a pending inbox. Comma-separated and
-        # compared lowercased; unset (upstream's default) means any domain, so
-        # widening this list is how more people get in.
+        # Signup is open to anyone, on any domain: FUGAZI_SERVICE_SIGNUP_ALLOWED_
+        # EMAIL_DOMAINS is gone and SIGNUP_MODE stays upstream's "open". The
+        # @fugazitrade.com gate that used to stand here was standing in for a
+        # thing tiers now do properly. What is actually worth withholding from a
+        # stranger is a venue connection, and that is `connect_brokers` — an
+        # entitlement `free` does not hold, refused with a 403 at POST /v1/brokers
+        # before any credential reaches the network. A new account therefore gets
+        # the backtester and nothing that touches money. (FUGAZI_SERVICE_SECRET_KEY
+        # is still unwired besides, so a broker connect 503s instance-wide; the
+        # tier gate is the second of two locks, and the per-account one.)
         #
-        # Note fugazitrade.com's MX is a registrar forwarder, so a name only
-        # receives the verification mail if a forwarder exists for it —
-        # `requireVerifiedEmail` is on, and an unverified account can't log in.
-        FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
+        # Registration is not an open mail relay either: upstream budgets it at
+        # 5/hour keyed on BOTH the source address and the target inbox, so neither
+        # one attacker nor one victim's inbox can be spent past that. See
+        # trustedProxies above for why that keying works behind Cloudflare.
+        #
+        # That leaves compute and disk, which is what everything below bounds.
 
         # The instance's own account runs without the product ceilings everyone
         # else gets (sweep size, upload size, archive interior). Keyed on the
@@ -391,6 +424,47 @@ let
         # product limits only — the HARD_* bounds that keep one request from
         # exhausting the process still apply to every tier.
         FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:unlimited";
+
+        # --- ceilings on the process, shared by everybody ------------------
+        # A backtest is an OS process holding a multi-megabyte bar array, and the
+        # pool defaults to one worker per core — 16 here, on a box that is also
+        # running bitcoind, Jellyfin, Nextcloud, Postgres and the agents. 4 is the
+        # same call already made for Nix builds in settings.nix, for the same
+        # reason: this host's job is to stay responsive, not to finish one sweep
+        # first.
+        FUGAZI_SERVICE_MAX_WORKERS = "4";
+        # Admission control in front of that pool. Unset (0) means an unbounded
+        # queue, which does not degrade gracefully — it swaps, and every in-flight
+        # run gets slower together. Twice the pool leaves a little queue depth;
+        # past it callers get a 503 + Retry-After, which is the honest answer.
+        FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = "8";
+
+        # --- the `free` tier, which is what a stranger gets ----------------
+        # Everything not named here stays at upstream's `free` value, which is
+        # deliberately the constant the service shipped with — the sweep-shape
+        # limits (200 grid points, 10 grids, 10 axes, 100 values) are already
+        # sized for the smallest plausible account and need no help from us.
+        #
+        # This one is not a tightening but a gap: upstream leaves free's
+        # concurrency deliberately absent rather than inventing a number that
+        # would break existing instances on upgrade. Absent is fine single-tenant
+        # and wrong the moment signup is open — without it one account can hold
+        # all 8 slots above and everyone else gets 503s. At 2 it takes four
+        # distinct accounts to fill the queue.
+        FUGAZI_SERVICE_TIER_FREE_MAX_CONCURRENT_EVALUATIONS = "2";
+        # Uploaded datasets are the only thing a stranger leaves on the disk that
+        # outlives their request, and there is no per-account storage quota
+        # anywhere in the knob surface — the archive caps ARE the disk policy.
+        # Quartered from free's 64 MiB/512 MiB/128 MiB accordingly. Rows come down
+        # with them to stay proportionate; series stays at free's 500, being a
+        # count rather than a volume.
+        FUGAZI_SERVICE_TIER_FREE_MAX_UPLOAD_BYTES = toString (16 * 1024 * 1024);
+        FUGAZI_SERVICE_TIER_FREE_MAX_UNCOMPRESSED_BYTES = toString (128 * 1024 * 1024);
+        FUGAZI_SERVICE_TIER_FREE_MAX_MEMBER_BYTES = toString (32 * 1024 * 1024);
+        FUGAZI_SERVICE_TIER_FREE_MAX_ROWS_TOTAL = "2000000";
+        # NB none of these may be "0" — in the tier namespace 0 means *no ceiling*
+        # (it means "off" only for an entitlement), so a zero here would quietly
+        # do the opposite of what it reads like.
       };
 
       # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
