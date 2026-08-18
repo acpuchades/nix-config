@@ -438,6 +438,17 @@ let
         # run gets slower together. Twice the pool leaves a little queue depth;
         # past it callers get a 503 + Retry-After, which is the honest answer.
         FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = "8";
+        # The largest archive this instance accepts, and the two knobs that have
+        # to agree about it. Both are pinned rather than left at upstream's
+        # defaults so that modules/fugazi-web's edge cap (maxRequestBodySize,
+        # 65 MiB = this plus a megabyte of multipart headroom) has something
+        # stable to track. `pro` is named here for the same reason and not
+        # because anyone is on it: the backend derives its transport ceiling from
+        # the HIGHEST finite tier cap, and pro ships at 256 MiB — a size no
+        # request could ever reach through Caddy, and one that would have the ASGI
+        # middleware read a quarter-gigabyte before the parser refused it.
+        FUGAZI_SERVICE_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
+        FUGAZI_SERVICE_TIER_PRO_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
 
         # --- the `free` tier, which is what a stranger gets ----------------
         # Everything not named here stays at upstream's `free` value, which is
