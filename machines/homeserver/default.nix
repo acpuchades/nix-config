@@ -485,9 +485,10 @@ let
       # Point nix at a sops-rendered netrc carrying a GitHub PAT (github/token →
       # nix/netrc template in sops.nix).
       # Your shell's $GITHUB_TOKEN can't help — the fetch has no login environment.
-      # Flake-input fetching is client-side and this netrc is root-only, so run the
-      # switch and `nix flake update fugazi-web` as ROOT (which can read it); a
-      # non-root update 404s unless you pass `--option access-tokens github.com=…`.
+      # Flake-input fetching is CLIENT-side, so the template is root:wheel 0440 and
+      # `nix flake update fugazi-web` / `nix eval .#nixosConfigurations.homeserver`
+      # work as alex. With a root-only 0400 both 404 — the tarball URL tracks
+      # refs/heads/main, so it is unpinned by flake.lock and refetches on eval.
       # BOOTSTRAP: this template only exists after the first switch activates, so
       # seed /etc/nix/netrc by hand once before that switch.
       # A single github.com entry is enough — GitHub 302-redirects the archive to
