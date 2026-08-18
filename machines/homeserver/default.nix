@@ -381,6 +381,16 @@ let
         # receives the verification mail if a forwarder exists for it —
         # `requireVerifiedEmail` is on, and an unverified account can't log in.
         FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
+
+        # The instance's own account runs without the product ceilings everyone
+        # else gets (sweep size, upload size, archive interior). Keyed on the
+        # username, matched case-insensitively, and deliberately the *override*
+        # channel rather than the `users.tier` column: there is no admin surface
+        # to write that column, and configuration outranks it precisely so an
+        # assignment can be made here without a migration. `unlimited` drops the
+        # product limits only — the HARD_* bounds that keep one request from
+        # exhausting the process still apply to every tier.
+        FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:unlimited";
       };
 
       # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
