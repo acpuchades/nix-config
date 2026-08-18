@@ -146,6 +146,25 @@ in
       default = [];
       description = "Restrict access to these CIDR ranges (empty = unrestricted)";
     };
+
+    trustedProxies = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "127.0.0.1/32" "::1/128" ];
+      description = ''
+        Peers whose X-Forwarded-For the backend may believe, and the hops it skips
+        when walking that header right-to-left looking for the caller. Every
+        rate-limit bucket on /v1/auth is keyed off the address that walk returns,
+        so this list decides who shares a budget with whom.
+
+        The default is the local Caddy and nothing else, which is right whenever
+        Caddy is the only hop. When a CDN or edge proxy sits in front, its ranges
+        belong here too: the rightmost hop is then the edge, and leaving it
+        untrusted makes *it* the bucket, so every caller arriving through one
+        edge node shares one budget. The opposite error costs more — listing a
+        network that is not actually a proxy turns the header into unauthenticated
+        input, and a caller mints a fresh bucket per request by writing one.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -186,14 +205,11 @@ in
       databaseUrl =
         "postgresql+psycopg://${cfg.databaseName}@/${cfg.databaseName}?host=/run/postgresql";
       environmentFile = cfg.environmentFile;
-      # Caddy is the only thing that ever talks to the backend, and it does so
-      # over loopback — so loopback is exactly the peer whose X-Forwarded-For may
-      # be believed, and nothing wider. Without this every request reads as
-      # coming from 127.0.0.1, which collapses all users into ONE rate-limit
-      # bucket: the 10r/m budget on login/register/reset is shared, so one person
-      # fumbling a password locks everyone out. Set wider than the proxy and the
-      # header becomes unauthenticated input (a fresh bucket per request).
-      trustedProxies = [ "127.0.0.1/32" "::1/128" ];
+      # Who may be believed about the caller's address (see the option). Without
+      # it every request reads as coming from 127.0.0.1, which collapses all users
+      # into ONE rate-limit bucket: the login/register/reset budgets are shared,
+      # so one person fumbling a password locks everyone out.
+      inherit (cfg) trustedProxies;
       # Reaches the API, the maintenance job and every deployment tick — the mail
       # settings matter to all three, since the outbox is drained from both the
       # API's in-process loop and the maintenance timer.
