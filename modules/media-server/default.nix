@@ -94,6 +94,15 @@ in
       in [ (mk cfg.mediaDir) ]
         ++ map (lib: mk "${cfg.mediaDir}/${lib}") cfg.libraries;
 
+    # mediaDir is an option and typically lives on a separate data disk, but
+    # systemd infers no mount dependency from a path a service merely reads. If
+    # jellyfin starts while that filesystem is still mounting it scans the empty
+    # stub under the mountpoint and marks the whole library missing — which it
+    # then persists in its own database, so the damage outlives the mount
+    # landing. Resolves to whichever mount provides the path, so it follows the
+    # option and no-ops when mediaDir is on /.
+    systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ cfg.mediaDir ];
+
     services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
       lib.concatStringsSep "\n" (lib.filter (s: s != "") [
         (lib.optionalString (cfg.allowedNetworks != [])
