@@ -16,7 +16,15 @@
     # rust dep graph blows past that, since tmpfs pages are unreclaimable and
     # can only spill to a swap cushion that already runs near full. / has ~290 GB
     # spare, so point builds at disk and let the 8 GB cap keep guarding the rest.
-    build-dir = "/var/tmp/nix-build";
+    #
+    # Must be /nix/var/nix/builds, not somewhere under /var/tmp: nix walks every
+    # ancestor of build-dir and refuses to build if any of them is world-writable
+    # or a symlink ("Path \"/var/tmp\" is world-writable ... not allowed for
+    # security"), which /var/tmp (1777) always is. Nix's own state dir is
+    # root-owned 0755 the whole way down and sits on / like the store, so
+    # finished outputs move into the store instead of being copied across
+    # filesystems.
+    build-dir = "/nix/var/nix/builds";
 
     # 16 jobs x all-16-cores oversubscribes a box running bitcoind, Jellyfin and
     # Prefect 24/7, and multiplies peak build-scratch by the job count. 4x4
@@ -48,9 +56,6 @@
   # analysis job from silently eating into RAM (point big jobs at a disk TMPDIR).
   boot.tmp.useTmpfs = true;
   boot.tmp.tmpfsSize = "8G";
-
-  # Backing store for nix.settings.build-dir above.
-  systemd.tmpfiles.rules = [ "d /var/tmp/nix-build 0755 root root -" ];
 
   # This box does Bitcoin validation and Jellyfin transcoding 24/7; bias the
   # AMD cores toward responsiveness rather than the default powersave.
