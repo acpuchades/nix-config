@@ -53,11 +53,11 @@
 # repo. The tarball fetcher instead uses Nix's ordinary downloader, which consults
 # `nix.settings.netrc-file` (unlike `pkgs.fetchFromGitHub`, whose sandboxed curl is
 # never handed a netrc). Auth is a sops secret (github/token) rendered into that
-# netrc. Flake-input fetching is client-side, and that netrc is root-only, so run
-# `sudo nixos-rebuild switch` / `sudo nix flake update fugazi-web` as ROOT (which
-# can read it); a non-root update 404s unless you pass an override
-# (`--option access-tokens github.com=<PAT>`). See flake.nix and
-# machines/homeserver/{sops.nix,default.nix} for the bootstrap.
+# netrc. Flake-input fetching is CLIENT-side (and the `refs/heads/main` tarball URL
+# is unpinned by flake.lock, so it refetches on eval), which is why that netrc is
+# rendered root:wheel 0440 rather than root-only — otherwise `nix flake update
+# fugazi-web` and even a plain `nix eval` of the host 404 unless run as root. See
+# flake.nix and machines/homeserver/{sops.nix,default.nix} for the bootstrap.
 
 let
   cfg = config.my.fugazi-web;

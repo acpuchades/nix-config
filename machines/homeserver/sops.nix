@@ -341,8 +341,8 @@
 
       # netrc consumed by nix (nix.settings.netrc-file) so its BUILT-IN fetchers —
       # builtins.fetchTarball here — can authenticate to github.com for private
-      # sources (currently acpuchades/fugazi-web). Root 0400; only the daemon reads
-      # it. NOTE: sops renders this at ACTIVATION, i.e. AFTER the build/fetch, so the
+      # sources (currently acpuchades/fugazi-web).
+      # NOTE: sops renders this at ACTIVATION, i.e. AFTER the build/fetch, so the
       # FIRST switch that introduces it can't see it yet — bootstrap /etc/nix/netrc
       # by hand once (see the fugazi-web module header); this then keeps it in place
       # for every later rebuild.
@@ -351,8 +351,17 @@
       # github.com, which 302-redirects to codeload.github.com — but for an
       # authenticated request GitHub bakes a signed `?token=` into that redirect
       # URL, so the codeload leg authenticates itself and needs no netrc entry.
+      #
+      # root:wheel 0440, NOT root-only 0400: flake-input fetching is CLIENT-side,
+      # so it runs as the invoking user rather than the nix daemon. The input's
+      # `refs/heads/main` tarball URL is also not pinned by flake.lock, so it
+      # refetches on eval — meaning a root-only netrc 404s not just on
+      # `nix flake update fugazi-web` but on any plain `nix eval` of this host.
+      # `wheel` is alex alone here, and the PAT only reaches repos that user
+      # already owns.
       "nix/netrc" = {
-        mode = "0400";
+        group = config.users.groups.wheel.name;
+        mode = "0440";
         content = ''
           machine github.com
           login x-access-token
