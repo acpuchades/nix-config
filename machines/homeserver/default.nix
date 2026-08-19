@@ -343,9 +343,13 @@ let
           # The apex and www are kept here even though NOTHING serves them right
           # now — there is no vhost for either, so a request gets a TLS handshake
           # failure rather than a page, which is what "reserved for launch" should
-          # look like. They stay listed (and stay in ddclient) so the records do
-          # not go stale in the meantime; the day `prod` launches on www it wants
-          # a fresh origin address, not one from whenever the box last moved.
+          # look like. www stays in ddclient too, so its record is current on the
+          # day `prod` takes it rather than dating from whenever the box last
+          # moved. The apex does NOT: it is a CNAME to www in Cloudflare and
+          # follows it on its own (see the ddclient block in sops.nix). It is
+          # rewritten here anyway, because a CNAME would otherwise send a LAN
+          # client out to the CF edge and back for a name this resolver can answer
+          # directly.
           { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
           { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
           { domain = "testing.fugazitrade.com";  answer = homeServerLocalAddress; }
