@@ -290,9 +290,10 @@
       # below is followed by one `zone=` + host list per domain. Two properties
       # worth knowing before editing this:
       #   * The update is a PATCH of {"content": <ip>} and nothing else, so
-      #     Cloudflare's `proxied` flag SURVIVES it. That matters — fugazitrade.com
-      #     is orange-clouded, and un-proxying it would expose this box's address
-      #     and strand the Cloudflare ranges in my.fugazi-web.trustedProxies.
+      #     Cloudflare's `proxied` flag SURVIVES it. That matters — the
+      #     fugazitrade.com names are orange-clouded, and un-proxying one would
+      #     expose this box's address and strand the Cloudflare ranges in
+      #     my.fugazi-web.instances.<name>.trustedProxies.
       #   * ddclient UPDATES records, it never creates them. A name with no A
       #     record in the zone logs "no 'A' record at Cloudflare" and is skipped,
       #     which looks like a no-op rather than an error.
@@ -304,19 +305,38 @@
           login=token
           password=${config.sops.placeholder."cloudflare/token"}
 
+          # The apex is absent here for the same reason it is absent below:
+          # acpuchades.com is a CNAME to www.acpuchades.com in Cloudflare, so it
+          # follows www's address on its own. It IS still served — Caddy has a
+          # vhost for it that redirects to www — but what it resolves to is no
+          # longer this file's business, and listing a name with no A record just
+          # logs a skip on every run.
+          #
+          # mail.acpuchades.com stays, and stays DNS-only (grey cloud) while these
+          # others are proxied: Cloudflare's proxy does not carry SMTP, so an
+          # orange cloud here would take inbound mail off the air. It is also the
+          # name the fugazi backend STARTTLSes to, matched against the wildcard
+          # cert — see my.fugazi-web's smtpHost.
           zone=acpuchades.com
-          acpuchades.com,analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,mail.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
+          analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,mail.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
 
-          # fugazi-web went public (see machines/homeserver/default.nix), and its
-          # origin is this box's dynamic address, so both names need the same DDNS
-          # treatment the zone above gets — otherwise the Cloudflare origin record
-          # is static against an address that moves. The apex is here beside www
-          # because it serves the public redirect to www; a stale record there
-          # breaks that bounce even while www itself resolves.
+          # fugazi-web's origin is this box's dynamic address, so every name that
+          # resolves to it needs the same DDNS treatment the zone above gets —
+          # otherwise the Cloudflare origin record is static against an address
+          # that moves. www is here despite nothing serving it yet (it is reserved
+          # for `prod`) precisely so its record is current on the day it is: a name
+          # that has been drifting for months is not one to launch on.
+          #
+          # The APEX IS DELIBERATELY ABSENT. fugazitrade.com is a CNAME to
+          # www.fugazitrade.com in Cloudflare, so it follows www's address on its
+          # own and there is nothing here to keep fresh. Listing it would be worse
+          # than redundant: this protocol PATCHes an A record, and the apex has
+          # none, so every run would log "no 'A' record at Cloudflare" and skip —
+          # noise that looks exactly like the real failure mode below.
           # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
           # the same prerequisite Caddy's DNS-01 already has for these names.
           zone=fugazitrade.com
-          fugazitrade.com,www.fugazitrade.com,testing.fugazitrade.com
+          www.fugazitrade.com,testing.fugazitrade.com
       '';
 
       "postfix/sasl_passwd" = {
