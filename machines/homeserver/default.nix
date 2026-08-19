@@ -415,15 +415,26 @@ let
         #
         # That leaves compute and disk, which is what everything below bounds.
 
-        # The instance's own account runs without the product ceilings everyone
-        # else gets (sweep size, upload size, archive interior). Keyed on the
-        # username, matched case-insensitively, and deliberately the *override*
-        # channel rather than the `users.tier` column: there is no admin surface
-        # to write that column, and configuration outranks it precisely so an
-        # assignment can be made here without a migration. `unlimited` drops the
-        # product limits only — the HARD_* bounds that keep one request from
-        # exhausting the process still apply to every tier.
-        FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:unlimited";
+        # The instance's own account goes on `testing` — the non-public tier,
+        # which means exactly one thing: it is never *named* to a user, so an
+        # entitlement refusal cannot invite a stranger onto a plan nobody can
+        # buy. Its ceilings are `unlimited`'s (none), so this is not a widening
+        # over what it had; what it adds is the venue gates. `connect_okx` is
+        # held by `testing` and by nothing on sale, because how far a venue's
+        # live path has been exercised here is a different claim from what this
+        # plan costs, and only the second is `unlimited`'s to make.
+        #
+        # Keyed on the username, matched case-insensitively, and deliberately the
+        # *override* channel rather than the `users.tier` column: upstream
+        # deleted the revision that wrote that column precisely because who is on
+        # an internal tier is a property of this instance, not of the service —
+        # the same handle belongs to a stranger on somebody else's deployment.
+        # Configuration outranks the column, so this line is the whole of the
+        # assignment and no migration is involved.
+        #
+        # Either way the HARD_* bounds that keep one request from exhausting the
+        # process still apply, to this account as to every other.
+        FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:testing";
 
         # --- ceilings on the process, shared by everybody ------------------
         # A backtest is an OS process holding a multi-megabyte bar array, and the
