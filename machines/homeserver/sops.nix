@@ -1,4 +1,28 @@
-{ config, ... }:
+{ config, lib, ... }:
+
+let
+  # One rendered ddclient zone block: the `zone=` line, then its comma-separated
+  # host list built from PREFIXES.
+  #
+  # The names have to reach ddclient fully qualified — this only saves writing
+  # the zone once per name, it does not change what ddclient sees. ddclient uses
+  # `zone=` for exactly one thing, resolving the zone ID (`/zones/?name=<zone>`),
+  # and never appends it to anything: the host string goes to the API verbatim as
+  # the record name (`/dns_records?type=A&name=<host>`) and is then compared for
+  # exact equality against what Cloudflare returns, which is fully qualified. A
+  # bare `www` therefore matches nothing and fails as
+  #   cannot set IPv4 to <ip>: no 'A' record at Cloudflare
+  # — the same line a genuinely missing record produces, on a run that still
+  # exits 0. Indistinguishable from the real thing, which is why the joining
+  # happens here where it can be read rather than being left to ddclient, which
+  # will not do it.
+  #
+  # Prefixes only, no apex. Both apexes are CNAMEs to their www and keep
+  # themselves current; see the call sites.
+  ddnsZone = zone: prefixes: ''
+    zone=${zone}
+    ${lib.concatMapStringsSep "," (p: "${p}.${zone}") prefixes}'';
+in
 {
   sops = {
     defaultSopsFile = ./secrets/default.yml;
@@ -317,8 +341,7 @@
           # orange cloud here would take inbound mail off the air. It is also the
           # name the fugazi backend STARTTLSes to, matched against the wildcard
           # cert — see my.fugazi-web's smtpHost.
-          zone=acpuchades.com
-          analytics.acpuchades.com,blog.acpuchades.com,gps.acpuchades.com,mail.acpuchades.com,vpn.acpuchades.com,www.acpuchades.com
+          ${ddnsZone "acpuchades.com" [ "analytics" "blog" "gps" "mail" "vpn" "www" ]}
 
           # fugazi-web's origin is this box's dynamic address, so every name that
           # resolves to it needs the same DDNS treatment the zone above gets —
@@ -335,8 +358,7 @@
           # noise that looks exactly like the real failure mode below.
           # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
           # the same prerequisite Caddy's DNS-01 already has for these names.
-          zone=fugazitrade.com
-          www.fugazitrade.com,testing.fugazitrade.com
+          ${ddnsZone "fugazitrade.com" [ "www" "testing" ]}
       '';
 
       "postfix/sasl_passwd" = {
