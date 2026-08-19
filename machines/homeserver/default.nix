@@ -9,6 +9,7 @@
   sops-nix,
   emacs-overlay,
   fugazi-web,
+  fugazi-web-testing,
   ...
 }:
 
@@ -340,6 +341,7 @@ let
           # back. Same app, same certificate, one less party in the path.
           { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
           { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
+          { domain = "testing.fugazitrade.com";  answer = homeServerLocalAddress; }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
           # clients resolving through AdGuard, and just saves them a NAT hairpin.
           { domain = "ntfy.acpuchades.com";      answer = homeServerLocalAddress; }
@@ -372,31 +374,77 @@ let
       # Its NixOS module (imported above) derives the units from the same pkgs.
       nixpkgs.overlays = [ fugazi-web.overlays.default ];
 
-      my.fugazi-web = {
-        enable = true;
-        hostName = "www.fugazitrade.com";
-        # No aliases: fugazi.acpuchades.com (the legacy name from before the
-        # domain existed) was retired with its AdGuard rewrite — it has no public
-        # record, so the rewrite was the only thing making it resolve, and a vhost
-        # for it would just hold a certificate nobody can reach.
-        # PUBLIC. No allowedNetworks: this is reachable from the internet, not
-        # just the LAN/VPN. What replaces the network boundary as the thing
-        # standing between a stranger and this box is the tier table below, plus
-        # upstream's own per-caller budgets on /v1/auth — and those budgets are
-        # only as good as trustedProxies, hence the next line.
-        #
-        # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
-        # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
-        # loopback would make that edge the rate-limit bucket and every visitor
-        # routed through it would share one register/login budget.
-        trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
-        environmentFile = config.sops.templates."fugazi/env".path;
+      my.fugazi-web.instances = {
+        # --- prod: the public deployment, tracking main ---------------------
+        # Named for what it is, not for the hostname it answers on. `www` would
+        # have read as a synonym for the vhost below and gone stale the moment a
+        # second name were added; `main` would have read as naming the branch,
+        # which is `packages`' job and not the instance name's.
+        prod = {
+          hostName = "www.fugazitrade.com";
+          port = 8765;
+          databaseName = "fugazi";
+          # No aliases: fugazi.acpuchades.com (the legacy name from before the
+          # domain existed) was retired with its AdGuard rewrite — it has no public
+          # record, so the rewrite was the only thing making it resolve, and a vhost
+          # for it would just hold a certificate nobody can reach.
+          # PUBLIC. No allowedNetworks: this is reachable from the internet, not
+          # just the LAN/VPN. What replaces the network boundary as the thing
+          # standing between a stranger and this box is the tier table below, plus
+          # upstream's own per-caller budgets on /v1/auth — and those budgets are
+          # only as good as trustedProxies, hence the next line.
+          #
+          # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
+          # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
+          # loopback would make that edge the rate-limit bucket and every visitor
+          # routed through it would share one register/login budget.
+          trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
+          environmentFile = config.sops.templates."fugazi/env".path;
+          # No `packages`: this instance runs the build whose NixOS module is
+          # imported, which is the `fugazi-web` input tracking main. Nothing to
+          # keep in step.
+        };
+
+        # --- testing: the staging deployment, tracking the testing branch ---
+        testing = {
+          hostName = "testing.fugazitrade.com";
+          port = 8766;
+          # Its own database and role, and therefore its own OS user. Not
+          # negotiable between instances: a shared one would be two processes
+          # running Alembic to whichever head their own branch pins, and the
+          # branch that starts second wins the schema.
+          databaseName = "fugazi_testing";
+          # The whole `packages` output of the second input, in one go, so a
+          # backend and a frontend cannot end up from different branches. This
+          # single line is the entire branch-tracking mechanism; see the
+          # fugazi-web-testing input in flake.nix for why it is packages rather
+          # than a second imported module.
+          packages = fugazi-web-testing.packages.${pkgs.stdenv.hostPlatform.system};
+          # Proxied through Cloudflare exactly like www, so the same edge ranges
+          # are the hops to skip. Getting this wrong here is cheaper than on www
+          # but wrong in the same direction: every visitor through one CF node
+          # would share one auth budget.
+          trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
+          # Its OWN JWT secret. Sharing www's would make a session token minted
+          # on staging authenticate against the public deployment — the accounts
+          # are separate databases, but the signature is all the API checks.
+          environmentFile = config.sops.templates."fugazi-testing/env".path;
+          # Reachable from the internet but not the deployment anyone is meant to
+          # find. Without this the two hostnames serve the same app to crawlers
+          # and compete for the same queries, and whatever half-finished state
+          # the branch is in gets indexed.
+          noIndex = true;
+          # Distinguishable in an inbox and in a bounce report. The forwarder for
+          # this address is Cloudflare's, same as noreply@ — nothing to provision.
+          mailFrom = "noreply-testing@acpuchades.com";
+        };
       };
 
       # Knobs modules/fugazi-web deliberately doesn't re-expose go straight on the
       # upstream option; `environment` is an attrsOf, so these merge with the keys
-      # the module sets rather than replacing them.
-      services.fugazi-web.environment = {
+      # the module sets rather than replacing them. Per INSTANCE — the ceilings
+      # below are a share of this box, and www's share is not testing's.
+      services.fugazi-web.instances.prod.environment = {
         # Signup is open to anyone, on any domain: FUGAZI_SERVICE_SIGNUP_ALLOWED_
         # EMAIL_DOMAINS is gone and SIGNUP_MODE stays upstream's "open". The
         # @fugazitrade.com gate that used to stand here was standing in for a
@@ -488,6 +536,44 @@ let
         # (it means "off" only for an entitlement), so a zero here would quietly
         # do the opposite of what it reads like.
       };
+
+      # The staging deployment's own knobs. Everything not named here is
+      # upstream's default for the branch this instance runs, which is the point
+      # of having it — a new knob's default is one of the things being tried.
+      services.fugazi-web.instances.testing.environment = {
+        # Closed. www is open on purpose (see above); staging has no such reason,
+        # and an open second front door doubles what is exposed to a stranger in
+        # exchange for nothing — the accounts here are for testing, and an invite
+        # is how they get made. It also keeps a half-finished branch from mailing
+        # verification links to people who typed the wrong hostname.
+        FUGAZI_SERVICE_SIGNUP_MODE = "invite";
+
+        # A quarter of www's share of the box, not an equal one. This machine is
+        # also bitcoind, Jellyfin, Nextcloud, Postgres and the agents; a sweep
+        # someone is trying out on a branch must not be able to take the pool away
+        # from the deployment that has actual users on it.
+        FUGAZI_SERVICE_MAX_WORKERS = "1";
+        FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = "2";
+
+        # Same archive ceilings as www so the edge cap (maxRequestBodySize, which
+        # defaults to 65 MiB = this plus multipart headroom) means the same thing
+        # on both hostnames. Testing an upload path against a different limit than
+        # production has is testing the wrong thing.
+        FUGAZI_SERVICE_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
+        FUGAZI_SERVICE_TIER_PRO_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
+      };
+
+      # No deployment ticks on staging. A tick advances every live deployment on
+      # its cadence, and advancing one means placing whatever orders the strategy
+      # asks for — against a real venue if the deployment is wired to one. A
+      # branch is exactly where that wiring is least trustworthy, and there is no
+      # per-deployment "paper only" switch to lean on, so the schedule is what
+      # gets withheld. Set it to a cadence deliberately when a live-path change is
+      # the thing being tested, and put it back afterwards.
+      #
+      # The maintenance timer stays on: it purges expired verifications and drains
+      # the outbox, which is what makes the invite flow testable at all.
+      services.fugazi-web.instances.testing.deploymentTickFrequencies = { };
 
       # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
       # input — a tarball URL, so Nix's ordinary downloader fetches it and

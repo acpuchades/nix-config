@@ -56,6 +56,32 @@
     # `refs/heads/main` URL means `nix flake update` rolls to the latest main.
     fugazi-web.url = "https://github.com/acpuchades/fugazi-web/archive/refs/heads/main.tar.gz";
     fugazi-web.inputs.nixpkgs.follows = "nixpkgs";
+
+    # The SAME repo on its `testing` branch, feeding the staging instance
+    # (testing.fugazitrade.com). Two inputs rather than two imported modules,
+    # because there is no such thing as two imported modules: the NixOS module
+    # declares its options at `services.fugazi-web`, and a second declaration of
+    # an option is a hard eval error ("The option ... is already declared"), not a
+    # conflict priorities can settle. So exactly ONE nixosModules.default is
+    # imported — the one above — and the staging instance is handed this input's
+    # `packages` output instead (my.fugazi-web.instances.testing.packages).
+    #
+    # The consequence worth knowing: the staging instance runs THIS branch's
+    # application under MAIN's plumbing. Unit shape, the systemd sandbox and the
+    # option surface all come from the imported module. That is fine while a
+    # branch only changes the app, and it is the first thing to suspect when one
+    # that changes how the service is launched misbehaves; once branches diverge
+    # that far the staging deployment wants its own system (a NixOS container
+    # importing this flake's own module) rather than an instance.
+    #
+    # Tracking `refs/heads/testing` means a push deploys on the next rebuild, with
+    # no `nix flake update` in the loop. The cost is real and deliberate: this
+    # input is evaluated as part of the whole homeserver config, so a testing
+    # branch that does not evaluate blocks `nixos-rebuild` for EVERY service on
+    # this box, not just its own. If that ever bites, pin this to a commit and
+    # bump it by hand — the staging instance is the only consumer.
+    fugazi-web-testing.url = "https://github.com/acpuchades/fugazi-web/archive/refs/heads/testing.tar.gz";
+    fugazi-web-testing.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -68,6 +94,7 @@
       sops-nix,
       better-zen,
       fugazi-web,
+      fugazi-web-testing,
       emacs-overlay
     }:
   {

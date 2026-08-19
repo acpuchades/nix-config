@@ -136,6 +136,11 @@
       # session. Generate with: openssl rand -base64 48
       "fugazi/jwt-secret" = { mode = "0400"; };
 
+      # The same, for the staging instance. Deliberately a distinct key rather
+      # than a reuse of the one above — see the `fugazi-testing/env` template for
+      # why sharing it would let a staging session token in the front door.
+      "fugazi-testing/jwt-secret" = { mode = "0400"; };
+
       # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
       # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
       # (machines/homeserver/default.nix) points nix at it. The module fetches the
@@ -316,7 +321,7 @@
           # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
           # the same prerequisite Caddy's DNS-01 already has for these names.
           zone=fugazitrade.com
-          fugazitrade.com,www.fugazitrade.com
+          fugazitrade.com,www.fugazitrade.com,testing.fugazitrade.com
       '';
 
       "postfix/sasl_passwd" = {
@@ -336,6 +341,21 @@
         mode = "0400";
         content = ''
           FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi/jwt-secret"}
+        '';
+      };
+
+      # The same, for the staging instance (testing.fugazitrade.com), owned by ITS
+      # service user. A SEPARATE key, and that is the whole reason this is a second
+      # template rather than the same path handed to both instances: the JWT
+      # signature is all the API verifies, so a shared secret means a session token
+      # minted on staging authenticates against the public deployment. Separate
+      # databases do not help — the token carries the claims.
+      "fugazi-testing/env" = {
+        owner = "fugazi_testing";
+        group = "fugazi_testing";
+        mode = "0400";
+        content = ''
+          FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi-testing/jwt-secret"}
         '';
       };
 
