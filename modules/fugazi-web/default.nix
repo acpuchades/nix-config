@@ -42,10 +42,13 @@
 # rather than plumbing (the real CSP, the security headers, the immutable-asset
 # caching, the body cap, and now serving the bundle's precompressed siblings)
 # are replicated in the Caddy vhost below; the one part
-# that isn't is nginx's `limit_req` zones, which have no built-in Caddy
-# equivalent (they'd need the caddy-ratelimit plugin, and so another hash to pin
-# — see modules/acme-cloudflare). The in-process limiter covers those routes as
-# long as `trustedProxies` is right, which is why it is set below.
+# that was missing is nginx's `limit_req` zones; they are here now, as
+# caddy-ratelimit. The in-process limiter still covers those routes too, and only
+# correctly while `trustedProxies` is right, which is why it is set below.
+#
+# Upstream has since removed its nginx branch outright — nothing set it and it had
+# never evaluated — so this vhost is not a second copy of one any more. It is the
+# only one, and the flake's module header states what it owes.
 #
 # Not wired, on purpose: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
 # broker-credential vault. Without it the backend composes a NullVault — paper
@@ -401,6 +404,18 @@ in
       };
     });
 
+    # Edge rate limiting is the half `adapters/rate_limit` structurally cannot do:
+    # it counts per process, so behind N workers an attacker gets N times the
+    # budget and every deploy resets it — its own docstring asks for this. Caddy
+    # has no built-in equivalent, so it is a compiled-in plugin, assembled by
+    # my.caddy-plugins (which owns `services.caddy.package`).
+    #
+    # Pinned rather than tracked: v0.1.0 is the only tag and it is from 2024, so a
+    # bump is a deliberate act. Verified to build and to register
+    # `http.handlers.rate_limit` against Caddy 2.11.4.
+    my.caddy-plugins.plugins =
+      lib.optional (cfg.instances != { }) "github.com/mholt/caddy-ratelimit@v0.1.0";
+
     services.caddy.virtualHosts = overInstances (_: i: {
       ${i.hostName} = {
         serverAliases = i.aliases;
@@ -448,6 +463,45 @@ in
             # it sits a megabyte above the archive cap and why the unit is MiB.
             request_body {
               max_size ${i.maxRequestBodySize}
+            }
+
+            # Two budgets, keyed on the peer. `/v1/auth` is the one that matters:
+            # register, login and reset each burn an argon2 hash, so an unbudgeted
+            # one is a CPU amplifier pointed at this box, and forgot-password also
+            # sends mail to an address the caller names.
+            #
+            # These are the nginx zones this replaced (10r/m + burst 20; 30r/s +
+            # burst 60), translated rather than copied: caddy-ratelimit is a
+            # sliding window with no separate burst, so `events` is what the burst
+            # allowance used to be. Nothing that worked before is refused now, and
+            # the sustained ceiling tightens from "refills forever" to that same
+            # number per window.
+            #
+            # Inside the `route`, so it runs after `abort @denied` and before the
+            # handlers -- directives in a route apply as written, which is also
+            # why no global `order rate_limit` line is needed.
+            rate_limit {
+              zone auth {
+                match {
+                  path /v1/auth/*
+                }
+                key {remote_host}
+                events 20
+                window 1m
+              }
+              zone api {
+                match {
+                  # Exclusive of the auth zone, because nginx's `location` blocks
+                  # were: it picks the most specific one, so an auth request spent
+                  # one budget. Both zones of a `rate_limit` handler are evaluated,
+                  # so without this an auth request spends both.
+                  path /v1/*
+                  not path /v1/auth/*
+                }
+                key {remote_host}
+                events 60
+                window 1s
+              }
             }
 
             handle /v1/* {
