@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 
 {
   options.my.acme-cloudflare = {
@@ -17,13 +17,13 @@
   };
 
   config = lib.mkIf config.my.acme-cloudflare.enable {
+    # The DNS-01 solver is a compiled-in plugin. The package itself is assembled
+    # by my.caddy-plugins, which owns `services.caddy.package` — this module used
+    # to set it directly, which made it the only place a plugin could be added
+    # and quietly coupled every other plugin to ACME being enabled.
+    my.caddy-plugins.plugins = [ "github.com/caddy-dns/cloudflare@v0.2.4" ];
+
     services.caddy = {
-      # Run nixos-rebuild once with lib.fakeHash, copy the expected hash from
-      # the error output, then replace lib.fakeHash with the real value.
-      package = pkgs.caddy.withPlugins {
-        plugins = [ "github.com/caddy-dns/cloudflare@v0.2.4" ];
-        hash = "sha256-7GoH8YLCoPmPExQxoga2FHB58zQDoZVf1BBwkVi0SsQ";
-      };
       globalConfig = ''
         cert_issuer acme {
           email ${config.my.acme-cloudflare.email}

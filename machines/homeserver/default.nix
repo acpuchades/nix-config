@@ -104,6 +104,7 @@ let
         ../../modules/web-analytics
         ../../modules/service-dashboard
         ../../modules/acme-cloudflare
+        ../../modules/caddy-plugins
         ../../modules/host-security
         ../../modules/ups-monitor
         ../../modules/backup
@@ -154,6 +155,14 @@ let
       environment.systemPackages = import ./packages.nix inputs;
 
       # Configure custom modules
+
+      # Caddy's compiled-in plugins. The list is contributed by whichever modules
+      # need one (acme-cloudflare's DNS-01 solver, fugazi-web's rate limiter);
+      # only the hash lives here, because it is a property of the assembled set
+      # and no single contributor can know it. Changing the set changes this —
+      # rebuild and take the `got:` value from the mismatch.
+      my.caddy-plugins.hash = "sha256-7GoH8YLCoPmPExQxoga2FHB58zQDoZVf1BBwkVi0SsQ";
+
       my.acme-cloudflare = {
         enable = true;
         credentialsFile = config.sops.templates."caddy/cloudflare-env".path;
@@ -418,9 +427,9 @@ let
 
         # Reachable from the internet, and no allowedNetworks: this is not a
         # LAN-only service, it is an unlaunched public one. What stands between a
-        # stranger and this box is the tier table below plus upstream's per-caller
-        # budgets on /v1/auth — and those budgets are only as good as
-        # trustedProxies, hence the next line.
+        # stranger and this box is the signup domain gate and the tier table
+        # below, plus upstream's per-caller budgets on /v1/auth — and those
+        # budgets are only as good as trustedProxies, hence the next line.
         #
         # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
         # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
@@ -428,10 +437,11 @@ let
         # routed through it would share one register/login budget.
         trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
 
-        # Not launched, so not indexed. Signup is open (see below) and the app is
-        # perfectly usable by anyone handed the link — what this withholds is
-        # being *found*, which is the part that would be hard to undo. A search
-        # result for a half-finished service outlives the half-finished service.
+        # Not launched, so not indexed. Signup is gated to @fugazitrade.com (see
+        # below) and the app is perfectly usable by anyone holding such an address
+        # — what this withholds is being *found*, which is the part that would be
+        # hard to undo. A search result for a half-finished service outlives the
+        # half-finished service.
         noIndex = true;
 
         # mailFrom stays the module default (noreply@acpuchades.com): this is the
@@ -445,22 +455,48 @@ let
       # whole of the policy for the one deployment that exists — everything below
       # is what has been decided so far, moved here intact rather than re-derived.
       services.fugazi-web.instances.testing.environment = {
-        # Signup is open to anyone, on any domain: FUGAZI_SERVICE_SIGNUP_ALLOWED_
-        # EMAIL_DOMAINS is gone and SIGNUP_MODE stays upstream's "open". The
-        # @fugazitrade.com gate that used to stand here was standing in for a
-        # thing tiers now do properly. What is actually worth withholding from a
-        # stranger is a venue connection, and that is `connect_brokers` — an
-        # entitlement `free` does not hold, refused with a 403 at POST /v1/brokers
-        # before any credential reaches the network. A new account therefore gets
-        # the backtester and nothing that touches money. (FUGAZI_SERVICE_SECRET_KEY
-        # is still unwired besides, so a broker connect 503s instance-wide; the
-        # tier gate is the second of two locks, and the per-account one.)
+        # Registration is limited to @fugazitrade.com addresses. SIGNUP_MODE stays
+        # upstream's "open" — the domain gate is the whole of the policy, and it
+        # costs no codes to distribute or rotate. Checked in POST
+        # /v1/auth/register, after the per-address rate limit and before the
+        # argon2 hash: a non-matching address gets a 403 with no account row and
+        # no verification mail, so the SPA surfaces it as a failed registration
+        # rather than an inbox that never fills. The value is comma-separated and
+        # compared lowercased against the part after the LAST `@`, exact match
+        # only — a subdomain is a different domain — and unset (upstream's
+        # default) means anybody, so widening this list is how more people get in.
+        #
+        # This gates REGISTRATION and nothing else. Accounts that already exist,
+        # including any on another domain from the window when this was open, log
+        # in, reset passwords and run backtests exactly as before; the gate is not
+        # retroactive and does not evict anyone. When `prod` launches it is a
+        # separate instance with its own environment and inherits none of this.
+        #
+        # An administrator can move `signup_mode` (open/invite/closed) from the
+        # panel at runtime, but NOT this list: upstream treats an allow-list as
+        # configuration rather than an operational lever, so both widening and
+        # narrowing it are a rebuild.
+        #
+        # It is the outer of two locks, not a replacement for the inner one. What
+        # is actually worth withholding is a venue connection, and that stays
+        # `connect_brokers` — an entitlement `free` does not hold, refused with a
+        # 403 at POST /v1/brokers before any credential reaches the network (and
+        # FUGAZI_SERVICE_SECRET_KEY is still unwired besides, so a broker connect
+        # 503s instance-wide). The domain gate decides who gets an account; the
+        # tier ceilings below decide what an account may spend.
         #
         # Registration is not an open mail relay either: upstream budgets it at
         # 5/hour keyed on BOTH the source address and the target inbox, so neither
         # one attacker nor one victim's inbox can be spent past that. See
         # trustedProxies above for why that keying works behind Cloudflare.
         #
+        # Worth knowing before handing anyone the link: fugazitrade.com's MX is a
+        # registrar forwarder, not this host's Postfix, so an address only
+        # receives its verification mail if a forwarder exists for it — and
+        # requireVerifiedEmail is on (the module default), so a token is refused
+        # at login until it is redeemed.
+        FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
+
         # That leaves compute and disk, which is what everything below bounds.
 
         # The instance's own account goes on the `testing` TIER — which, awkwardly,
@@ -485,6 +521,38 @@ let
         # Either way the HARD_* bounds that keep one request from exhausting the
         # process still apply, to this account as to every other.
         FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:testing";
+
+        # The same account is this instance's administrator: `/admin` in the SPA,
+        # and `/v1/admin` behind it. Keyed on the USERNAME like the assignment
+        # above, comma-separated, lowercased with a leading `@` stripped — so it
+        # is the handle `fugazi`, not an address.
+        #
+        # This variable GRANTS AND NEVER REVOKES, which is where it differs from
+        # TIER_ASSIGNMENTS. It is a union with the `is_admin` column rather than
+        # the authority over it, because it names a *set*: treating it as
+        # authoritative would silently demote, on the next restart, everyone
+        # promoted through the panel. Nothing is written to the database by
+        # setting it — the role appears on the next start and disappears if this
+        # line goes, and the panel refuses to demote a name listed here on the
+        # grounds that clearing the column would change nothing. It is how the
+        # first administrator exists on a database that has none; after that the
+        # panel is how the role moves.
+        #
+        # What it unlocks is the five controls that must not wait for a rebuild —
+        # maintenance_mode, disabled_features, signup_mode, trading_halted,
+        # max_concurrent_evaluations — plus the user and report queues. An
+        # override set there OUTRANKS this file, deliberately: the panel is the
+        # escape hatch, and one a deploy could silently overrule would be useless
+        # for the incident it exists for. So if signup or maintenance stops
+        # matching what is written here, look at /admin before looking at git.
+        #
+        # Note the domain gate above is NOT one of the five: `signup_mode` can be
+        # moved from the panel, the allow-list cannot.
+        #
+        # An API key is refused at /v1/admin even with write scope — the account's
+        # own key would otherwise be a way to do at one remove what the key is not
+        # allowed to do directly. Administration is a session, in a browser.
+        FUGAZI_SERVICE_ADMINS = "fugazi";
 
         # --- ceilings on the process, shared by everybody ------------------
         # A backtest is an OS process holding a multi-megabyte bar array, and the
