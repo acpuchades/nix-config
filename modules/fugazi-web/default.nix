@@ -40,7 +40,8 @@
 # TLS and adds the response CSP + edge rate limiting — but this host's :443 is
 # Caddy's, so the two would fight over the port. The parts of it that are policy
 # rather than plumbing (the real CSP, the security headers, the immutable-asset
-# caching, the body cap) are replicated in the Caddy vhost below; the one part
+# caching, the body cap, and now serving the bundle's precompressed siblings)
+# are replicated in the Caddy vhost below; the one part
 # that isn't is nginx's `limit_req` zones, which have no built-in Caddy
 # equivalent (they'd need the caddy-ratelimit plugin, and so another hash to pin
 # — see modules/acme-cloudflare). The in-process limiter covers those routes as
@@ -460,10 +461,30 @@ in
               header @assets Cache-Control "public, max-age=31536000, immutable"
               header @nocache Cache-Control "no-cache"
               try_files {path} /index.html
-              file_server
+              # Serve the .br/.gz siblings the frontend derivation builds rather
+              # than compressing each response here. Caddy has no brotli
+              # *encoder* — `caddy list-modules` offers only gzip and zstd — so
+              # for the SPA this is not a saving on `encode`, it is the only way
+              # brotli is served at all. It is also a better one: quality 11 at
+              # build against whatever level a per-request encoder can afford.
+              # Measured on the entry chunk, 89,181 B on-the-fly gzip against
+              # 74,440 B precompressed brotli, and the gzip path improves too
+              # (85,360 B), because that sibling is level 9.
+              #
+              # `br` first: the list is a preference order, and every browser
+              # that accepts brotli accepts gzip. A client sending neither gets
+              # the plain file, so nothing depends on the siblings existing.
+              file_server {
+                precompressed br gzip
+              }
             }
           }
-          encode gzip
+          # Still here for the proxied JSON, which has no sibling to serve and is
+          # generated per request. zstd ahead of gzip for the clients that take
+          # it; the static half no longer passes through this at all, since
+          # `precompressed` sets Content-Encoding and `encode` leaves an already
+          # encoded response alone.
+          encode zstd gzip
         '';
       };
     });
