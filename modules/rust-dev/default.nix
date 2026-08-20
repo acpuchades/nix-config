@@ -18,7 +18,9 @@
       rust-analyzer
       cargo-edit
       cargo-watch
-    ] ++ config.my.rust-dev.extraPackages;
+    ]
+    ++ lib.optional pkgs.stdenv.isLinux mold
+    ++ config.my.rust-dev.extraPackages;
 
     home.sessionPath = [ "$HOME/.cargo/bin" ];
 
@@ -31,15 +33,27 @@
     # "NEON and crypto extensions should be statically available"). Adding libiconv
     # only clears the link error; the framework failures need a compiler that knows
     # the SDK. Pin cargo to Apple's clang instead of depending on PATH order.
-    home.file = lib.mkIf pkgs.stdenv.isDarwin {
-      ".cargo/config.toml".text = ''
-        [target.aarch64-apple-darwin]
-        linker = "/usr/bin/cc"
+    home.file = lib.mkMerge [
+      (lib.mkIf pkgs.stdenv.isDarwin {
+        ".cargo/config.toml".text = ''
+          [target.aarch64-apple-darwin]
+          linker = "/usr/bin/cc"
 
-        [env]
-        CC = "/usr/bin/cc"
-        CXX = "/usr/bin/c++"
-      '';
-    };
+          [env]
+          CC = "/usr/bin/cc"
+          CXX = "/usr/bin/c++"
+        '';
+      })
+
+      # mold links noticeably faster than bfd/gold; gcc (our cc) supports
+      # -fuse-ld=mold since gcc 12, so this stays a plain rustflag rather
+      # than swapping the linker binary itself.
+      (lib.mkIf pkgs.stdenv.isLinux {
+        ".cargo/config.toml".text = ''
+          [target.'cfg(target_os = "linux")']
+          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+        '';
+      })
+    ];
   };
 }
