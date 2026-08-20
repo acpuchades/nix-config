@@ -161,7 +161,7 @@ let
       # only the hash lives here, because it is a property of the assembled set
       # and no single contributor can know it. Changing the set changes this —
       # rebuild and take the `got:` value from the mismatch.
-      my.caddy-plugins.hash = "sha256-7GoH8YLCoPmPExQxoga2FHB58zQDoZVf1BBwkVi0SsQ";
+      my.caddy-plugins.hash = "sha256-XrTrKsr+4gtlk1Mh9/f8MVBai5rdKoMa16hm6pskYBQ=";
 
       my.acme-cloudflare = {
         enable = true;
