@@ -33,6 +33,12 @@ let
       PUBLIC_KEY=$(echo "$PRIVATE_KEY" | wg pubkey)
       PSK=$(wg genpsk)
 
+      # IPv4-only AllowedIPs: the server has no IPv6 address on the tunnel and no
+      # IPv6 egress, so advertising ::/0 would install a default v6 route into a
+      # tunnel that black-holes it. Dual-stack clients then stall on the IPv6 leg
+      # of every Happy Eyeballs attempt before falling back to IPv4 -- the tunnel
+      # looks connected but browsing is slow and flaky. Add ::/0 back only
+      # together with a v6 address on the interface and v6 NAT.
       umask 077
       cat > "$PEER_SLUG.conf" <<EOF
       [Interface]
@@ -44,7 +50,7 @@ let
       PublicKey = ${cfg.serverPublicKey}
       PresharedKey = $PSK
       Endpoint = ${cfg.serverEndpoint}
-      AllowedIPs = 0.0.0.0/0, ::/0
+      AllowedIPs = 0.0.0.0/0
       PersistentKeepalive = 25
       EOF
 
@@ -184,13 +190,26 @@ in
       # Hairpin NAT: allow wg0→wg0 forwarding and masquerade so that VPN peers
       # can reach each other and server services via the tunnel IP, with
       # responses routed back through WireGuard instead of bypassing it.
+      #
+      # MSS clamping: peer profiles carry no explicit MTU, so clients sit at
+      # WireGuard's 1420 default, which needs 1480 bytes on the outer path. Plenty
+      # of client uplinks (LTE, PPPoE at 1492, hotel WiFi) are below that, and
+      # without clamping the oversized segments are silently dropped -- the tunnel
+      # handshakes and small requests work while large transfers stall. Rewriting
+      # the MSS on both legs of the handshake (SYN and SYN-ACK, hence the
+      # SYN,RST SYN flag match rather than --syn) makes TCP negotiate a size that
+      # fits the discovered path MTU instead of black-holing.
       extraCommands = ''
         iptables -A FORWARD -i ${cfg.interface} -o ${cfg.interface} -j ACCEPT
         iptables -t nat -A POSTROUTING -s ${cfg.tunnelSubnet} -o ${cfg.interface} -j MASQUERADE
+        iptables -t mangle -A FORWARD -o ${cfg.interface} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+        iptables -t mangle -A FORWARD -i ${cfg.interface} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
       '';
       extraStopCommands = ''
         iptables -D FORWARD -i ${cfg.interface} -o ${cfg.interface} -j ACCEPT || true
         iptables -t nat -D POSTROUTING -s ${cfg.tunnelSubnet} -o ${cfg.interface} -j MASQUERADE || true
+        iptables -t mangle -D FORWARD -o ${cfg.interface} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu || true
+        iptables -t mangle -D FORWARD -i ${cfg.interface} -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu || true
       '';
     };
 
