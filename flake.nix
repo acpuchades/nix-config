@@ -82,6 +82,28 @@
     # bump it by hand — the staging instance is the only consumer.
     fugazi-web-testing.url = "https://github.com/acpuchades/fugazi-web/archive/refs/heads/testing.tar.gz";
     fugazi-web-testing.inputs.nixpkgs.follows = "nixpkgs";
+
+    # nix-caddy-withplugins — a drop-in `caddy.withPlugins` whose plugin hash
+    # survives Caddy updates. nixpkgs' version hashes ONE fixed-output derivation
+    # covering the whole `xcaddy build` + `go mod vendor` tree, so the pin is a
+    # property of (caddy version x plugin set x every transitive Go dep) and any
+    # nixpkgs bump invalidates it — it churned ~5x in 4 months, each time breaking
+    # `nixos-rebuild` until the `got:` value was copied back in by hand.
+    #
+    # This one splits the fetch into two FODs: a base GOPROXY of Caddy and its
+    # deps (hash pinned upstream in the input's version.json) and a plugin GOPROXY
+    # that is the same fetch MINUS the base, so our hash covers only our plugins'
+    # own modules and no longer moves when Caddy does. Read
+    # modules/caddy-plugins/default.nix for what that leaves us to maintain.
+    #
+    # Track the branch matching our nixpkgs release, and deliberately do NOT make
+    # it follow our nixpkgs: the base FOD hash it ships was computed against its
+    # own pinned nixpkgs, and swapping the Go toolchain underneath would
+    # invalidate the very hash we are importing it for (its README says as much).
+    # The overlay still builds Caddy from OUR pkgs — it takes `prev.caddy` — so
+    # this second nixpkgs is an evaluation-time input only; nothing on the system
+    # is built from it.
+    nix-caddy-withplugins.url = "github:MichailiK/nix-caddy-withplugins/nixos-26.05";
   };
 
   outputs =
@@ -95,7 +117,8 @@
       better-zen,
       fugazi-web,
       fugazi-web-testing,
-      emacs-overlay
+      emacs-overlay,
+      nix-caddy-withplugins
     }:
   {
     # Build darwin flake using:
