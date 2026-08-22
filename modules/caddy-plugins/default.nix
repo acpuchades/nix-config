@@ -44,6 +44,13 @@ in
         the `got:` value out of the mismatch error. The failure is loud and names
         the answer, which is the reason this defaults to `fakeHash` rather than
         to something that would build the wrong tree quietly.
+
+        What does NOT change it, on a host using the nix-caddy-withplugins
+        overlay, is Caddy itself: there the hash covers only the plugins' own Go
+        modules, not Caddy's. Without that overlay this is nixpkgs' own
+        `withPlugins` hash, which covers the entire vendored tree and so goes
+        stale on every caddy/nixpkgs/Go bump. The two are different values for the
+        same plugin list; a host that adds or drops the overlay re-pins once.
       '';
     };
   };

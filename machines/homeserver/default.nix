@@ -10,6 +10,7 @@
   emacs-overlay,
   fugazi-web,
   fugazi-web-testing,
+  nix-caddy-withplugins,
   ...
 }:
 
@@ -415,7 +416,12 @@ let
       # only the hash lives here, because it is a property of the assembled set
       # and no single contributor can know it. Changing the set changes this —
       # rebuild and take the `got:` value from the mismatch.
-      my.caddy-plugins.hash = "sha256-XrTrKsr+4gtlk1Mh9/f8MVBai5rdKoMa16hm6pskYBQ=";
+      #
+      # Under nix-caddy-withplugins (the overlay below) this covers ONLY the
+      # plugins' own Go modules, so a Caddy or nixpkgs bump no longer touches it;
+      # what does is adding, removing or bumping a plugin above. It was
+      # `sha256-w1H86by…` under nixpkgs' withPlugins and is not comparable.
+      my.caddy-plugins.hash = "sha256-6FwLem59rxu0M+Rz2nGylF5cTbO7meZb9j0Tqk5YY5A=";
 
       my.acme-cloudflare = {
         enable = true;
@@ -641,7 +647,17 @@ let
       # The backend + frontend packages come from the fugazi-web flake's overlay
       # (pkgs.fugazi-service, pkgs.fugazi-web-frontend), built against our nixpkgs.
       # Its NixOS module (imported above) derives the units from the same pkgs.
-      nixpkgs.overlays = [ fugazi-web.overlays.default ];
+      #
+      # nix-caddy-withplugins replaces `pkgs.caddy` with the same package carrying
+      # a different `withPlugins`, the one whose plugin hash does not move when
+      # Caddy is updated (see the flake input's comment, and my.caddy-plugins.hash
+      # below). It takes `prev.caddy` and rebuilds it from our pkgs, so what runs
+      # is still nixpkgs' Caddy at nixpkgs' version — only the way the plugin
+      # sources are fetched changes. Nothing but my.caddy-plugins consumes it.
+      nixpkgs.overlays = [
+        fugazi-web.overlays.default
+        nix-caddy-withplugins.overlays.default
+      ];
 
       # ONE instance for now, and it is `testing` — a name for what this is rather
       # than a `prod` that is not ready to be called that. It is also EMPTY: the
