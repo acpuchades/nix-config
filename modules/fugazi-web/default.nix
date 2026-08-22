@@ -50,14 +50,25 @@
 # never evaluated — so this vhost is not a second copy of one any more. It is the
 # only one, and the flake's module header states what it owes.
 #
-# Not wired, on purpose: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
-# broker-credential vault. Without it the backend composes a NullVault — paper
-# wallets are unaffected and connecting a real broker account fails loudly
-# instead of persisting a plaintext API secret. Enabling it means a new sops
-# secret, so it stays out until a broker account is actually needed:
-#   openssl rand -base64 32 | tr '+/' '-_'   # urlsafe-base64 32 bytes
-# then add `fugazi/secret-key` to machines/homeserver/secrets/default.yml and a
-# second line to the `fugazi/env` template in sops.nix.
+# Wired per instance, not here: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
+# broker-credential vault. Without one the backend composes a NullVault — paper
+# wallets are unaffected and connecting a real broker account fails loudly with a
+# 503 instead of persisting a plaintext API secret. It reaches the service the
+# same way the JWT key does, through `environmentFile`, so this module never sees
+# it: add `fugazi-web/<instance>/secret-key` to the host's secrets and a second
+# line to that instance's `fugazi-web/<instance>/env` template.
+#   openssl rand -base64 32 | tr '+/' '-_'   # urlsafe-base64 32 bytes, not 48
+# Per instance for a sharper reason than the JWT key's: the vault decrypts what
+# was sealed with it, so one key across two deployments lets staging read the
+# venue credentials of the deployment beside it. And unlike the JWT key, losing
+# it is not recoverable by logging in again — every stored credential becomes
+# undecryptable and each account has to re-enter its venue API secret.
+#
+# The gate in front of it is separate and stays: connecting a broker needs the
+# `connect_brokers` entitlement, plus the per-venue one (`connect_okx`,
+# `connect_coinbase`). `free` holds none of them, `pro`/`unlimited` hold brokers
+# + coinbase, and the non-public `testing` tier holds all three — so wiring a key
+# does not by itself open a venue to anybody.
 #
 # The repo is PRIVATE, so fetching either flake input needs GitHub auth. They are
 # tarball-URL inputs, not `github:` inputs, precisely because the `github:` fetcher

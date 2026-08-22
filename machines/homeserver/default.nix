@@ -15,6 +15,12 @@
 
 let
 
+  # `lib` is a module argument, so it is in scope inside `configuration` below but
+  # NOT out here — and fugaziEnvironment needs it. Taken from the flake input,
+  # which is the same lib the module system passes in. The inner function's own
+  # `lib` parameter shadows this one within its body, harmlessly: they are equal.
+  inherit (nixpkgs) lib;
+
   homeServerLocalAddress = "192.168.2.2";
   adminEmailAddress = "admin@acpuchades.com";
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
@@ -34,6 +40,254 @@ let
     "2400:cb00::/32" "2606:4700::/32" "2803:f800::/32" "2405:b500::/32"
     "2405:8100::/32" "2a06:98c0::/29" "2c0f:f248::/32"
   ];
+
+  # fugazi-web's policy surface, as ONE table with a column per deployment KIND.
+  # Both columns are written here even though only `testing` is instantiated
+  # below, and that is the point of the shape: the alternative is a prod column
+  # invented in a hurry on launch day, beside a testing column whose reasoning
+  # nobody remembers. `kind` is the deployment's character, not the instance's
+  # name — what separates the two is who is let in, how much of this box they may
+  # spend, and how much is on show.
+  #
+  # Only POLICY lives here. Everything modules/fugazi-web already derives per
+  # instance — ENVIRONMENT, MAILER, SMTP_*, MAIL_FROM, REQUIRE_VERIFIED_EMAIL,
+  # VERIFY_URL, RESET_URL, DATABASE_URL, TRUSTED_PROXIES — is set there and must
+  # not be repeated: `environment` is an attrsOf, so a duplicate key would
+  # silently outrank the module's derivation rather than conflict with it.
+  #
+  # Secrets are not here either, for the obvious reason. FUGAZI_SERVICE_JWT_SECRET
+  # and FUGAZI_SERVICE_SECRET_KEY arrive through the instance's EnvironmentFile
+  # (the sops template at fugazi-web/<instance>/env), which systemd reads without
+  # the values ever reaching the store.
+  #
+  # Deliberately UNSET, each with its reason — an absent knob is a decision too,
+  # and the ones below are the knobs somebody will otherwise re-litigate:
+  #   HSTS               Caddy already sends Strict-Transport-Security on this
+  #                      vhost (max-age=63072000; includeSubDomains). Two sources
+  #                      for one header is one too many.
+  #   MAX_BODY_BYTES     upstream's 2 MiB covers every non-upload body; the upload
+  #                      path has its own ceiling below.
+  #   MAINTENANCE_MODE   a RUNTIME lever (/admin). A value here is the thing an
+  #                      operator ends up fighting during the incident it was
+  #                      meant to help with.
+  #   MAINTENANCE_WINDOWS  no recurring downtime: pg_dump is transactionally
+  #                      consistent, so the nightly backup needs no read-only
+  #                      window to be correct. Format if one is ever wanted, and
+  #                      it is UTC because a window in a local zone moves twice a
+  #                      year: "sun 03:00-04:00, wed 01:00-01:30".
+  #   DISABLED_FEATURES  same reason as MAINTENANCE_MODE — /admin owns it.
+  #   INVITE_CODES       the bootstrap hatch for an instance with no accounts and
+  #                      no administrator. Neither column needs it today; add one
+  #                      (with SIGNUP_MODE = "invite") the afternoon open signup
+  #                      starts getting abused.
+  #   SENTRY_DSN         no Sentry project. Worth knowing before wiring one: the
+  #                      module pins ENVIRONMENT to "production" for BOTH kinds
+  #                      because it is upstream's preflight switch rather than a
+  #                      label, and Sentry reads that same variable — so staging
+  #                      events would arrive tagged "production".
+  #   LOG_FORMAT         text, not json. This lands in journald and is read with
+  #                      journalctl.
+  fugaziEnvironment = kind:
+    let
+      isProd = kind == "prod";
+      mib = n: toString (n * 1024 * 1024);
+    in
+    {
+      # --- who may create an account -------------------------------------
+      # Both kinds run upstream's "open" mode; what differs is the gate behind
+      # it (the domain allow-list, below, which prod does not set). An
+      # administrator can move this from /admin at runtime — it is one of the
+      # five controls that must not wait for a rebuild — so if signup stops
+      # behaving like this line says, look at /admin before looking at git.
+      FUGAZI_SERVICE_SIGNUP_MODE = "open";
+
+      # --- who administers it --------------------------------------------
+      # Keyed on the USERNAME, comma-separated, lowercased with a leading `@`
+      # stripped — the handle `fugazi`, not an address.
+      #
+      # It GRANTS AND NEVER REVOKES, which is where it differs from the tier
+      # assignment below. It names a set rather than an authority: treating it
+      # as authoritative would silently demote, on the next restart, everyone
+      # promoted through the panel. Nothing is written to the database by
+      # setting it — the role appears on the next start, disappears if this line
+      # goes, and the panel refuses to demote a name listed here on the grounds
+      # that clearing the column would change nothing. This is how the first
+      # administrator exists on a database that has none; after that the panel
+      # is how the role moves.
+      #
+      # It does NOT create the account. On a fresh database the handle has to be
+      # registered like anybody's, through the same signup gate and the same
+      # mail verification, and it becomes an administrator on the next start.
+      #
+      # An API key is refused at /v1/admin even with write scope — the account's
+      # own key would otherwise be a way to do at one remove what the key is not
+      # allowed to do directly. Administration is a session, in a browser.
+      FUGAZI_SERVICE_ADMINS = "fugazi";
+
+      # --- what an account may spend ---------------------------------------
+      # Spelled even though it is upstream's default, because it is the one that
+      # decides what a STRANGER gets and reading it out of the source is not the
+      # same as having decided it.
+      FUGAZI_SERVICE_DEFAULT_TIER = "free";
+
+      # The instance's own account on the `testing` TIER — upstream's name for a
+      # non-public plan, and nothing to do with the instance also called testing.
+      # Non-public means exactly one thing: the tier is never *named* to a user,
+      # so an entitlement refusal cannot invite a stranger onto a plan nobody can
+      # buy. Its ceilings are `unlimited`'s (none); what it adds is the venue
+      # gates, and `connect_okx` is held by it and by nothing on sale, because
+      # how far a venue's live path has been exercised here is a different claim
+      # from what a plan costs and only the second is `unlimited`'s to make.
+      #
+      # Deliberately the OVERRIDE channel rather than the `users.tier` column:
+      # upstream deleted the revision that wrote that column precisely because
+      # who is on an internal tier is a property of this instance, not of the
+      # service — the same handle belongs to a stranger on somebody else's
+      # deployment. Configuration outranks the column, so this line is the whole
+      # of the assignment and no migration is involved. Matched
+      # case-insensitively on the username.
+      FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:testing";
+
+      # --- ceilings on the process, shared by everybody ---------------------
+      # A backtest is an OS process holding a multi-megabyte bar array, and the
+      # pool defaults to one worker per core — 16 here, on a box also running
+      # bitcoind, Jellyfin, Nextcloud, Postgres and the agents. The split is the
+      # reason the two columns exist at all: a sweep someone is trying out on a
+      # branch must not take the pool away from the deployment with users on it.
+      FUGAZI_SERVICE_MAX_WORKERS = if isProd then "4" else "2";
+      # Admission control in front of that pool. Unset (0) means an unbounded
+      # queue, which does not degrade gracefully — it swaps, and every in-flight
+      # run gets slower together. Twice the pool leaves a little queue depth;
+      # past it callers get a 503 + Retry-After, which is the honest answer.
+      FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = if isProd then "8" else "4";
+
+      # The largest archive either kind accepts, and the two knobs that have to
+      # agree about it. Both are pinned rather than left at upstream's defaults
+      # so that modules/fugazi-web's edge cap (maxRequestBodySize, 65 MiB = this
+      # plus a megabyte of multipart headroom) has something stable to track.
+      # `pro` is named for the same reason and not because anyone is on it: the
+      # backend derives its transport ceiling from the HIGHEST finite tier cap,
+      # and pro ships at 256 MiB — a size no request could reach through Caddy,
+      # and one that would have the ASGI middleware read a quarter-gigabyte
+      # before the parser refused it.
+      FUGAZI_SERVICE_MAX_UPLOAD_BYTES = mib 64;
+      FUGAZI_SERVICE_TIER_PRO_MAX_UPLOAD_BYTES = mib 64;
+
+      # --- the `free` tier, which is what a stranger gets -------------------
+      # Everything not named here stays at upstream's `free` value, which is
+      # deliberately the constant the service shipped with — the sweep-shape
+      # limits (200 grid points, 10 grids, 10 axes, 100 values) are already sized
+      # for the smallest plausible account and need no help from us.
+      #
+      # This first one is not a tightening but a gap: upstream leaves free's
+      # concurrency deliberately absent rather than inventing a number that would
+      # break existing instances on upgrade. Absent is fine single-tenant and
+      # wrong the moment signup is open — without it one account can hold every
+      # slot above and everyone else gets 503s.
+      FUGAZI_SERVICE_TIER_FREE_MAX_CONCURRENT_EVALUATIONS = if isProd then "2" else "1";
+      # Uploaded datasets are the only thing a stranger leaves on the disk that
+      # outlives their request, and there is no per-account storage quota
+      # anywhere in the knob surface — the archive caps ARE the disk policy.
+      # Quartered from free's 64 MiB/512 MiB/128 MiB accordingly. Rows come down
+      # with them to stay proportionate; series stays at free's 500, being a
+      # count rather than a volume.
+      #
+      # NB none of these may be "0" — in the tier namespace 0 means *no ceiling*
+      # (it means "off" only for an entitlement), so a zero here would quietly do
+      # the opposite of what it reads like.
+      FUGAZI_SERVICE_TIER_FREE_MAX_UPLOAD_BYTES = mib 16;
+      FUGAZI_SERVICE_TIER_FREE_MAX_UNCOMPRESSED_BYTES = mib 128;
+      FUGAZI_SERVICE_TIER_FREE_MAX_MEMBER_BYTES = mib 32;
+      FUGAZI_SERVICE_TIER_FREE_MAX_ROWS_TOTAL = "2000000";
+
+      # --- the database pool -------------------------------------------------
+      # One Postgres serves both kinds alongside Nextcloud, Immich, Prefect and
+      # the rest, so these are a share of a shared server rather than a service
+      # sizing its own. `pool_timeout` is deliberately short upstream (5s): it is
+      # time spent inside connect(), and a 502 after five seconds is a better
+      # answer than a request that might come back in half a minute.
+      FUGAZI_SERVICE_DB_POOL_SIZE = if isProd then "10" else "5";
+      FUGAZI_SERVICE_DB_MAX_OVERFLOW = if isProd then "20" else "10";
+      # The bar store's own pool. Every call into it is asyncio.to_thread, so it
+      # is bounded by the threadpool rather than by request concurrency — more
+      # connections than there are threads is capacity nothing can use.
+      FUGAZI_SERVICE_DB_BAR_POOL_SIZE = if isProd then "5" else "3";
+
+      # --- what is on show ---------------------------------------------------
+      # /docs, /redoc and /openapi.json. Upstream ties these to ENVIRONMENT, and
+      # the module pins that to "production" on both kinds to keep the startup
+      # preflight armed — so this is the knob that separates the two concerns
+      # again. Staging serves them because the API surface is the thing being
+      # tried; the public deployment does not, because an interactive console
+      # against a live service invites exactly the traffic the tier ceilings
+      # exist to bound.
+      FUGAZI_SERVICE_DOCS = if isProd then "0" else "1";
+
+      # Never on a deployment that mails real people: the dev outbox swallows
+      # verification mail into a table instead of sending it, which reads as a
+      # silently broken signup rather than a disabled one.
+      FUGAZI_SERVICE_DEV_OUTBOX = "0";
+
+      # INFO on both. DEBUG is the knob when something needs watching — worth
+      # remembering that journald here is capped by SystemMaxUse (settings.nix),
+      # so leaving it on trades away the older logs.
+      FUGAZI_SERVICE_LOG_LEVEL = "INFO";
+
+      # --- the trading circuit breaker ---------------------------------------
+      # The service-wide kill switch, and it stays OFF because a deployment that
+      # cannot trade is not exercising the path that these gates exist for. It is
+      # one variable and a restart — the control an operator wants at 3am, which
+      # is exactly when nobody wants to reason about per-deployment state — and
+      # it is also one of the five levers /admin can move without a rebuild.
+      FUGAZI_SERVICE_TRADING_HALTED = "0";
+    }
+    // lib.optionalAttrs (!isProd) {
+      # --- staging only ------------------------------------------------------
+      # Registration limited to @fugazitrade.com. The app is perfectly usable by
+      # anyone holding such an address; what this withholds is an account to a
+      # passer-by, and it costs no codes to distribute or rotate. Checked in POST
+      # /v1/auth/register after the per-address rate limit and before the argon2
+      # hash, so a non-matching address gets a 403 with no account row and no
+      # verification mail — the SPA surfaces it as a failed registration rather
+      # than an inbox that never fills. Comma-separated, compared lowercased
+      # against the part after the LAST `@`, exact match only: a subdomain is a
+      # different domain.
+      #
+      # UNSET on prod, which is what open signup to the internet means, and the
+      # reason this key is in the staging-only block rather than set to "" — an
+      # empty allow-list and an absent one both mean "anybody", and saying it by
+      # omission is harder to misread.
+      #
+      # It gates REGISTRATION and nothing else. Existing accounts on any domain
+      # log in, reset passwords and run backtests exactly as before; the gate is
+      # not retroactive and evicts nobody. An administrator can move
+      # `signup_mode` from /admin at runtime but NOT this list — upstream treats
+      # an allow-list as configuration rather than an operational lever, so both
+      # widening and narrowing it are a rebuild.
+      #
+      # Worth knowing before handing anyone the link: fugazitrade.com's MX is a
+      # registrar forwarder, not this host's Postfix, so an address only receives
+      # its verification mail if a forwarder exists for it — and
+      # requireVerifiedEmail is on (the module default), so a token is refused at
+      # login until it is redeemed.
+      FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
+
+      # Fractions, not percentages — 0.10 is ten percent, and upstream refuses a
+      # value above 1.0 precisely because `10` would parse as "never halt" and a
+      # limit that silently does nothing is the failure mode worth designing out.
+      # Measured on the flow-adjusted curve, so a withdrawal cannot trip them.
+      #
+      # Set HERE and not on prod, which is the opposite of how a safety net
+      # usually scales, and deliberate. Staging is where the venue wiring is
+      # least proven and where the money at risk is the instance operator's own,
+      # so a tight breaker costs a halted test run. On a public deployment these
+      # same two numbers would halt STRANGERS' deployments at a threshold nobody
+      # agreed to — that is a product decision with a refund attached, and it
+      # wants making before launch rather than inheriting whatever staging found
+      # convenient. Upstream's default for both is unset, i.e. no halt.
+      FUGAZI_SERVICE_MAX_DRAWDOWN_FRACTION = "0.10";
+      FUGAZI_SERVICE_MAX_DAILY_LOSS_FRACTION = "0.05";
+    };
 
   configuration =
     inputs@{ config, options, lib, pkgs, ... }:
@@ -389,35 +643,58 @@ let
       # Its NixOS module (imported above) derives the units from the same pkgs.
       nixpkgs.overlays = [ fugazi-web.overlays.default ];
 
-      # ONE instance for now, and it is `testing`. Everything that has been built
-      # so far — the accounts, the uploaded datasets, the tier table, the running
-      # deployments — moves here rather than staying on a `prod` that is not ready
-      # to be called that. The public name is deliberately dark until launch; see
-      # the note under my.web-server for what fugazitrade.com serves meanwhile.
+      # ONE instance for now, and it is `testing` — a name for what this is rather
+      # than a `prod` that is not ready to be called that. It is also EMPTY: the
+      # accounts, the uploaded datasets and the running deployments built up to
+      # here were left behind rather than carried over, so this starts from a
+      # schema and nothing else (see databaseName below for why that was the
+      # cheaper end of the trade). The public name is deliberately dark until
+      # launch; see the note under my.web-server for what fugazitrade.com serves
+      # meanwhile.
       #
       # `prod` will be a sibling entry when it launches: its own hostName, its own
       # port (8765 is left free for exactly that), its own database and its own JWT
-      # secret. Its intended shape is in git — commit 3224eb7, which had both
-      # instances defined — rather than sitting here commented out.
+      # secret at `fugazi-web/prod/jwt-secret`. Adding it is now only additive —
+      # this instance no longer holds any name `prod` would want, which was the
+      # point of finishing the rename below. Its intended shape is in git — commit
+      # 3224eb7, which had both instances defined — rather than sitting here
+      # commented out.
       my.fugazi-web.instances.testing = {
         hostName = "testing.fugazitrade.com";
         port = 8766;
 
-        # The database and the JWT secret are the ones ALREADY IN USE, not fresh
-        # ones. That is the whole point of the move: this instance is not a copy of
-        # the deployment, it *is* the deployment, renamed. Keeping `fugazi` means
-        # every account, dataset and running deployment carries over with no dump
-        # and no migration, and keeping `fugazi/env` means nobody is logged out —
-        # the JWT signature is all the API verifies, so a fresh key would
-        # invalidate every session in existence.
+        # Everything this instance owns is named after it, and the rename is
+        # finished: `fugazi_testing` is the database, the Postgres role and the OS
+        # user in one (the module derives all three from this name so peer auth
+        # over the socket works), and the JWT secret beside it is its own.
         #
-        # The names therefore read one notch off (instance `testing` on database
-        # `fugazi`) and that is correct rather than sloppy: renaming a live
-        # database to match a nix attribute would be moving real data to satisfy a
-        # label. When `prod` launches it gets its own, and this one keeps what it
-        # has.
-        databaseName = "fugazi";
-        environmentFile = config.sops.templates."fugazi/env".path;
+        # It did not start that way. The instance was the running deployment
+        # renamed, so it kept the `fugazi` database and the `fugazi/env` key it
+        # already had — which carried every account across, at the cost of an
+        # instance whose name matched none of its resources and a key sitting
+        # under a prefix `prod` will want.
+        #
+        # Finishing the rename STARTS THIS INSTANCE EMPTY, deliberately, and that
+        # is the part worth being unambiguous about: nothing was dumped and
+        # nothing was restored. The accounts, the uploaded datasets and the
+        # deployments that were running are not here. What the old database held
+        # was the record of a service being built rather than a service with users
+        # to keep faith with, and a dump/restore to preserve it would have bought
+        # continuity nobody needed while making the first thing in a fresh
+        # deployment a set of rows nobody chose. Alembic builds the schema at head
+        # on first start. The app-level `fugazi` account has to be REGISTERED
+        # AGAIN — FUGAZI_SERVICE_ADMINS below grants it the role on the next start
+        # once it exists, and TIER_ASSIGNMENTS puts it back on the testing tier,
+        # but neither creates the account, and signup still has to pass the domain
+        # gate and the mail verification the same as anyone's.
+        #
+        # The old `fugazi` database is still on the box regardless — NixOS never
+        # drops a database or a role, and nothing here asked it to. It is not a
+        # rollback anyone plans to take, just the previous state left where it
+        # fell. Drop it by hand once this instance has been exercised, since until
+        # then it is also being backed up.
+        databaseName = "fugazi_testing";
+        environmentFile = config.sops.templates."fugazi-web/testing/env".path;
 
         # The whole `packages` output of the second input, in one go, so a backend
         # and a frontend cannot end up from different branches. This single line is
@@ -451,161 +728,33 @@ let
 
       # Knobs modules/fugazi-web deliberately doesn't re-expose go straight on the
       # upstream option; `environment` is an attrsOf, so these merge with the keys
-      # the module sets rather than replacing them. Per INSTANCE, so this is the
-      # whole of the policy for the one deployment that exists — everything below
-      # is what has been decided so far, moved here intact rather than re-derived.
-      services.fugazi-web.instances.testing.environment = {
-        # Registration is limited to @fugazitrade.com addresses. SIGNUP_MODE stays
-        # upstream's "open" — the domain gate is the whole of the policy, and it
-        # costs no codes to distribute or rotate. Checked in POST
-        # /v1/auth/register, after the per-address rate limit and before the
-        # argon2 hash: a non-matching address gets a 403 with no account row and
-        # no verification mail, so the SPA surfaces it as a failed registration
-        # rather than an inbox that never fills. The value is comma-separated and
-        # compared lowercased against the part after the LAST `@`, exact match
-        # only — a subdomain is a different domain — and unset (upstream's
-        # default) means anybody, so widening this list is how more people get in.
-        #
-        # This gates REGISTRATION and nothing else. Accounts that already exist,
-        # including any on another domain from the window when this was open, log
-        # in, reset passwords and run backtests exactly as before; the gate is not
-        # retroactive and does not evict anyone. When `prod` launches it is a
-        # separate instance with its own environment and inherits none of this.
-        #
-        # An administrator can move `signup_mode` (open/invite/closed) from the
-        # panel at runtime, but NOT this list: upstream treats an allow-list as
-        # configuration rather than an operational lever, so both widening and
-        # narrowing it are a rebuild.
-        #
-        # It is the outer of two locks, not a replacement for the inner one. What
-        # is actually worth withholding is a venue connection, and that stays
-        # `connect_brokers` — an entitlement `free` does not hold, refused with a
-        # 403 at POST /v1/brokers before any credential reaches the network (and
-        # FUGAZI_SERVICE_SECRET_KEY is still unwired besides, so a broker connect
-        # 503s instance-wide). The domain gate decides who gets an account; the
-        # tier ceilings below decide what an account may spend.
-        #
-        # Registration is not an open mail relay either: upstream budgets it at
-        # 5/hour keyed on BOTH the source address and the target inbox, so neither
-        # one attacker nor one victim's inbox can be spent past that. See
-        # trustedProxies above for why that keying works behind Cloudflare.
-        #
-        # Worth knowing before handing anyone the link: fugazitrade.com's MX is a
-        # registrar forwarder, not this host's Postfix, so an address only
-        # receives its verification mail if a forwarder exists for it — and
-        # requireVerifiedEmail is on (the module default), so a token is refused
-        # at login until it is redeemed.
-        FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
+      # the module sets rather than replacing them. The policy itself is the
+      # `fugaziEnvironment` table at the top of this file, which carries a column
+      # for `prod` beside this one — see its header for what is set, what is
+      # deliberately unset, and why the two kinds differ where they do.
+      services.fugazi-web.instances.testing.environment = fugaziEnvironment "testing";
 
-        # That leaves compute and disk, which is what everything below bounds.
-
-        # The instance's own account goes on the `testing` TIER — which, awkwardly,
-        # is now also the name of the instance and has nothing to do with it. The
-        # tier is upstream's; the instance name is ours. Non-public means exactly
-        # one thing here: the tier is never *named* to a user, so an
-        # entitlement refusal cannot invite a stranger onto a plan nobody can
-        # buy. Its ceilings are `unlimited`'s (none), so this is not a widening
-        # over what it had; what it adds is the venue gates. `connect_okx` is
-        # held by `testing` and by nothing on sale, because how far a venue's
-        # live path has been exercised here is a different claim from what this
-        # plan costs, and only the second is `unlimited`'s to make.
-        #
-        # Keyed on the username, matched case-insensitively, and deliberately the
-        # *override* channel rather than the `users.tier` column: upstream
-        # deleted the revision that wrote that column precisely because who is on
-        # an internal tier is a property of this instance, not of the service —
-        # the same handle belongs to a stranger on somebody else's deployment.
-        # Configuration outranks the column, so this line is the whole of the
-        # assignment and no migration is involved.
-        #
-        # Either way the HARD_* bounds that keep one request from exhausting the
-        # process still apply, to this account as to every other.
-        FUGAZI_SERVICE_TIER_ASSIGNMENTS = "fugazi:testing";
-
-        # The same account is this instance's administrator: `/admin` in the SPA,
-        # and `/v1/admin` behind it. Keyed on the USERNAME like the assignment
-        # above, comma-separated, lowercased with a leading `@` stripped — so it
-        # is the handle `fugazi`, not an address.
-        #
-        # This variable GRANTS AND NEVER REVOKES, which is where it differs from
-        # TIER_ASSIGNMENTS. It is a union with the `is_admin` column rather than
-        # the authority over it, because it names a *set*: treating it as
-        # authoritative would silently demote, on the next restart, everyone
-        # promoted through the panel. Nothing is written to the database by
-        # setting it — the role appears on the next start and disappears if this
-        # line goes, and the panel refuses to demote a name listed here on the
-        # grounds that clearing the column would change nothing. It is how the
-        # first administrator exists on a database that has none; after that the
-        # panel is how the role moves.
-        #
-        # What it unlocks is the five controls that must not wait for a rebuild —
-        # maintenance_mode, disabled_features, signup_mode, trading_halted,
-        # max_concurrent_evaluations — plus the user and report queues. An
-        # override set there OUTRANKS this file, deliberately: the panel is the
-        # escape hatch, and one a deploy could silently overrule would be useless
-        # for the incident it exists for. So if signup or maintenance stops
-        # matching what is written here, look at /admin before looking at git.
-        #
-        # Note the domain gate above is NOT one of the five: `signup_mode` can be
-        # moved from the panel, the allow-list cannot.
-        #
-        # An API key is refused at /v1/admin even with write scope — the account's
-        # own key would otherwise be a way to do at one remove what the key is not
-        # allowed to do directly. Administration is a session, in a browser.
-        FUGAZI_SERVICE_ADMINS = "fugazi";
-
-        # --- ceilings on the process, shared by everybody ------------------
-        # A backtest is an OS process holding a multi-megabyte bar array, and the
-        # pool defaults to one worker per core — 16 here, on a box that is also
-        # running bitcoind, Jellyfin, Nextcloud, Postgres and the agents. 4 is the
-        # same call already made for Nix builds in settings.nix, for the same
-        # reason: this host's job is to stay responsive, not to finish one sweep
-        # first.
-        FUGAZI_SERVICE_MAX_WORKERS = "4";
-        # Admission control in front of that pool. Unset (0) means an unbounded
-        # queue, which does not degrade gracefully — it swaps, and every in-flight
-        # run gets slower together. Twice the pool leaves a little queue depth;
-        # past it callers get a 503 + Retry-After, which is the honest answer.
-        FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = "8";
-        # The largest archive this instance accepts, and the two knobs that have
-        # to agree about it. Both are pinned rather than left at upstream's
-        # defaults so that modules/fugazi-web's edge cap (maxRequestBodySize,
-        # 65 MiB = this plus a megabyte of multipart headroom) has something
-        # stable to track. `pro` is named here for the same reason and not
-        # because anyone is on it: the backend derives its transport ceiling from
-        # the HIGHEST finite tier cap, and pro ships at 256 MiB — a size no
-        # request could ever reach through Caddy, and one that would have the ASGI
-        # middleware read a quarter-gigabyte before the parser refused it.
-        FUGAZI_SERVICE_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
-        FUGAZI_SERVICE_TIER_PRO_MAX_UPLOAD_BYTES = toString (64 * 1024 * 1024);
-
-        # --- the `free` tier, which is what a stranger gets ----------------
-        # Everything not named here stays at upstream's `free` value, which is
-        # deliberately the constant the service shipped with — the sweep-shape
-        # limits (200 grid points, 10 grids, 10 axes, 100 values) are already
-        # sized for the smallest plausible account and need no help from us.
-        #
-        # This one is not a tightening but a gap: upstream leaves free's
-        # concurrency deliberately absent rather than inventing a number that
-        # would break existing instances on upgrade. Absent is fine single-tenant
-        # and wrong the moment signup is open — without it one account can hold
-        # all 8 slots above and everyone else gets 503s. At 2 it takes four
-        # distinct accounts to fill the queue.
-        FUGAZI_SERVICE_TIER_FREE_MAX_CONCURRENT_EVALUATIONS = "2";
-        # Uploaded datasets are the only thing a stranger leaves on the disk that
-        # outlives their request, and there is no per-account storage quota
-        # anywhere in the knob surface — the archive caps ARE the disk policy.
-        # Quartered from free's 64 MiB/512 MiB/128 MiB accordingly. Rows come down
-        # with them to stay proportionate; series stays at free's 500, being a
-        # count rather than a volume.
-        FUGAZI_SERVICE_TIER_FREE_MAX_UPLOAD_BYTES = toString (16 * 1024 * 1024);
-        FUGAZI_SERVICE_TIER_FREE_MAX_UNCOMPRESSED_BYTES = toString (128 * 1024 * 1024);
-        FUGAZI_SERVICE_TIER_FREE_MAX_MEMBER_BYTES = toString (32 * 1024 * 1024);
-        FUGAZI_SERVICE_TIER_FREE_MAX_ROWS_TOTAL = "2000000";
-        # NB none of these may be "0" — in the tier namespace 0 means *no ceiling*
-        # (it means "off" only for an entitlement), so a zero here would quietly
-        # do the opposite of what it reads like.
-      };
+      # Nothing instantiates the prod column yet, and an unforced `let` binding is
+      # never evaluated — so a typo in it would sit undisturbed until launch day,
+      # which is the worst possible morning to find one. This forces it, and
+      # asserts the invariant that actually spans both columns: the transport
+      # ceiling has to agree with the edge cap in modules/fugazi-web
+      # (maxRequestBodySize, 65 MiB), and a column that quietly raised its upload
+      # limit would turn Caddy into the real limit and hand callers a cut
+      # connection instead of the parser's 413.
+      assertions = [
+        {
+          assertion =
+            (fugaziEnvironment "prod").FUGAZI_SERVICE_MAX_UPLOAD_BYTES
+              == (fugaziEnvironment "testing").FUGAZI_SERVICE_MAX_UPLOAD_BYTES;
+          message = ''
+            fugaziEnvironment: the prod and testing columns disagree about
+            FUGAZI_SERVICE_MAX_UPLOAD_BYTES. Both are tracked by one edge cap
+            (my.fugazi-web.instances.<name>.maxRequestBodySize, 65MiB), so either
+            keep them equal or give each instance its own cap.
+          '';
+        }
+      ];
 
       # fugazi-web is a PRIVATE GitHub repo, pulled in as the `fugazi-web` flake
       # input — a tarball URL, so Nix's ordinary downloader fetches it and
