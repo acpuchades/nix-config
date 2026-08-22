@@ -455,8 +455,24 @@ in
             # 'unsafe-inline' on style-src is not slack: React writes style
             # attributes and recharts computes its layout that way, and there is no
             # nonce path for an attribute.
+            #
+            # 'wasm-unsafe-eval' and `data:` on connect-src are not slack either, and
+            # they are not the meta policy's stopgaps repeated -- a served policy owes
+            # both or it breaks a shipped feature. @react-pdf lays out through
+            # yoga-layout, an emscripten module carrying its WebAssembly inlined as
+            # base64: it fetches that base64 as a `data:` URL for
+            # `instantiateStreaming` and falls back to instantiating the buffer it
+            # already holds. There is no .wasm request to allow and no script to hash.
+            # Without the token every PDF report dies as `RuntimeError:
+            # Aborted(CompileError: call to WebAssembly.instantiate() blocked by CSP)`,
+            # which names neither the directive nor the dependency; without `data:` the
+            # report still renders but leaves two CSP errors per run in the console.
+            # 'wasm-unsafe-eval' admits WebAssembly and nothing else -- `eval` and
+            # `new Function` stay refused, which is why it exists apart from
+            # 'unsafe-eval'. Keep this in step with SPA_CSP in
+            # frontend/vite.config.ts.
             header {
-              Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+              Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
               X-Content-Type-Options "nosniff"
               X-Frame-Options "DENY"
               Referrer-Policy "no-referrer"
