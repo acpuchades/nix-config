@@ -155,10 +155,40 @@ in
       #   sops machines/homeserver/secrets/default.yml
       "samba/alex" = { mode = "0400"; };
 
-      # JWT signing key for fugazi-web (rendered into the fugazi/env template
-      # below, injected as FUGAZI_SERVICE_JWT_SECRET). A change invalidates every
-      # session. Generate with: openssl rand -base64 48
-      "fugazi/jwt-secret" = { mode = "0400"; };
+      # JWT signing key for the `testing` instance (rendered into the
+      # fugazi-web/testing/env template below, injected as
+      # FUGAZI_SERVICE_JWT_SECRET). A change invalidates every session.
+      # Generate with: openssl rand -base64 48
+      #
+      # Nested per INSTANCE under the service, `fugazi-web/<instance>/`, the same
+      # shape the agents use at `openclaw/<agent>/`. Per-instance is not tidiness:
+      # the signature is all the API verifies, so two instances holding one key
+      # accept each other's session tokens and an account on staging is an account
+      # on the deployment beside it. `prod` gets `fugazi-web/prod/jwt-secret` when
+      # it launches, which is a sibling to add rather than a prefix to negotiate.
+      "fugazi-web/testing/jwt-secret" = { mode = "0400"; };
+
+      # Fernet key for the broker-credential vault (FUGAZI_SERVICE_SECRET_KEY),
+      # rendered into the same env template. Without it the backend composes a
+      # NullVault and every broker connect 503s instance-wide — paper wallets are
+      # unaffected, but a real venue account cannot be attached at all.
+      #
+      # It is URLSAFE base64 of exactly 32 bytes, not the 48 the JWT key uses:
+      # Fernet takes a fixed-width key and a wrong length fails at vault
+      # construction rather than at first use. Generate with
+      #   openssl rand -base64 32 | tr '+/' '-_'
+      #
+      # LOSING THIS IS NOT LIKE LOSING THE JWT KEY. A fresh JWT secret logs
+      # everyone out and costs a login; a fresh vault key makes every stored
+      # broker credential permanently undecryptable, and the accounts holding
+      # them have to re-enter their venue API secrets. It is in the sops file and
+      # therefore in the backups, which is the whole of the recovery story.
+      #
+      # Per instance for the same reason the JWT key is: one key across two
+      # deployments means staging can decrypt the credentials of the one beside
+      # it, which is a worse leak than a shared session because it is the
+      # venue's secret rather than ours.
+      "fugazi-web/testing/secret-key" = { mode = "0400"; };
 
       # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
       # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
@@ -371,20 +401,27 @@ in
       };
 
       # JWT signing key for the fugazi-web backend, loaded as its EnvironmentFile.
-      # Owned by the fugazi service user (== databaseName) that runs uvicorn.
+      # Owned by the service user, which is the instance's databaseName
+      # (`fugazi_testing`) — the module derives the OS user, the Postgres role and
+      # the database from that one name so peer auth over the socket works.
       #
-      # Consumed by the `testing` INSTANCE, which is the one deployment that
-      # exists — it took over the running service's database and this key rather
-      # than being handed fresh ones, so nobody was logged out by the rename. A
-      # `prod` instance gets its own of both when it launches; sharing this one
-      # would make a session minted on testing valid there, since the signature
-      # is all the API checks.
-      "fugazi/env" = {
-        owner = "fugazi";
-        group = "fugazi";
+      # Consumed by the `testing` INSTANCE and nothing else. It used to be
+      # `fugazi/env`, shared with the database of the same name, because the
+      # instance was the running deployment renamed and neither was worth
+      # disturbing for a label. Both were separated when the rename was finished:
+      # the instance now has a database, a role, a user and a key that are all its
+      # own, and the flat `fugazi/` prefix gave way to `fugazi-web/<instance>/` so
+      # that `prod` is a sibling to add rather than a name to argue over. Sharing
+      # one key across the two would make a session minted on staging valid on the
+      # deployment, since the signature is all the API checks — separate databases
+      # do not help, the token carries its claims.
+      "fugazi-web/testing/env" = {
+        owner = "fugazi_testing";
+        group = "fugazi_testing";
         mode = "0400";
         content = ''
-          FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi/jwt-secret"}
+          FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi-web/testing/jwt-secret"}
+          FUGAZI_SERVICE_SECRET_KEY=${config.sops.placeholder."fugazi-web/testing/secret-key"}
         '';
       };
 
