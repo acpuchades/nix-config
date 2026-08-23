@@ -1051,6 +1051,44 @@ let
           "/var/lib/openclaw/eva"                            # eva agent state/memory
           "/var/lib/hass"                                    # Home Assistant config
           "/srv/prefect"                                     # Prefect data dir
+
+          # --- machine identity, not user data --------------------------------
+          # These are what turn "the config rebuilds" into "the machine comes
+          # back". Small, and none of them is reproducible from this repo.
+          #
+          # /etc/ssh holds the host keys, and the ed25519 one IS the age identity
+          # sops-nix decrypts every homeserver secret with (sops.age.sshKeyPaths).
+          # Storing it here is safe — restic encrypts client-side with AES-256
+          # before anything reaches B2, which only ever sees opaque blobs, and
+          # the repo password never leaves the host. What it does NOT do is
+          # bootstrap itself: the repo password is `backup/restic-password`, a
+          # sops secret decrypted by this very key, so a copy of the restic
+          # password (and the master age key) must live OFF this machine — and
+          # not only in Vaultwarden, which is hosted here. With those two in hand
+          # this entry is what makes a rebuild on new hardware a restore rather
+          # than a re-key of every secret in the repo.
+          "/etc/ssh"                                         # host keys = the sops age identity
+          # NixOS records its allocated uids/gids here. Restore the data without
+          # it and every dynamically-allocated service user can come back on a
+          # different number, leaving the restored trees owned by nobody.
+          "/var/lib/nixos"                                   # uid/gid allocation map
+          # ACME account key + issued certs. Re-issue is automatic, so this is
+          # only a convenience — but it means HTTPS works the minute the new box
+          # boots, and it keeps a migration from spending a Let's Encrypt
+          # duplicate-certificate rate limit on ~15 vhosts at once.
+          "/var/lib/acme"
+          # The bridge's long-term identity: lose it and the relay comes back as
+          # a brand-new bridge (new fingerprint, reputation and uptime history
+          # reset, and any obfs4 bridgeline already handed out stops working).
+          "/var/lib/tor"
+          # Accounts, watch state and library metadata. The MEDIA is deliberately
+          # not backed up (below), but "who watched what, and where they left
+          # off" is not re-acquirable from anywhere.
+          "/var/lib/jellyfin"
+          # Torrent files + resume state. Tiny, and without it every active
+          # transfer restarts from zero and re-hashes.
+          "/var/lib/transmission"
+
           config.my.cloud-suite.nextcloud.dataDir            # /srv/encrypted/nextcloud
           config.my.cloud-suite.bitwarden.dataDir            # /srv/encrypted/vaultwarden
           config.my.cloud-suite.immich.mediaLocation         # /srv/encrypted/immich
@@ -1061,6 +1099,20 @@ let
         exclude = [
           "/srv/shared/Media"
           "/srv/shared/Downloads"
+          # 1.2 T of sequencing data — on its own it was ~60% of every snapshot
+          # and pushed the repo past 2 TiB, which is the difference between a
+          # restore measured in hours and one measured in days (plus the B2
+          # egress to match). It is bulk source data, not service state, so it
+          # belongs on its own copy (a second local disk, or a separate restic
+          # repo with its own retention) rather than in the nightly one whose job
+          # is getting this HOST back.
+          "/srv/shared/NGS"
+          # Re-derivable from the media itself: artwork/NFO scraped from the
+          # metadata providers, and transcodes that are pure cache. The parts of
+          # /var/lib/jellyfin worth keeping (library.db, users, playstate) are
+          # not in these.
+          "/var/lib/jellyfin/metadata"
+          "/var/lib/jellyfin/transcodes"
           "/srv/shared/**/.incomplete"
           "/var/lib/hass/*.log*"
           # Per-home caches / build artifacts: re-acquirable and they churn every
