@@ -1,4 +1,6 @@
-{ config, ... }:
+# `uplinkInterface` is a module argument set in ./default.nix (_module.args), so
+# the physical NIC is named in exactly one place — see the comment there.
+{ config, uplinkInterface, ... }:
 {
   networking = {
     hostName = "homeserver"; # Define your hostname.
@@ -10,7 +12,7 @@
 
     wireless = {
       enable = true;
-      interfaces = [ "wlp3s0" ];
+      interfaces = [ uplinkInterface ];
       userControlled = false;
       secretsFile = config.sops.templates."wifi/secrets".path;
       networks."MIWIFI_5G_dehC" = {
@@ -30,7 +32,7 @@
       ];
 
       # Trust the LAN: accept all inbound traffic sourced from the local subnet
-      # (wlp3s0 is on 192.168.2.0/24). Internet traffic routed in via the router
+      # (the uplink is on 192.168.2.0/24). Internet traffic routed in via the router
       # keeps its non-LAN source address and is unaffected. iptables backend —
       # nftables is not enabled here (the egress modules rely on iptables).
       extraCommands = ''

@@ -23,6 +23,18 @@ let
   inherit (nixpkgs) lib;
 
   homeServerLocalAddress = "192.168.2.2";
+
+  # The physical uplink, named ONCE. Interface names are derived from the
+  # device's PCI/USB path, so they are a property of the hardware and not of
+  # this configuration: the same config on another box calls its wireless NIC
+  # something else, and every reference here silently stops matching. That is
+  # three separate outages at once — no static LAN address (the networkd network
+  # below), no association (networking.wireless.interfaces), and no NAT for
+  # WireGuard clients (my.vpn-server.upstreamInterface) — for a box whose only
+  # uplink is this radio, so there is no second path to log in and fix it.
+  # Exported through _module.args below so ./networking.nix reads the same
+  # string; grep for it before moving hardware, and change it here only.
+  uplinkInterface = "wlp3s0";
   adminEmailAddress = "admin@acpuchades.com";
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
 
@@ -373,9 +385,13 @@ let
         fugazi-web.nixosModules.default
       ];
 
+      # Make `uplinkInterface` a module argument, so the imports above (notably
+      # ./networking.nix) name the same interface without re-declaring it.
+      _module.args = { inherit uplinkInterface; };
+
       systemd.network.networks = {
-        "10-wlp3s0" = {
-          matchConfig.Name = "wlp3s0";
+        "10-${uplinkInterface}" = {
+          matchConfig.Name = uplinkInterface;
           # Static LAN IP. The server's identity (192.168.2.2) is hardcoded
           # across AdGuard rewrites, the *.acpuchades.com vhosts,
           # homeServerLocalAddress and the router's 51820 port-forward, so it
@@ -434,7 +450,7 @@ let
         serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
         serverEndpoint = "vpn.acpuchades.com:51820";
         clientDns = "10.0.0.1";
-        upstreamInterface = "wlp3s0";
+        upstreamInterface = uplinkInterface;
         peers = {
           alex-laptop = {
             publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
