@@ -146,6 +146,10 @@ else.
 
 ## 5. Restoring data
 
+How the backup itself works — what is in a snapshot, why the databases are
+dumped rather than copied, and per-service restore recipes — is in
+[BACKUP.md](BACKUP.md). What follows is only the migration path.
+
 With `RESTIC_PASSWORD`, `B2_ACCOUNT_ID` and `B2_ACCOUNT_KEY` in the environment:
 
 ```sh
