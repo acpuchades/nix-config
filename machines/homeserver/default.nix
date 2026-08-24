@@ -54,6 +54,82 @@ let
     "2405:8100::/32" "2a06:98c0::/29" "2c0f:f248::/32"
   ];
 
+  # Every cadence a venue this service fetches from actually publishes — the union
+  # of Binance's, OKX's and Coinbase's candle intervals, which is the same closed
+  # list the SPA offers when composing a dataset (`TRADING_CADENCES` in
+  # frontend/src/frequencies.ts). Fine to coarse, because a list is served to the
+  # deployment picker in the order it is written and the SPA does not sort it (which
+  # is also why this is a LIST — `lib.attrNames` would file "15m" before "1d" and put
+  # "4h" last, an order that reads as nothing).
+  #
+  # Every entry carries the systemd cadence its timer would run on, including the
+  # two no kind enables today. What makes a cadence available IS a timer, so writing
+  # the whole table once means offering a finer one later is moving a floor rather
+  # than inventing an OnCalendar under time pressure.
+  fugaziAvailableCadences = [
+    { freq = "1m"; onCalendar = "minutely"; }
+    { freq = "3m"; onCalendar = "*:0/3"; }
+    { freq = "5m"; onCalendar = "*:0/5"; }
+    { freq = "15m"; onCalendar = "*:0/15"; }
+    { freq = "30m"; onCalendar = "*:0/30"; }
+    { freq = "1h"; onCalendar = "hourly"; }
+    { freq = "2h"; onCalendar = "0/2:00"; }
+    { freq = "4h"; onCalendar = "0/4:00"; }
+    { freq = "6h"; onCalendar = "0/6:00"; }
+    { freq = "8h"; onCalendar = "0/8:00"; }
+    { freq = "12h"; onCalendar = "0/12:00"; }
+    { freq = "1d"; onCalendar = "daily"; }
+    # Every third day OF THE MONTH, not every third day: systemd steps day-of-month,
+    # so the sequence restarts at each month boundary (…, 28, 31, then the 1st).
+    # Every gap that produces is three days or SHORTER, so the error is an extra tick
+    # that finds no closed bar rather than a bar nobody traded — the direction to be
+    # wrong in, and the reason this is not written as a 72-hour OnUnitActiveSec.
+    { freq = "3d"; onCalendar = "*-*-01/3"; }
+    { freq = "1w"; onCalendar = "weekly"; }
+    { freq = "1M"; onCalendar = "monthly"; }
+  ];
+
+  # The finest cadence a KIND schedules — everything from here up is enabled, since
+  # the table above is ordered. Said as a token rather than a number of seconds so
+  # it reads as one of the entries it selects.
+  #
+  # `5m` for staging: 288 ticks a day per live deployment, each a venue round trip
+  # and a wallet resume, on a box also running bitcoind, Postgres, Nextcloud and the
+  # agents — affordable for the operator's own deployments and for nobody else's,
+  # which is what the `sub_hourly_cadence` gate below is for. `1m` and `3m` stay off
+  # the floor: at 1440 and 480 ticks a day the tick would be starting again as often
+  # as it finishes, and that wants measuring on this hardware before it is offered.
+  #
+  # `1h` for prod, and deliberately not inherited from staging: what a PLAN may tick
+  # at is a pricing decision with a cost attached, and launch day is not the morning
+  # to discover it was made by a default here.
+  fugaziTickFloor = kind: if kind == "prod" then "1h" else "5m";
+
+  # The cadences a kind schedules: the available table from its floor upward.
+  #
+  # This is one fact answering two questions that must not be allowed to disagree —
+  # which timers exist (`deploymentTickFrequencies` on the instance below) and which
+  # cadences the API will let a deployment be CREATED on
+  # (FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES, derived in fugaziEnvironment). The cron
+  # matches a deployment to a run by EXACT frequency equality, so a cadence offered
+  # without a timer behind it saves, reads as RUNNING and is then never advanced: no
+  # error, ever, and an empty ledger for as long as anybody leaves it there. An
+  # assertion below re-checks that the two still agree, since deriving both from one
+  # list only helps until somebody sets one of them by hand.
+  fugaziTickCadences = kind:
+    let
+      floor = fugaziTickFloor kind;
+      index = lib.lists.findFirstIndex (c: c.freq == floor)
+        (throw "fugaziTickFloor: ${floor} is not in fugaziAvailableCadences")
+        fugaziAvailableCadences;
+    in
+    lib.drop index fugaziAvailableCadences;
+
+  # The same table in the shape upstream's option wants: frequency → OnCalendar.
+  fugaziTickFrequencies = kind:
+    lib.listToAttrs
+      (map (c: lib.nameValuePair c.freq c.onCalendar) (fugaziTickCadences kind));
+
   # fugazi-web's policy surface, as ONE table with a column per deployment KIND.
   # Both columns are written here even though only `testing` is instantiated
   # below, and that is the point of the shape: the alternative is a prod column
@@ -246,6 +322,18 @@ let
       # so leaving it on trades away the older logs.
       FUGAZI_SERVICE_LOG_LEVEL = "INFO";
 
+      # --- which cadences a deployment may run on ----------------------------
+      # Derived from the timer table above rather than written beside it: this is
+      # the same fact said to the API, and the failure mode of the two drifting is
+      # a deployment that saves, shows as RUNNING and is never advanced.
+      #
+      # Read by the app the `testing` instance runs; a build that predates the
+      # setting simply never opens the variable, so it can be unread but never
+      # wrong. Note this decides which cadences EXIST here, for every account
+      # including the operator's own — no plan buys a timer nobody scheduled.
+      FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES =
+        lib.concatMapStringsSep "," (c: c.freq) (fugaziTickCadences kind);
+
       # --- the trading circuit breaker ---------------------------------------
       # The service-wide kill switch, and it stays OFF because a deployment that
       # cannot trade is not exercising the path that these gates exist for. It is
@@ -300,6 +388,43 @@ let
       # convenient. Upstream's default for both is unset, i.e. no halt.
       FUGAZI_SERVICE_MAX_DRAWDOWN_FRACTION = "0.10";
       FUGAZI_SERVICE_MAX_DAILY_LOSS_FRACTION = "0.05";
+
+      # --- who may reach the sub-hourly cadences ----------------------------
+      # The other half of scheduling a sub-hourly timer, and the half that decides
+      # WHO. The floor above makes 5m, 15m and 30m EXIST on this instance;
+      # `sub_hourly_cadence` says which tier may create a deployment on one (a 403
+      # at POST /v1/deployments, and deliberately a different answer from the
+      # refusal for a cadence nobody scheduled — no plan lifts that one).
+      #
+      # THE TESTING TIER AND NOTHING ELSE, which takes three lines because upstream
+      # prices the gate rather than reserving it: `pro`, `desk` and `firm` all hold
+      # it, on the argument that for somebody paying, a tick every five minutes is a
+      # recurring cost with a price attached. Here nobody is paying, the box is also
+      # running bitcoind, Nextcloud, Postgres and the agents, and 288 venue round
+      # trips a day per deployment is the operator's own bill — so all three public
+      # rungs are closed and the only account left holding the gate is this
+      # instance's: FUGAZI_SERVICE_TIER_ASSIGNMENTS puts `fugazi` on the non-public
+      # `testing` tier, which holds every gate and has no ticks/day ceiling. `free`
+      # and `starter` never held it, so they need no line.
+      #
+      # It is the only per-cadence gate upstream has, and it draws its line at one
+      # hour — so the coarse end of the table (2h and up) is open to every tier by
+      # design, bounded by each one's max_deployment_ticks_per_day rather than by a
+      # gate. Nothing reaches those here either, since signup is domain-gated and no
+      # account but `fugazi` exists, but that is a fact about who is registered and
+      # not something this line says.
+      #
+      # `0` is OFF here. In the tier namespace 0 means "no ceiling" for a LIMIT and
+      # "off" for a GATE — the two are only safe apart because their field names
+      # are, and these three are gates.
+      #
+      # Staging-only, and not merely because prod's floor is hourly: this says what
+      # a PLAN may reach, so it is a pricing decision the day there are customers,
+      # and inheriting it from what staging found convenient is exactly how that
+      # decision gets made by nobody.
+      FUGAZI_SERVICE_TIER_PRO_SUB_HOURLY_CADENCE = "0";
+      FUGAZI_SERVICE_TIER_DESK_SUB_HOURLY_CADENCE = "0";
+      FUGAZI_SERVICE_TIER_FIRM_SUB_HOURLY_CADENCE = "0";
     };
 
   configuration =
@@ -766,6 +891,23 @@ let
       # deliberately unset, and why the two kinds differ where they do.
       services.fugazi-web.instances.testing.environment = fugaziEnvironment "testing";
 
+      # The tick timers, from the same table the environment above derives its
+      # FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES from — every published cadence from
+      # this kind's floor (5m) up, which is thirteen units rather than upstream's
+      # four. Setting this replaces upstream's default wholesale rather than adding
+      # to it, which is why the table carries the coarse ones too.
+      #
+      # A timer for a cadence nobody is deployed on is a oneshot that wakes, finds
+      # no deployment due and exits — cheap, and the reason offering the whole
+      # published range costs nothing until somebody uses it.
+      #
+      # The three sub-hourly units need sizing the imported (main-branch) module
+      # does not do — a deadline inside their own period and a self-imposed budget
+      # under it — and modules/fugazi-web adds both for any frequency under an hour.
+      # Read that comment before moving the floor to 3m or 1m.
+      services.fugazi-web.instances.testing.deploymentTickFrequencies =
+        fugaziTickFrequencies "testing";
+
       # Nothing instantiates the prod column yet, and an unforced `let` binding is
       # never evaluated — so a typo in it would sit undisturbed until launch day,
       # which is the worst possible morning to find one. This forces it, and
@@ -784,6 +926,34 @@ let
             FUGAZI_SERVICE_MAX_UPLOAD_BYTES. Both are tracked by one edge cap
             (my.fugazi-web.instances.<name>.maxRequestBodySize, 65MiB), so either
             keep them equal or give each instance its own cap.
+          '';
+        }
+        {
+          # The scheduled timers and the cadences the API offers are one fact said
+          # twice, and they are only equal by construction while both come from
+          # fugaziTickCadences. This catches the afternoon somebody sets one of them
+          # by hand — the direction that hurts is offering a cadence with no timer,
+          # which is a deployment that saves, reads as RUNNING and is never advanced
+          # (no error, ever), so it is worth failing a rebuild over.
+          #
+          # Sorted on both sides: `attrNames` is alphabetical while the environment
+          # keeps the table's own order, and this asserts they are the same SET.
+          assertion =
+            let
+              sorted = lib.sort (a: b: a < b);
+              scheduled = lib.attrNames
+                config.services.fugazi-web.instances.testing.deploymentTickFrequencies;
+              offered = lib.splitString ","
+                (fugaziEnvironment "testing").FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES;
+            in
+            sorted scheduled == sorted offered;
+          message = ''
+            fugazi-web testing: the scheduled deployment ticks and
+            FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES disagree. A cadence offered
+            without a timer is a deployment that saves, shows as RUNNING and is
+            never advanced; a timer without the cadence offered is a unit that
+            wakes to find nothing. Both come from fugaziTickCadences — set one
+            from the other rather than writing it out.
           '';
         }
       ];
