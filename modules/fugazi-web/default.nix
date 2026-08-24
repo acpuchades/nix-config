@@ -383,6 +383,26 @@ in
         # settings matter to all three, since the outbox is drained from both the
         # API's in-process loop and the maintenance timer.
         environment = {
+          # WHICH deployment this is, as opposed to what kind it is:
+          # FUGAZI_SERVICE_ENVIRONMENT is "production" on every instance, so
+          # without this the admin panel's badge falls back to a word that cannot
+          # tell `testing` from a second instance beside it — which is exactly the
+          # pair somebody has open in two tabs while changing a runtime control.
+          #
+          # Taken from the attribute name rather than asked for again: the name is
+          # already the whole of an instance's identity here (the unit, the state
+          # directory, the database and role, the Caddy vhost), so a second
+          # spelling would be one more thing to keep in step, and the badge could
+          # end up contradicting the unit whose logs are open beside it.
+          #
+          # Upstream sets this same variable from the same name — but on a branch
+          # whose MODULE this host does not import (see the `packages` option), and
+          # on the API unit alone, the API being the only reader (`/v1/admin/status`
+          # serves it). Keeping it here stays correct once the input catches up:
+          # `environment` is `attrsOf str`, so two definitions of one key merge
+          # while they are equal, and both are this same `name`. The whole cost of
+          # the overlap is that the crons carry a variable nothing there opens.
+          FUGAZI_SERVICE_INSTANCE_NAME = name;
           # Turns on the startup preflight (refuse to boot without a JWT secret, a
           # database URL or a real mailer — each of which otherwise fails silently)
           # and takes /docs, /redoc and /openapi.json off the air. All four
