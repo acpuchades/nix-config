@@ -334,6 +334,41 @@ let
       FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES =
         lib.concatMapStringsSep "," (c: c.freq) (fugaziTickCadences kind);
 
+      # --- what advances a live deployment -----------------------------------
+      # The runtime the tick composes. Upstream defaults it to `null` — a runtime
+      # that steps nothing and hands back the state it was given — on the grounds
+      # that turning a process into one that can place orders should be a
+      # deliberate act of configuration rather than what happens when a new build
+      # ships. That is the right default for a package and the wrong one for an
+      # instance: every tick unit below fires on schedule, finds its deployments,
+      # advances none of them and reports success, which is the same silent no-op
+      # the cadence table above exists to prevent — only harder to notice, because
+      # there is no missing timer to point at. `live` and `real` are accepted
+      # spellings of the same choice; anything else, including a typo, is Null.
+      #
+      # Set on BOTH columns, because it is the answer TRADING_HALTED already gives
+      # below: an instance that cannot trade is not exercising the path the tiers,
+      # the entitlements and the vault exist to guard. Worth reading with the
+      # drawdown breakers further down, which are staging-only — a prod column that
+      # trades with no MAX_DRAWDOWN_FRACTION behind it is the decision to settle
+      # before a prod instance is ever instantiated, not on the morning it is.
+      #
+      # This does not by itself put money at risk. What a deployment trades against
+      # is its WALLET, and a wallet is paper unless linked to a connected broker
+      # account — which needs the `connect_brokers` entitlement (`free` holds none)
+      # plus the per-venue one, and a vault key to decrypt the stored API secret.
+      # This switch decides whether the tick steps a strategy at all; those decide
+      # whose money it steps against.
+      #
+      # One thing changes on the REQUEST path too, and it is the reason to know
+      # this line is here: leaving RUNNING flattens, so pause and retire now place
+      # a real closing order where the Null runtime accepted the flag and ignored
+      # it. That is the intended behaviour — a paused deployment's equity is meant
+      # to be frozen, and a flat book marks to nothing — but it does mean pausing a
+      # broker-linked deployment is a trade, at the price of the moment it is
+      # clicked.
+      FUGAZI_SERVICE_DEPLOYMENT_RUNTIME = "fugazi";
+
       # --- the trading circuit breaker ---------------------------------------
       # The service-wide kill switch, and it stays OFF because a deployment that
       # cannot trade is not exercising the path that these gates exist for. It is
