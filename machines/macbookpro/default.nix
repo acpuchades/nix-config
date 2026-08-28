@@ -59,6 +59,7 @@ in
 
     modules = [
       ../../modules/r-dev/system.nix
+      ../../modules/prefect-server/system.nix
 
       (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
 
