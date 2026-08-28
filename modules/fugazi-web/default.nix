@@ -100,26 +100,6 @@ let
   # is not pinned to a second input.
   frontendOf = i: if i.packages == null then pkgs.fugazi-web-frontend else i.packages.frontend;
 
-  # A tick frequency in seconds ("15m" → 900). Same unit letters as upstream's
-  # `Frequency`, `M` (month) told from `m` (minute) by case exactly as it is there,
-  # and a throw rather than a fallback: a cadence this cannot read is one whose unit
-  # would be guessed, and guessing it wrong sizes a deadline by a factor of sixty.
-  cadenceSeconds = freq:
-    let
-      unit = lib.substring (lib.stringLength freq - 1) 1 freq;
-      count = lib.toInt (lib.substring 0 (lib.stringLength freq - 1) freq);
-      per = { "m" = 60; "h" = 3600; "d" = 86400; "w" = 604800; "M" = 2592000; };
-    in
-    count * (per.${unit} or (throw
-      "my.fugazi-web: deploymentTickFrequencies has an unparseable cadence '${freq}'"));
-
-  # A tick unit's own deadline: never longer than the 15 minutes upstream gives every
-  # unit, and never as long as the period itself, so a tick cannot survive into the
-  # slot after its own. 90% rather than 100% because the timer's RandomizedDelaySec
-  # can start the next run earlier relative to this one's end than the nominal period
-  # suggests.
-  tickTimeout = freq: lib.min 900 (cadenceSeconds freq * 9 / 10);
-
   instanceModule = { name, ... }: {
     options = {
       hostName = lib.mkOption {
@@ -436,43 +416,7 @@ in
     # postgresql-setup.service — and the API runs Alembic to head on startup, so
     # it must not win that race on a first boot. `after`/`requires` are
     # list-merged with upstream's, not replaced.
-    systemd.services = overInstances (name: _:
-      # Sub-hourly deployment ticks, sized against the cadence they serve.
-      #
-      # The imported module gives EVERY tick unit one flat TimeoutStartSec of 15
-      # minutes. That is generous headroom at `1h` and the whole period at `15m`,
-      # where two things go wrong quietly. A tick that runs long outlives its own
-      # slot, systemd declines to start the next run while the unit is still
-      # active, and the bars in between are never traded with nothing in the
-      # journal to say so. And the timeout itself is a SIGTERM mid-batch: the
-      # per-deployment commits already made survive, the rest are never advanced,
-      # and no JSON line is printed at all — so nobody learns.
-      #
-      # Each sub-hourly unit therefore gets a deadline inside its own period
-      # (`tickTimeout`), and a budget at 85% of that deadline, which is the tick
-      # stopping ITSELF first: it exits 0 and reports how many deployments it did
-      # not reach (`truncated` in its JSON line). Hourly and slower are untouched
-      # and behave exactly as upstream ships them.
-      #
-      # This is upstream's own arithmetic, from a branch whose MODULE this host
-      # does not import — see the `packages` option above for why an instance runs
-      # one branch's application under another's plumbing. Drop this block when
-      # the imported input carries it; the tell is a tick unit that already has a
-      # TimeoutStartSec shorter than 15m, at which point the mkForce below starts
-      # overriding a considered value rather than a flat one.
-      lib.mapAttrs'
-        (freq: _cal: lib.nameValuePair "fugazi-web-${name}-deployment-tick-${freq}" {
-          # A distinct key, so this merges with the environment upstream builds
-          # for the unit rather than conflicting with it.
-          environment.FUGAZI_SERVICE_DEPLOYMENT_TICK_BUDGET_SECONDS =
-            toString (tickTimeout freq * 85 / 100);
-          # mkForce because upstream defines this same key; two definitions of one
-          # serviceConfig setting is a conflict, not a merge.
-          serviceConfig.TimeoutStartSec = lib.mkForce "${toString (tickTimeout freq)}s";
-        })
-        (lib.filterAttrs (freq: _: cadenceSeconds freq < 3600)
-          config.services.fugazi-web.instances.${name}.deploymentTickFrequencies)
-    // {
+    systemd.services = overInstances (name: _: {
       "fugazi-web-${name}" = {
         after = [ "postgresql-setup.service" "postfix.service" ];
         requires = [ "postgresql-setup.service" ];
