@@ -93,17 +93,26 @@ let
   # the table above is ordered. Said as a token rather than a number of seconds so
   # it reads as one of the entries it selects.
   #
-  # `5m` for staging: 288 ticks a day per live deployment, each a venue round trip
-  # and a wallet resume, on a box also running bitcoind, Postgres, Nextcloud and the
-  # agents — affordable for the operator's own deployments and for nobody else's,
-  # which is what the `sub_hourly_cadence` gate below is for. `1m` and `3m` stay off
-  # the floor: at 1440 and 480 ticks a day the tick would be starting again as often
-  # as it finishes, and that wants measuring on this hardware before it is offered.
+  # `1m` for staging, moved down from `5m` on 2026-08-30. It was held at `5m` on the
+  # grounds that at 1440 and 480 ticks a day the tick would be starting again as
+  # often as it finishes — which was true of a process that pays a fresh start every
+  # bar, and is the measurement that had to come first. It has: a 5m tick ran
+  # 1.26-1.77s wall and 828ms CPU to advance one deployment, of which ~0.53s was the
+  # interpreter and fugazi import. What retires the objection is not the number but
+  # the driver — `deploymentTickResident` below puts 1m, 3m and 5m on long-running
+  # units that pay that start once instead of 1440 times, so the three finest
+  # cadences no longer start a process per bar at all. Coarser ones keep their
+  # timers, where a start amortised over an hour is not worth a resident process.
+  #
+  # Still a cost, and still the operator's own: each of these is a venue round trip
+  # and a wallet resume per live deployment, on a box also running bitcoind,
+  # Postgres, Nextcloud and the agents. What keeps it that way is the
+  # `sub_hourly_cadence` gate below, which no tier on sale holds.
   #
   # `1h` for prod, and deliberately not inherited from staging: what a PLAN may tick
   # at is a pricing decision with a cost attached, and launch day is not the morning
   # to discover it was made by a default here.
-  fugaziTickFloor = kind: if kind == "prod" then "1h" else "5m";
+  fugaziTickFloor = kind: if kind == "prod" then "1h" else "1m";
 
   # The cadences a kind schedules: the available table from its floor upward.
   #
@@ -926,22 +935,83 @@ let
       # deliberately unset, and why the two kinds differ where they do.
       services.fugazi-web.instances.testing.environment = fugaziEnvironment "testing";
 
-      # The tick timers, from the same table the environment above derives its
+      # The tick schedule, from the same table the environment above derives its
       # FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES from — every published cadence from
-      # this kind's floor (5m) up, which is thirteen units rather than upstream's
-      # four. Setting this replaces upstream's default wholesale rather than adding
-      # to it, which is why the table carries the coarse ones too.
+      # this kind's floor (1m) up, which is all fifteen rather than upstream's four.
+      # Setting this replaces upstream's default wholesale rather than adding to it,
+      # which is why the table carries the coarse ones too. Three of the fifteen are
+      # resident rather than timed (see below), so this is twelve timers and three
+      # long-running units — but it is one option either way: a resident cadence has
+      # to be named HERE as well, or upstream fails the build rather than quietly
+      # scheduling nothing.
       #
       # A timer for a cadence nobody is deployed on is a oneshot that wakes, finds
       # no deployment due and exits — cheap, and the reason offering the whole
       # published range costs nothing until somebody uses it.
       #
-      # The three sub-hourly units need sizing the imported (main-branch) module
-      # does not do — a deadline inside their own period and a self-imposed budget
-      # under it — and modules/fugazi-web adds both for any frequency under an hour.
-      # Read that comment before moving the floor to 3m or 1m.
+      # The sub-hourly units need sizing a flat timer does not give them — a
+      # deadline inside their own period and a self-imposed budget under it — and
+      # the imported module derives both itself: `tickTimeout` is 90% of the
+      # cadence capped at 15m, and the budget is 85% of that, set only below an
+      # hour. It also scales `AccuracySec` to 2% of the period and jitters the
+      # start by up to a tenth of it, where systemd's defaults are a flat 60s and
+      # nothing. modules/fugazi-web carried a shim for the first two until
+      # 2026-08-28 and no longer does — upstream's arithmetic was byte-identical.
+      # It applies to the timed cadences only — a resident unit is not started per
+      # bar, so it has no start deadline to size.
       services.fugazi-web.instances.testing.deploymentTickFrequencies =
         fugaziTickFrequencies "testing";
+
+      # The three finest cadences advanced by a long-running unit each instead of a
+      # timer plus a fresh process per bar. Both drivers tick on the same grid and
+      # at the same moments, so this changes WHEN nothing; what it buys is the
+      # ~0.53s of interpreter and fugazi import, a connection pool built cold, and
+      # an in-process memory of finished steps that a process dying each bar cannot
+      # have at all. At 1m that start is a real share of the period, and at 1440
+      # fires a day it is most of the work; by `1h` it is amortised and by `1d` a
+      # resident process would sleep through a day to save one start, which is why
+      # this is per cadence rather than per instance and why it stops at 5m.
+      #
+      # Named cadences are taken OFF the timers automatically — necessarily, or each
+      # bar would be advanced twice. Harmless (the tick claims each deployment with
+      # `FOR UPDATE SKIP LOCKED`, so the loser finds nothing) but wasted work and a
+      # `skipped` count nobody could explain. Flat cadences only: a
+      # deploymentTickMarkets pair is daily by construction, which is exactly where
+      # a resident process is worst.
+      #
+      # The failure mode differs from a timer's, and it is why these three units are
+      # in my.ntfy-alert.failureUnits below while the twelve timed ones are not. A
+      # oneshot that dies misses one bar and the next firing is a fresh process; a
+      # resident unit that dies stops advancing its cadence until something restarts
+      # it, with no timer behind it to paper over the gap. Restart=always covers the
+      # ordinary crash, so what the alert catches is the case that outlasts it —
+      # systemd giving up after the start-limit burst, which is silent and
+      # indefinite.
+      services.fugazi-web.instances.testing.deploymentTickResident = [ "1m" "3m" "5m" ];
+
+      # How many deployments one tick advances at once, and it stays at upstream's
+      # serial default DELIBERATELY — this is not a knob left unread.
+      #
+      # The arithmetic it has to satisfy, because the service refuses a width the
+      # pool cannot serve: a step holds its connection for its whole length (the
+      # claim is a row lock), so this is a demand for that many connections at once.
+      # Above FUGAZI_SERVICE_DB_POOL_SIZE + _DB_MAX_OVERFLOW the surplus blocks and
+      # is counted as FAILED ticks, so upstream raises SystemExit instead. This
+      # column sets 5 + 10 = 15, NOT the 10 + 20 = 30 the prod column and upstream's
+      # own default assume — so the hard ceiling here is 15, and a broker-funded
+      # deployment takes a SECOND connection while its step marker commits, which
+      # halves the real one to 7 and is what upstream warns about above width 8.
+      #
+      # What keeps it at 1 is not the pool. It is that above 1 a tick places orders
+      # for SEVERAL deployments concurrently, and this instance can trade real
+      # money: DEPLOYMENT_RUNTIME is `fugazi`, TRADING_HALTED is off, the vault
+      # Fernet key is provisioned (fugazi-web/testing/secret-key), and the
+      # non-public `testing` tier holds connect_brokers and connect_okx. It would
+      # also buy nothing today — `due` has never exceeded 1 on any cadence, so a
+      # wider fan-out would advance the same single deployment in the same second.
+      # Raise it when there is a fleet to advance, not before, and read the two
+      # bounds above before picking the number.
+      services.fugazi-web.instances.testing.tickConcurrency = 1;
 
       # Nothing instantiates the prod column yet, and an unforced `let` binding is
       # never evaluated — so a typo in it would sit undisturbed until launch day,
@@ -1496,6 +1566,14 @@ let
           "immich-server"
           "home-assistant"
           "prefect-server"
+          "fugazi-web-testing"
+          # The resident deployment tickers, and only those: the twelve timed
+          # cadences are oneshots, which this list deliberately excludes. These
+          # three are long-running units with no timer behind them, so one that
+          # systemd stops retrying advances nothing until a human notices.
+          "fugazi-web-testing-deployment-tick-1m"
+          "fugazi-web-testing-deployment-tick-3m"
+          "fugazi-web-testing-deployment-tick-5m"
           "ddclient"
           "openclaw-eva"
           "bitcoind-main"
