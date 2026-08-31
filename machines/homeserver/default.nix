@@ -357,10 +357,12 @@ let
       #
       # Set on BOTH columns, because it is the answer TRADING_HALTED already gives
       # below: an instance that cannot trade is not exercising the path the tiers,
-      # the entitlements and the vault exist to guard. Worth reading with the
-      # drawdown breakers further down, which are staging-only — a prod column that
-      # trades with no MAX_DRAWDOWN_FRACTION behind it is the decision to settle
-      # before a prod instance is ever instantiated, not on the morning it is.
+      # the entitlements and the vault exist to guard. Note there is no breaker
+      # underneath it: upstream removed the instance-wide drawdown and daily-loss
+      # ceilings, so what bounds a deployment is its own RiskTolerance and the
+      # account default behind it (see the block further down). A column that
+      # trades is a column where that default wants setting FIRST, not on the
+      # morning it is instantiated.
       #
       # This does not by itself put money at risk. What a deployment trades against
       # is its WALLET, and a wallet is paper unless linked to a connected broker
@@ -417,21 +419,30 @@ let
       # login until it is redeemed.
       FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
 
-      # Fractions, not percentages — 0.10 is ten percent, and upstream refuses a
-      # value above 1.0 precisely because `10` would parse as "never halt" and a
-      # limit that silently does nothing is the failure mode worth designing out.
-      # Measured on the flow-adjusted curve, so a withdrawal cannot trip them.
+      # --- risk breakers: deliberately ABSENT, and not an oversight ---------
+      # This block used to set MAX_DRAWDOWN_FRACTION = "0.10" and
+      # MAX_DAILY_LOSS_FRACTION = "0.05". Upstream DELETED both knobs; an
+      # instance that still sets them is simply ignored, because `RiskSettings`
+      # is now the kill switch and nothing else. So those two lines read as a
+      # 10%/5% net over every deployment here and did nothing whatsoever —
+      # which is worse than having no breaker, because it is configuration
+      # shaped like a safety net.
       #
-      # Set HERE and not on prod, which is the opposite of how a safety net
-      # usually scales, and deliberate. Staging is where the venue wiring is
-      # least proven and where the money at risk is the instance operator's own,
-      # so a tight breaker costs a halted test run. On a public deployment these
-      # same two numbers would halt STRANGERS' deployments at a threshold nobody
-      # agreed to — that is a product decision with a refund attached, and it
-      # wants making before launch rather than inheriting whatever staging found
-      # convenient. Upstream's default for both is unset, i.e. no halt.
-      FUGAZI_SERVICE_MAX_DRAWDOWN_FRACTION = "0.10";
-      FUGAZI_SERVICE_MAX_DAILY_LOSS_FRACTION = "0.05";
+      # The reasoning that put them here was sound and the mechanism moved out
+      # from under it. An instance-wide ceiling was never the operator's number
+      # to set: a drawdown fraction is a claim about how a PARTICULAR strategy
+      # ought to behave, made by somebody who has never seen it, about money
+      # that is not theirs. A trend book that draws 40% and recovers is doing
+      # its job; a mean-reversion book that draws 15% is broken. No single
+      # value is right for both, which is why upstream removed the rung rather
+      # than retuning it.
+      #
+      # What replaces it is per-deployment `RiskTolerance`, resolved
+      # request > account default > nothing — and there is deliberately NO
+      # instance rung, so there is nothing to put back in this file. The
+      # account-level default is PUT /v1/deployments/risk-defaults; a
+      # deployment created with neither an explicit `risk` object nor a default
+      # behind it has no limits at all. Set it per account, there.
 
       # --- who may reach the sub-hourly cadences ----------------------------
       # The other half of scheduling a sub-hourly timer, and the half that decides
