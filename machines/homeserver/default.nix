@@ -252,12 +252,28 @@ let
       # bitcoind, Jellyfin, Nextcloud, Postgres and the agents. The split is the
       # reason the two columns exist at all: a sweep someone is trying out on a
       # branch must not take the pool away from the deployment with users on it.
-      FUGAZI_SERVICE_MAX_WORKERS = if isProd then "4" else "2";
+      #
+      # These were 4/2, and 2 was the wrong instrument for the goal. A hard cap
+      # surrenders the box PERMANENTLY — including at 03:00 when bitcoind is
+      # idle and nothing else wants a core — whereas a cgroup weight is
+      # work-conserving: it binds only under contention. The slice now carries
+      # that weight (`services.fugazi-web.resources`, below), so the cap can go
+      # back to being about the pool rather than about the neighbours. 6 is one
+      # worker per PHYSICAL core less two (8C/16T here, and BLAS is pinned to a
+      # single thread per worker, so SMT siblings buy little on native FP code).
+      FUGAZI_SERVICE_MAX_WORKERS = if isProd then "8" else "6";
       # Admission control in front of that pool. Unset (0) means an unbounded
       # queue, which does not degrade gracefully — it swaps, and every in-flight
       # run gets slower together. Twice the pool leaves a little queue depth;
       # past it callers get a 503 + Retry-After, which is the honest answer.
-      FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = if isProd then "8" else "4";
+      #
+      # It tracks MAX_WORKERS above and has to be raised WITH it: left at the
+      # old 8/4 against the new 8/6 pool this would have been the tighter of the
+      # two on the staging column, so admission would have capped at 4 and two
+      # workers could never have been reached — the raise above silently buying
+      # nothing. A sweep is ONE pool job for its whole grid, so the depth is
+      # what absorbs several of them arriving together.
+      FUGAZI_SERVICE_MAX_CONCURRENT_EVALUATIONS = if isProd then "16" else "12";
 
       # The largest archive either kind accepts, and the two knobs that have to
       # agree about it. Both are pinned rather than left at upstream's defaults
@@ -1037,6 +1053,44 @@ let
       # Raise it when there is a fleet to advance, not before, and read the two
       # bounds above before picking the number.
       services.fugazi-web.instances.testing.tickConcurrency = 1;
+
+      # --- what the slice is allowed to take from the rest of the box -------
+      # The slice TREE was already right and empty: every unit lands in
+      # fugazi_web-<name>.slice inside fugazi_web.slice, so the deployment is
+      # one peer of postgresql/bitcoind rather than five, and adding a cadence
+      # does not widen its share. What was missing is that no ceiling or weight
+      # was ever set on it — CPUWeight and IOWeight read [not set], MemoryHigh
+      # and MemoryMax infinity — so the grouping bounded precisely nothing and
+      # MAX_WORKERS above was doing all the work alone.
+      #
+      # A HIGH cpu weight is affordable here BECAUSE the steady-state demand is
+      # negligible: measured over three days of uptime the whole slice spent
+      # 29m47s of CPU, which is 0.65% of one core and 0.04% of the box. A weight
+      # only binds under saturation, so 200 costs the default-100 neighbours
+      # essentially nothing in the steady state and buys the thing that actually
+      # matters — a deployment tick that is not stuck behind a btrfs scrub or
+      # bitcoind's IBD when its bar closes. A missed bar is not retried by any
+      # later tick.
+      #
+      # The memory pair is the half that protects the neighbours, and it is the
+      # real reason to set anything at all: MAX_WORKERS backtests each hold a
+      # bar array, so a wide sweep is the one workload here that can grow fast
+      # enough to push bitcoind and Postgres into swap. High throttles reclaim,
+      # Max is the hard stop — both far above the 566 MB peak this slice has
+      # ever reached, and both leaving >40G of the 61G untouched.
+      #
+      # Deliberately NO cpuQuota: it would not shrink the pool (the worker count
+      # is read off CPU affinity, which knows nothing about a cgroup quota), so
+      # it makes all 6 workers slower for the same throughput and the module
+      # warns when one arrives without a matching MAX_WORKERS. If a sweep ever
+      # does hurt the neighbours, the instrument is a quota PAIRED with a lower
+      # cap, not a lower cap alone.
+      services.fugazi-web.resources = {
+        cpuWeight = 200;
+        ioWeight = 200;
+        memoryHigh = "8G";
+        memoryMax = "16G";
+      };
 
       # Nothing instantiates the prod column yet, and an unforced `let` binding is
       # never evaluated — so a typo in it would sit undisturbed until launch day,
