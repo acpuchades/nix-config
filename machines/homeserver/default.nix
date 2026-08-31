@@ -312,14 +312,28 @@ let
       FUGAZI_SERVICE_DB_BAR_POOL_SIZE = if isProd then "5" else "3";
 
       # --- what is on show ---------------------------------------------------
-      # /docs, /redoc and /openapi.json. Upstream ties these to ENVIRONMENT, and
-      # the module pins that to "production" on both kinds to keep the startup
-      # preflight armed — so this is the knob that separates the two concerns
-      # again. Staging serves them because the API surface is the thing being
-      # tried; the public deployment does not, because an interactive console
-      # against a live service invites exactly the traffic the tier ceilings
-      # exist to bound.
-      FUGAZI_SERVICE_DOCS = if isProd then "0" else "1";
+      # /docs, /redoc and /openapi.json. NEITHER column sets it, and the absence
+      # is the setting rather than an omission. Unset, ENVIRONMENT="production"
+      # (which the module pins on both kinds, to keep the startup preflight
+      # armed) already turns the two HTML viewers off while /openapi.json stays
+      # served everywhere — and that split is the one that matters, since the
+      # schema is what a client generator or an agent reads and it describes the
+      # RUNNING build, unlike the committed docs/openapi.json.
+      #
+      # Staging used to set "1" so the API surface could be tried interactively.
+      # Measured, that bought nothing: FastAPI renders both viewers from
+      # cdn.jsdelivr.net (ReDoc also pulls Google Fonts) while
+      # SecurityHeadersMiddleware serves `default-src 'none'` on every response,
+      # so the browser blocks every stylesheet and script and /docs comes up
+      # BLANK — verified against this instance, HTTP 200 with 1013 bytes whose
+      # every asset is cross-origin. Enabling it bought a blank page.
+      #
+      # An explicit "0" is NOT the way to say this, which is the trap worth
+      # recording: upstream forces all THREE off on a literal zero, schema
+      # included, so it would take /openapi.json down with the viewers. Leaving
+      # the variable unset is the only spelling that gets viewers-off with
+      # schema-on. Serving them for real means vendoring the assets and scoping
+      # the CSP to those two paths.
 
       # Never on a deployment that mails real people: the dev outbox swallows
       # verification mail into a table instead of sending it, which reads as a
