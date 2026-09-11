@@ -1233,9 +1233,13 @@ let
           phoneRegion = "ES";
           dataDir = "/srv/encrypted/nextcloud";
           allowedNetworks = privateNetworks;
+          # Must list every app that was previously installed through the App
+          # Store: appstoreEnable = false drops store-apps from apps_paths, so
+          # anything still living only there silently disappears.
           extraApps = [
             "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
-            "news" "nextpod" "notes" "richdocuments" "tasks"
+            "guests" "news" "nextpod" "notes" "richdocuments" "tasks"
+            "twofactor_webauthn"
           ];
         };
       };

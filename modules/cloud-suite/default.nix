@@ -281,12 +281,18 @@
         adminuser = "admin";
         adminpassFile = config.my.cloud-suite.nextcloud.adminPasswordFile;
       };
-      appstoreEnable = true;
       # Apps are pinned declaratively via extraApps (updated on nixpkgs bumps),
-      # so the App Store auto-updater is redundant and actively harmful: it
-      # pulls a second copy of a declaratively-managed app (e.g. contacts) into
-      # the mutable store-apps dir, colliding with the /nix/store copy and
-      # crashing occ upgrade on a duplicate-class redeclare.
+      # so the App Store is redundant and actively harmful: it pulls a second
+      # copy of a declaratively-managed app into the mutable store-apps dir,
+      # colliding with the /nix/store copy and killing occ upgrade on a
+      # duplicate-class redeclare. Disabling autoUpdateApps alone was not
+      # enough (it bit contacts, then richdocuments): `occ upgrade` runs its
+      # own app-store update pass, gated on appstoreEnable rather than on the
+      # auto-updater. That failure leaves maintenance mode latched on, so the
+      # whole site stays down until the stray store-apps copy is removed by
+      # hand. Cost of false: no in-UI app browser, so adding an app is an
+      # extraApps edit plus a rebuild.
+      appstoreEnable = false;
       autoUpdateApps.enable = false;
       extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps
         (name: config.services.nextcloud.package.packages.apps.${name});
