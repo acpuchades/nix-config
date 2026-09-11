@@ -5,12 +5,19 @@
     # Nixpkgs
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-26.05-darwin";
 
-    # Nixpkgs Unstable — pulled ONLY for a newer openclaw than nixpkgs-26.05
-    # ships. 26.05 freezes openclaw at 2026.5.7, whose claude-cli runtime cannot
-    # answer Claude's exec permission protocol (control_request/can_use_tool), so
-    # a non-allowlisted command hangs ~180s; unstable's 2026.6.33 adds the
-    # responder (and fixes the bundled-surface hardlink guard). Scoped to
-    # my.openclaw.package on the homeserver — nothing else consumes it.
+    # Nixpkgs Unstable — the escape hatch for packages nixpkgs-26.05 cannot ship
+    # a runnable version of. Instantiated once on the homeserver (`pkgsUnstable`)
+    # and consumed by exactly two things, each argued at its use site:
+    #
+    #   * openclaw — 26.05 freezes it at 2026.5.7, whose claude-cli runtime cannot
+    #     answer Claude's exec permission protocol (control_request/can_use_tool),
+    #     so a non-allowlisted command hangs ~180s; unstable's 2026.6.33 adds the
+    #     responder (and fixes the bundled-surface hardlink guard).
+    #   * immich — 26.05's 2.7.5 is end-of-line upstream and marked insecure
+    #     (CVE-2026-59258, CVE-2026-82272), which fails evaluation of the whole
+    #     host; unstable's 3.x is the branch still receiving fixes.
+    #
+    # Nothing on the MacBook consumes this input.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     # Nix-Darwin

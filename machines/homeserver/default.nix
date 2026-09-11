@@ -38,6 +38,23 @@ let
   adminEmailAddress = "admin@acpuchades.com";
   privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
 
+  # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
+  # deliberately runs ahead of nixpkgs-26.05. Two consumers today — openclaw and
+  # immich — each with its reason written at its use site below. Shared rather
+  # than imported per consumer because `import <nixpkgs>` is a full evaluation of
+  # the package set: doing it twice doubles that cost to produce two package sets
+  # that differ only in a config flag neither of them changes a derivation with.
+  #
+  # The insecure permit is openclaw's (upstream marks every release
+  # knownVulnerabilities for LLM prompt injection) and is written as a predicate
+  # on the package NAME, so it stays openclaw-only and does not quietly bless
+  # anything else that gets pulled from here — immich included, which is the
+  # whole point of taking it from unstable rather than permitting 26.05's.
+  pkgsUnstable = import nixpkgs-unstable {
+    system = "x86_64-linux";
+    config.allowInsecurePredicate = p: lib.getName p == "openclaw";
+  };
+
   # Cloudflare's published edge ranges (cloudflare.com/ips-v4 + ips-v6, fetched
   # 2026-08-18). fugazitrade.com is proxied through Cloudflare — its public A
   # records are CF anycast addresses — so these, not the visitor, are the peers
@@ -1188,6 +1205,26 @@ let
           hostName = "photos.acpuchades.com";
           mediaLocation = "/srv/encrypted/immich";
           accelerationDevices = [ "/dev/dri/renderD128" ];
+
+          # Immich 3.x from nixpkgs-unstable, because 26.05 has no runnable
+          # Immich left: it ships 2.7.5, upstream ended 2.x support, and nixpkgs
+          # marked the package insecure (CVE-2026-59258, CVE-2026-82272) — which
+          # fails evaluation of this host's toplevel, not just Immich. Permitting
+          # it would keep an unpatched, end-of-line release answering on a
+          # public hostname; 3.x is the version that still gets fixes.
+          #
+          # Safe to cross channels here because the module is the same module:
+          # 26.05's services.immich and unstable's differ only in a docstring and
+          # one dropped env var, nothing in it is keyed on the Immich version,
+          # and the database halves line up (both channels ship VectorChord
+          # 1.1.1, and we are long past the pgvecto.rs cutoff that 3.0 requires).
+          # Machine learning follows automatically — the module reads it from
+          # this package's `machine-learning` passthru.
+          #
+          # Drop this when nixpkgs-26.05 carries Immich 3.x, or on the next
+          # NixOS release: `nix eval nixpkgs#immich.version`, and if it is 3.x,
+          # delete these two lines.
+          package = pkgsUnstable.immich;
         };
         nextcloud = {
           hostName = "cloud.acpuchades.com";
@@ -1324,16 +1361,14 @@ let
       # responder (claude-live-session answers can_use_tool → allow under YOLO
       # else a clean deny) AND fixes the bundled-surface hardlink guard upstream
       # (plugin loaders now pass rejectHardlinks:false), which is what our
-      # openclawPatched workaround exists to paper over. A separate unstable pkgs
-      # instance is imported with an openclaw-only insecure permit (openclaw is
-      # marked knownVulnerabilities upstream); the predicate is version-agnostic
-      # so it survives unstable's openclaw bumps without editing a version string.
+      # openclawPatched workaround exists to paper over. Taken from the shared
+      # `pkgsUnstable` instance at the top of this file, whose insecure permit is
+      # this package's (openclaw is marked knownVulnerabilities upstream) and is
+      # version-agnostic, so it survives unstable's openclaw bumps without
+      # editing a version string.
       my.openclaw = {
         # SHARED across all agent instances — the one OpenClaw build they all run.
-        package = (import nixpkgs-unstable {
-          inherit (pkgs.stdenv.hostPlatform) system;
-          config.allowInsecurePredicate = p: (pkgs.lib.getName p) == "openclaw";
-        }).openclaw;
+        package = pkgsUnstable.openclaw;
 
         # A single agent for now: eva (Telegram bot eva_lebbot), with her own OS
         # user, home, memory/state dir (/var/lib/openclaw/eva) and gateway service
