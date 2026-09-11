@@ -113,6 +113,23 @@
         default = [];
         description = "GPU/render devices for hardware acceleration (e.g. [ \"/dev/dri/renderD128\" ])";
       };
+
+      # The Immich build. Exposed as an option because nixpkgs' stable branch
+      # freezes Immich at a release that upstream stops patching mid-cycle (2.x
+      # was marked insecure on 26.05 with no 3.x to move to), and the only way
+      # out is a package from another channel. The NixOS module itself is
+      # version-agnostic enough for that to work — nothing here is keyed on the
+      # Immich version.
+      #
+      # Overriding this ALSO moves machine learning: the module takes the ML
+      # binary from `package.machine-learning` (a passthru of the server
+      # derivation), so the two halves cannot drift apart by construction.
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.immich;
+        defaultText = lib.literalExpression "pkgs.immich";
+        description = "Immich server package (its passthru also provides machine learning)";
+      };
     };
 
     bitwarden = {
@@ -337,6 +354,7 @@
       host = "127.0.0.1";
       port = config.my.cloud-suite.immich.port;
       mediaLocation = config.my.cloud-suite.immich.mediaLocation;
+      package = config.my.cloud-suite.immich.package;
       accelerationDevices = config.my.cloud-suite.immich.accelerationDevices;
       database.enable = true;
       machine-learning.enable = true;
