@@ -79,6 +79,7 @@ let
 
   replicationSettings = lib.optionalAttrs cfg.updates.enable {
     NOMINATIM_REPLICATION_URL = cfg.updates.replicationUrl;
+    NOMINATIM_REPLICATION_UPDATE_INTERVAL = toString cfg.updates.publishInterval;
   };
 
   nominatimSettings = tablespaceSettings // replicationSettings;
@@ -202,6 +203,23 @@ in
         default = "daily";
         description = "systemd calendar expression for the update timer";
       };
+
+      publishInterval = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 86400;
+        description = ''
+          How often the replication feed publishes a new diff, in seconds.
+          Nominatim refuses to poll faster than the feed advertises, so this
+          has to match it: Geofabrik publishes daily (86400), planet.osm
+          minute-diffs every 60.
+
+          Nominatim's packaged default is 75, which suits the planet feed it
+          also defaults to. Against a Geofabrik feed that aborts every single
+          run with "Update interval too low for download.geofabrik.de" —
+          silently freezing the database at whatever the last import held,
+          because the only symptom is a failed timer unit.
+        '';
+      };
     };
   };
 
@@ -211,8 +229,25 @@ in
     services.nominatim = {
       enable = true;
       inherit (cfg) hostName;
-      ui.enable = cfg.ui.enable;
       settings = nominatimSettings;
+
+      ui.enable = cfg.ui.enable;
+
+      # With customConfig null, nixpkgs' nominatim-ui bakes a placeholder
+      # endpoint into theme/config.theme.js:
+      #
+      #   Nominatim_Config.Nominatim_API_Endpoint='https://127.0.0.1/';
+      #
+      # That address is resolved by the *browser*, not the server, so the UI
+      # loads from this host and then tries to fetch results from whatever is
+      # on the visitor's own machine at port 443 — failing with a bare
+      # "NetworkError when attempting to fetch resource" that says nothing
+      # about the endpoint being the cause. The API and the UI share one
+      # vhost (upstream proxies `/` to the API and serves the UI under
+      # `/ui/`), so the public hostname is the right value.
+      ui.config = ''
+        Nominatim_Config.Nominatim_API_Endpoint='https://${cfg.hostName}/';
+      '';
     };
 
     # PostgreSQL requires the tablespace directory to exist, be empty on first
