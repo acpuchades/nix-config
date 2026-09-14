@@ -644,8 +644,26 @@ let
       security.tpm2.pkcs11.enable = true;
       security.tpm2.tctiEnvironment.enable = true;
 
+      # The options field had a leading slash for most of this disk's life, which
+      # made systemd parse the whole string as one unknown option and drop it
+      # ("Encountered unknown /etc/crypttab option '/tpm2-device=auto', ignoring").
+      # The volume still unlocked, because systemd-cryptsetup finds the enrolled
+      # systemd-tpm2 token in the LUKS2 header on its own — so the typo cost
+      # nothing visible and went unnoticed. tpm2-device= is now real.
+      #
+      # `discard` is deliberately NOT restored. Both DAS drives are spinning rust
+      # (WD60EZAX in a TerraMaster USB enclosure, ROTA=1) and the block device
+      # advertises discard_max_bytes=0, so TRIM would do nothing here — while on
+      # LUKS it leaks which blocks are unused to anyone who images the disk.
+      #
+      # `nofail` matches what fstab already says one layer up: a failed unseal
+      # should not gate boot. Without it the generated cryptsetup unit carries
+      # TimeoutSec=infinity and sits on a console password prompt under
+      # sysinit.target, which on this headless box means physical access. With
+      # it, boot continues to multi-user, SSH comes up, and keyslot 1 (the
+      # argon2id passphrase) can be used remotely.
       environment.etc."crypttab".text = ''
-        srv-encrypted /dev/disk/by-uuid/c5e7c042-5625-493f-9b8a-487ecdac277a - /tpm2-device=auto,discard
+        srv-encrypted /dev/disk/by-uuid/c5e7c042-5625-493f-9b8a-487ecdac277a - tpm2-device=auto,nofail
       '';
 
       # List packages installed in system profile.
