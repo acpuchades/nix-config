@@ -52,6 +52,65 @@ let
   # agree on the ordering by construction.
   endpointsOf = t: [ t.peer.endpoint ] ++ t.peer.extraEndpoints;
 
+  # Priorities this module owns. Cleared wholesale before the rules are
+  # (re)installed, which is what makes the unit idempotent — `ip rule add` is
+  # not, and re-running it otherwise stacks duplicates until the table is
+  # unreadable.
+  ownedPriorities = [ 1000 1001 1010 1011 ];
+
+  # Groups of steered sources, each with the priority pair it uses: the bypass
+  # rule sits one below the steering rule so local destinations are resolved in
+  # `main` BEFORE the tunnel lookup is ever reached.
+  steeredGroups =
+    [ { bypassPrio = 1000; steerPrio = 1001; sources = [ cfg.tunneledPeerPrefix ]; } ]
+    ++ lib.optional cfg.lanRedirect.enable
+      { bypassPrio = 1010; steerPrio = 1011; sources = cfg.lanRedirect.sourcePrefixes; };
+
+  ruleLines = lib.concatLists (map (g:
+    lib.concatLists (map (src:
+      # Local destinations first: LAN-to-LAN and client-to-server traffic must
+      # never be pushed through a tunnel. A prefix missing from localPrefixes
+      # becomes a silently tunneled local flow, which is why the option's
+      # description insists on enumerating all of them.
+      (map (net:
+        "${ip} rule add from ${src} to ${net} lookup main priority ${toString g.bypassPrio}")
+        cfg.localPrefixes)
+      ++ lib.optional cfg.clientTunnel.enable
+        "${ip} rule add from ${src} lookup ${toString cfg.clientTunnel.table} priority ${toString g.steerPrio}"
+    ) g.sources)
+  ) steeredGroups);
+
+  clearPriorities = ''
+    for prio in ${lib.concatMapStringsSep " " toString ownedPriorities}; do
+      while ${ip} rule del priority "$prio" 2>/dev/null; do :; done
+    done
+  '';
+
+  policyStart = pkgs.writeShellScript "protonvpn-policy-start" ''
+    set -eu
+    ${clearPriorities}
+
+    # The blackhole goes in FIRST and outlives every tunnel. At metric 1000 it
+    # loses to the tunnel's own default route while that exists, and becomes the
+    # only match the moment the kernel drops that route with the device. A lookup
+    # that reaches it terminates there instead of falling through to `main` and
+    # leaving via the ISP.
+    #
+    # The P2P tunnel has no equivalent here and needs none: it lives in a network
+    # namespace whose only route is the tunnel, so there is nothing to fall
+    # through to in the first place.
+    ${lib.optionalString cfg.clientTunnel.enable
+      "${ip} route replace blackhole default table ${toString cfg.clientTunnel.table} metric 1000"}
+
+    ${lib.concatStringsSep "\n    " ruleLines}
+  '';
+
+  policyStop = pkgs.writeShellScript "protonvpn-policy-stop" ''
+    ${clearPriorities}
+    ${lib.optionalString cfg.clientTunnel.enable
+      "${ip} route del blackhole default table ${toString cfg.clientTunnel.table} metric 1000 || true"}
+  '';
+
   tunnelOptions = { name, defaultTable }: {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -381,5 +440,91 @@ in
         };
       }
     ))
+
+    ##########################################################################
+    # Policy routing.
+    #
+    # Split deliberately across TWO units, and the split is the fail-closed
+    # guarantee rather than tidiness:
+    #
+    #   protonvpn-policy        permanent. Installs the `ip rule`s and the
+    #                           blackhole default in each table. Never bound to a
+    #                           tunnel, because if it were, stopping the tunnel
+    #                           would also remove the rules — and traffic would
+    #                           then fall through to `main` and leave via the
+    #                           ISP, which is the exact leak this exists to stop.
+    #
+    #   protonvpn-route-<ifc>   bound to its tunnel. Installs only the tunnel's
+    #                           default route, at the kernel's default metric so
+    #                           it wins over the blackhole at metric 1000. When
+    #                           the tunnel goes away the kernel drops this route
+    #                           with the device, the blackhole is what remains,
+    #                           and the lookup terminates there.
+    ##########################################################################
+    {
+      # Loose reverse-path filtering. Strict rp_filter drops replies arriving on
+      # a Proton interface, because the route back to their internet source is
+      # the main-table default via the WAN — the asymmetry is the entire point of
+      # policy routing, so strict mode and this design are incompatible.
+      #
+      # `all` is a max() against each interface's own value, so setting it to 2
+      # makes every interface loose regardless of what `default` seeded them with.
+      boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" = 2;
+      networking.firewall.checkReversePath = lib.mkDefault "loose";
+
+      # systemd-networkd deletes routing policy rules and routes it does not
+      # manage ("foreign") whenever it restarts. Everything below is added
+      # imperatively by the units in this module, so without these two settings
+      # networkd wipes the rules on every rebuild — steered traffic then falls
+      # through to the ISP route, which the firewall chain drops, and the symptom
+      # is tunneled clients losing the internet on an unrelated `nixos-rebuild`.
+      systemd.network.config.networkConfig = {
+        ManageForeignRoutingPolicyRules = false;
+        ManageForeignRoutes = false;
+      };
+
+      # Put the tunneled range on-link on the WireGuard server interface, as a
+      # SECOND address beside the existing one (`ips` is a list option, so this
+      # concatenates). Existing peers keep their addresses, their keys and their
+      # ordering untouched; a tunneled peer is simply allocated out of the new
+      # prefix and picked up by the prefix rule below with no further change.
+      networking.wireguard.interfaces.${cfg.wgInterface}.ips = [ cfg.tunneledGateway ];
+
+      systemd.services.protonvpn-policy = {
+        description = "ProtonVPN policy routing rules and fail-closed blackholes";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "network-pre.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = policyStart;
+          ExecStop = policyStop;
+        };
+      };
+    }
+
+    (lib.mkIf cfg.clientTunnel.enable {
+      systemd.services."protonvpn-route-${cfg.clientTunnel.interface}" = {
+        description = "Default route for ${cfg.clientTunnel.interface} in table ${toString cfg.clientTunnel.table}";
+        wantedBy = [ "multi-user.target" ];
+        after = [ "wireguard-${cfg.clientTunnel.interface}.service" "protonvpn-policy.service" ];
+        requires = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
+        # PartOf, so a tunnel restart re-installs the route the kernel dropped
+        # along with the device.
+        partOf = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
+        bindsTo = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-start" ''
+            set -eu
+            ${ip} route replace default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table}
+          '';
+          ExecStop = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-stop" ''
+            ${ip} route del default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table} || true
+          '';
+        };
+      };
+    })
   ]);
 }
