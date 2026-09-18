@@ -547,37 +547,10 @@ let
         ./sops.nix
         ./users.nix
 
-        # Host-specific policy routing: ProtonVPN egress for wg0 clients.
-        # DISABLED 2026-06-02: wg0 clients reached the LAN but had no usable
-        # internet through the nested wgproton tunnel. TWO distinct faults:
-        #   (a) PMTU black-holing — the 1340 tunnel dropped clients' large
-        #       TCP/QUIC packets (a "need to frag (mtu 1340)" flood). Lowering
-        #       the client profile MTU to 1280 (tried on alex-laptop) DID stop
-        #       the flood — so this part is understood/fixable.
-        #   (b) UNRESOLVED: even with (a) fixed, FORWARDED client traffic
-        #       (masqueraded to 10.2.0.2) still gets NO replies back from Proton,
-        #       while server-sourced egress (also 10.2.0.2, but OUTPUT path) AND
-        #       the gateway's own 10.2.0.1<->10.2.0.2 ICMP ping-pong both work.
-        #       The tunnel is healthy; only relayed/forwarded flows black-hole on
-        #       the return leg. Root cause not found (needs an outer-path capture
-        #       on wlp3s0 to see if forwarded encrypted pkts reach Proton / if
-        #       encrypted replies come back).
-        # Disabled so wg0 clients egress directly via the ISP (vpn-server's NAT,
-        # no kill switch, real ISP IP). Re-enabling needs (b) solved, not just
-        # the MTU. (sops secret left in place.)
-        # ./vpn-egress.nix
-
-        # Host-specific egress confinement + NAT-PMP for the transmission daemon.
-        # DISABLED 2026-05-30: ProtonVPN port forwarding (NAT-PMP) is not serviced
-        # for this account on its servers — the request egresses fine but Proton
-        # never replies, so the BT tunnel gets no inbound peer port. Re-enable this
-        # together with the wgproton-bt interface and my.transmission-server below
-        # once port forwarding works. (sops secrets are intentionally left in place.)
-        # ./transmission-egress.nix
-
         # Custom modules
         ../../modules/vpn-server
         ../../modules/wireguard-client
+        ../../modules/protonvpn
         ../../modules/transmission-server
         ../../modules/dns-filtering
         ../../modules/web-server
@@ -745,64 +718,57 @@ let
         };
       };
 
-      # ProtonVPN egress tunnel (ES#95). Installs its default route into a
-      # dedicated table (42, not main), so bringing it up never touches the
-      # host's default route; machines/homeserver/vpn-egress.nix steers the
-      # 10.0.0.0/24 client subnet into that table with a kill switch. DNS
-      # (10.2.0.1) from the profile is intentionally ignored; resolution stays
-      # on AdGuard Home.
-      my.wireguard-client = {
+      # ProtonVPN egress. Everything about how this is wired — policy routing,
+      # the fail-closed chains, the P2P namespace, NAT-PMP, the watchdog — lives
+      # in modules/protonvpn; what is host-specific is only the topology below.
+      #
+      # The two tunnels are on DIFFERENT Proton servers on purpose. Sharing one
+      # would give browsing traffic and BitTorrent traffic the same exit address,
+      # which is the one correlation this whole arrangement exists to prevent.
+      my.protonvpn = {
         enable = true;
-        # DISABLED 2026-06-02 together with ./vpn-egress.nix above: forwarded
-        # wg0-client egress through this tunnel got no replies from Proton (full
-        # reasoning on the import comment — MTU was only part of it). With egress
-        # steering gone the tunnel would just sit up unused, so it's disabled too.
-        # Re-enabling needs the forwarded-no-reply issue solved, not just the MTU.
-        # interfaces.wgproton = {
-        #   privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
-        #   address = [ "10.2.0.2/32" "2a07:b944::2:2/128" ];
-        #   allowedIPsAsRoutes = true;
-        #   table = "42";
-        #   mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
-        #   peer = {
-        #     publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
-        #     endpoint = "130.195.250.66:51820";
-        #     allowedIPs = [ "0.0.0.0/0" ]; # IPv4 only; wg0 clients have no IPv6, avoids a dead ::/0 route
-        #   };
-        # };
 
-        # Second ProtonVPN tunnel, dedicated to the transmission daemon so its
-        # BitTorrent traffic exits on a separate IP with NAT-PMP port forwarding.
-        # Proton hands every config the same 10.2.0.2/32 address; that's fine here
-        # because the route lives in its own table (43, not main), exactly like
-        # wgproton/table 42 — the duplicate interface address never reaches the
-        # main table. IPv4-only (table 43 carries no v6 route); the IPv6 address
-        # is omitted since it would be unused. Confinement + kill switch + NAT-PMP
-        # are in machines/homeserver/transmission-egress.nix.
-        #
-        # DISABLED 2026-05-30: Proton port forwarding isn't serviced for this
-        # account (NAT-PMP never replies), so this tunnel has no purpose for now.
-        # Re-enable with ./transmission-egress.nix and my.transmission-server.
-        # interfaces.wgproton-bt = {
-        #   privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
-        #   address = [ "10.2.0.2/32" ];
-        #   allowedIPsAsRoutes = true;
-        #   table = "43";
-        #   mtu = 1340; # nested inside wg0 — lower MTU avoids PMTU black-holing
-        #   peer = {
-        #     publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";  # ES#124
-        #     endpoint = "130.195.250.98:51820";
-        #     allowedIPs = [ "0.0.0.0/0" ];
-        #   };
-        # };
+        uplinkInterface = uplinkInterface;
+        wgInterface = config.my.vpn-server.interface;
+
+        # Tunneled peers are allocated out of 10.0.1.0/24; the existing peers on
+        # 10.0.0.0/24 keep direct, untunneled access to Nextcloud, Immich and
+        # Vaultwarden. Selection is the prefix itself, so adding a tunneled peer
+        # is `wg-create-profile <name> 10.0.1.x` plus the usual sops + peer block
+        # and nothing here changes.
+        tunneledPeerPrefix = "10.0.1.0/24";
+        tunneledGateway = "10.0.1.1/24";
+
+        # Every locally-reachable prefix, so traffic between them is never
+        # tunneled. The transmission RPC veth (10.200.0.0/30) is deliberately
+        # absent: tunneled clients have no business reaching the daemon's RPC
+        # directly, they reach the web UI through Caddy like everything else.
+        localPrefixes = privateNetworks ++ [ "10.0.1.0/24" ];
+
+        clientTunnel = {
+          server = "ES#95";
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
+          address = [ "10.2.0.2/32" ];
+          peer = {
+            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
+            endpoint = "130.195.250.66:51820";
+          };
+        };
+
+        p2pTunnel = {
+          server = "ES#124 (P2P-flagged, NAT-PMP enabled)";
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
+          address = [ "10.2.0.2/32" ];
+          # The same 10.2.0.2 as the client tunnel, which is what Proton hands
+          # every config. Harmless here: this one lives in its own network
+          # namespace, so the two addresses never share a routing table.
+          peer = {
+            publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";
+            endpoint = "130.195.250.98:51820";
+          };
+        };
       };
 
-      # NOTE 2026-05-31: enabled WITHOUT VPN egress confinement for now — the
-      # wgproton-bt tunnel and ./transmission-egress.nix (kill switch + NAT-PMP)
-      # above stay disabled until Proton port forwarding works. So the daemon
-      # currently egresses via the default route (real ISP IP, no kill switch)
-      # and has no inbound peer port (peer-port stays at its placeholder, LAN
-      # firewall closed). Re-enable wgproton-bt + transmission-egress to confine it.
       my.transmission-server = {
         enable = true;
         hostName = "torrent.acpuchades.com";
@@ -818,15 +784,6 @@ let
         altDownKBps = 4000;  # ~32 Mbit/s turtle (active 08:00–23:00)
         altUpKBps = 1000;
       };
-
-      # TEMPORARY 2026-05-31: open the BitTorrent peer port (TCP+UDP 51413) on the
-      # host firewall so a router port-forward to this machine reaches the daemon.
-      # The module forces this off (openPeerPorts = false) on the assumption the
-      # peer port lives on the wgproton-bt tunnel; with that tunnel disabled the
-      # port has to be opened on the LAN firewall instead. Forward TCP+UDP 51413
-      # on the router → 192.168.2.2. REVERT this when wgproton-bt + transmission-
-      # egress come back (the tunnel's NAT-PMP supplies the inbound port instead).
-      services.transmission.openPeerPorts = lib.mkForce true;
 
       my.dns-filtering = {
         enable = true;

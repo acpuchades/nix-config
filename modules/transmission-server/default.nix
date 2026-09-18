@@ -4,13 +4,12 @@
 #
 # This module is intentionally UNAWARE of any VPN/egress concern. It just runs
 # the daemon, exposes the web UI behind Caddy, and applies bandwidth limits.
-# Confining the daemon's traffic to a VPN tunnel (policy routing, kill switch,
-# NAT-PMP port forwarding) is a host-specific topology concern handled outside
-# this module — see machines/homeserver/transmission-egress.nix, the same way
-# modules/wireguard-client (tunnel) is kept separate from
-# machines/homeserver/vpn-egress.nix (routing). The egress layer hooks onto the
-# daemon purely by its UID (the upstream-static `transmission` user), so nothing
-# VPN-related ever leaks into this module's interface.
+# Confining the daemon's traffic to a VPN tunnel (the network namespace it runs
+# in, the tunnel, NAT-PMP port forwarding) is handled entirely outside this
+# module — see modules/protonvpn, the same way modules/wireguard-client (the
+# tunnel) is kept separate from whatever routes traffic into it. That layer
+# reaches in through this module's ordinary options (rpcAddress, rpcWhitelist)
+# and systemd overrides, so nothing VPN-related leaks into this interface.
 
 let
   cfg = config.my.transmission-server;
@@ -154,7 +153,7 @@ in
       group = cfg.group;
       downloadDirPermissions = "0770";
       # Peer port lives on the VPN tunnel (handled by the egress layer) and the
-      # web UI is proxied locally by Caddy — nothing belongs on the LAN firewall.
+      # web UI is proxied by Caddy — nothing belongs on the LAN firewall.
       openPeerPorts = false;
       openRPCPort = false;
 
@@ -167,9 +166,10 @@ in
         # Caddy forwards Host: ${hostName}; the host whitelist would 409 it, and
         # access is already gated by allowedNetworks + basic auth.
         rpc-host-whitelist-enabled = false;
-        # No RPC auth: the endpoint is loopback-only (rpc-whitelist 127.0.0.1) and
-        # reached solely through Caddy, which is the single auth gate (basicAuthFile
-        # + allowedNetworks). A second password here only collides with Caddy's,
+        # No RPC auth: the endpoint is reachable only from the addresses in
+        # rpcWhitelist, none of which have a path to the internet, and in practice
+        # solely through Caddy — the single auth gate (basicAuthFile +
+        # allowedNetworks). A second password here only collides with Caddy's,
         # since Caddy forwards the Authorization header upstream.
         rpc-authentication-required = false;
 
@@ -182,7 +182,7 @@ in
         umask = "002";
 
         # Peer port is a placeholder; the NAT-PMP renewal loop overwrites it at
-        # runtime with Proton's forwarded port (see transmission-egress.nix).
+        # runtime with Proton's forwarded port (see modules/protonvpn).
         peer-port = 51413;
         peer-port-random-on-start = false;
 
