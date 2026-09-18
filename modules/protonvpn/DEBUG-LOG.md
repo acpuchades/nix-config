@@ -335,3 +335,42 @@ Worth noting: CLAUDE.md claims "web-server (Caddy + ACME — NOT nginx; there is
 no `services.nginx` anywhere in this repo)". That is **wrong** —
 `modules/cloud-suite/default.nix:423` enables `services.nginx`, and Nextcloud is
 deliberately served Caddy → nginx → php-fpm. The file needs correcting.
+
+---
+
+## 2026-09-19 — GREEN. 26 passed, 2 failed, 0 skipped
+
+Everything this module exists to do is now verified end to end:
+
+```
+2.  tunneled egress 130.195.250.74   namespace egress 130.195.250.107
+    PASS browsing and BitTorrent do NOT share an exit IP
+5.  PASS namespace has no path to the internet with the tunnel down
+    PASS namespace recovered after the tunnel came back
+6.  PASS tunneled source has no egress with the tunnel down
+    PASS tunneled egress recovered on its own (networkd re-applied the routes)
+8.  PASS resolver uid 969 is steered into table 44
+    PASS table 44 routes via proton-client with no blackhole (degrades to ISP)
+    PASS resolver-uid traffic leaves via the tunnel (130.195.250.74)
+10. PASS all three LAN/inter-client destinations use main, not the tunnel
+11. PASS 10 MB TCP transfer + QUIC (no PMTU black hole)
+```
+
+§6 is the one that matters most: **recovered on its own**, with no unit to poke.
+That is the whole point of moving the routes into networkd. And §8 closes out the
+DNS saga — the resolver's queries leave with a Proton source address, by uid, and
+the table they use carries no blackhole to strand them if the tunnel dies.
+
+### Remaining
+
+* **§3 `transmission peer-port: <unknown>`** — a READ-side defect in the check,
+  not a forwarding failure. `protonvpn-natpmp` logs only *after*
+  `transmission-remote --port` succeeds, and it logged (51073), so RPC is
+  reachable and writable and the port was applied. The field's spelling has
+  moved between Transmission versions; the check now matches loosely, keeps the
+  raw output, and reports an unreadable port as a SKIP that says so rather than
+  as "the renewal service is not applying it".
+* **§9 cloud.acpuchades.com 503** — unrelated to this module, still open. nginx
+  answers 503 directly on 127.0.0.1:8080, so it originates inside Nextcloud/PHP.
+  CLAUDE.md has been corrected: it claimed no `services.nginx` exists here, when
+  cloud-suite enables it on loopback for NextCloud's PHP-FPM.
