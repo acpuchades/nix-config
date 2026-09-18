@@ -61,9 +61,12 @@ let
   dnsCgroup = "system.slice/dnscrypt-proxy.service";
 
   dnsMarkInstall = pkgs.writeShellScript "protonvpn-dns-mark-install" ''
-    set -eu
+    set -u
     ${pkgs.iptables}/bin/iptables -t mangle -D OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
-    ${pkgs.iptables}/bin/iptables -t mangle -A OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark}
+    if ! ${pkgs.iptables}/bin/iptables -t mangle -A OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark}; then
+      echo "protonvpn: FAILED to install the DNS mark rule — upstream DNS will leave via the ISP, not the tunnel" >&2
+      exit 1
+    fi
   '';
 
   dnsMarkRemove = pkgs.writeShellScript "protonvpn-dns-mark-remove" ''
@@ -1128,7 +1131,15 @@ in
       # touched by firewall reloads (the NixOS firewall only manages its own
       # nixos-fw-rpfilter chain in mangle), so the rule survives them.
       systemd.services.dnscrypt-proxy.serviceConfig = {
-        ExecStartPost = [ "+${dnsMarkInstall}" ];
+        # "+-": root (the unit is DynamicUser), and a FAILURE HERE DOES NOT KILL
+        # THE RESOLVER. That direction is chosen deliberately. If the rule cannot
+        # be installed, the cost is upstream DNS taking the ISP path — degraded
+        # privacy — whereas failing the unit costs name resolution for the entire
+        # LAN and every VPN peer, and would do it at boot, before anyone could
+        # intervene. The script still logs the failure loudly, and
+        # verify-protonvpn.sh asserts both the rule and its effect, so this is a
+        # verified control rather than a silent one.
+        ExecStartPost = [ "+-${dnsMarkInstall}" ];
         ExecStopPost = [ "+${dnsMarkRemove}" ];
       };
 
