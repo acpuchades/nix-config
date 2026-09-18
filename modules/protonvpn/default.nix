@@ -56,7 +56,11 @@ let
   # (re)installed, which is what makes the unit idempotent — `ip rule add` is
   # not, and re-running it otherwise stacks duplicates until the table is
   # unreadable.
-  ownedPriorities = [ 1000 1001 1010 1011 ];
+  # Firewall mark for the resolver's upstream queries. Priority 1002 carries
+  # the matching rule and is cleared with the rest in protonvpn-policy.
+  dnsMark = 66;
+
+  ownedPriorities = [ 1000 1001 1010 1011 1002 ];
 
   # Groups of steered sources, each with the priority pair it uses: the bypass
   # rule sits one below the steering rule so local destinations are resolved in
@@ -364,6 +368,50 @@ in
         description = ''
           LAN source addresses/prefixes to steer when `lanRedirect.enable` is on.
           These must be hosts that actually route through this machine.
+        '';
+      };
+    };
+
+    resolver = {
+      routeUpstreamThroughClient = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Send the local resolver's UPSTREAM queries out the client tunnel, so
+          public lookups carry a Proton source address rather than this line's.
+
+          Split-horizon and the internal zones are unaffected and keep working
+          from the local resolver either way — this only moves where a query that
+          has to leave the house goes out.
+
+          Marking is done by cgroup rather than by uid because the upstream
+          dnscrypt-proxy unit runs under DynamicUser, so its uid is not stable
+          and cannot be named at evaluation time. The kernel re-runs the route
+          lookup after the OUTPUT mangle hook when the mark changes, which is
+          what makes a locally-generated packet honour the rule; if that ever
+          stops holding, the symptom is upstream DNS leaving via the ISP rather
+          than failing, so verify-protonvpn.sh asserts it explicitly.
+
+          Set to false to leave upstream DNS on the ISP path. Queries are already
+          encrypted to no-log resolvers there, so what this buys is hiding the
+          source address from those resolvers — worth having, not worth an
+          outage, which is why the fallback below exists.
+        '';
+      };
+
+      fallbackServers = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ "tls://dns.quad9.net" ];
+        description = ''
+          Resolvers the local resolver falls back to when its upstream cannot be
+          reached — which, with routeUpstreamThroughClient on, is exactly what a
+          dead tunnel looks like.
+
+          This is the path that keeps ACME renewals, `nixos-rebuild` and every
+          other name lookup on this box working while Proton is down. It
+          deliberately does NOT use the ISP's resolver: fallback means degraded,
+          not leaking. DoT to a third party keeps queries encrypted and keeps the
+          ISP seeing nothing but a TLS session even in the degraded state.
         '';
       };
     };
@@ -881,5 +929,50 @@ in
         };
       }
     ))
+
+    ##########################################################################
+    # Resolver.
+    #
+    # The split-horizon answers and internal zones already live in
+    # my.dns-filtering (AdGuard rewrites pointing acpuchades.com and friends at
+    # the LAN address), and they are deliberately untouched here: they are what
+    # stops LAN and WireGuard clients hairpinning out through Proton and back to
+    # this host's WAN address to reach a service sitting three metres away.
+    #
+    # What this adds is where a query that genuinely has to leave goes out, plus
+    # the fallback that keeps the box resolving when it cannot.
+    ##########################################################################
+    {
+      # Fallback first, so the failure mode is covered before the thing that can
+      # fail is introduced. Ordering matters here in review, not just at runtime.
+      services.adguardhome.settings.dns.fallback_dns = cfg.resolver.fallbackServers;
+    }
+
+    (lib.mkIf (cfg.clientTunnel.enable && cfg.resolver.routeUpstreamThroughClient) {
+      systemd.services.protonvpn-policy.serviceConfig.ExecStartPost =
+        pkgs.writeShellScript "protonvpn-dns-rule-start" ''
+          set -eu
+          while ${ip} rule del priority 1002 2>/dev/null; do :; done
+          ${ip} rule add fwmark ${toString dnsMark} lookup ${toString cfg.clientTunnel.table} priority 1002
+        '';
+
+      networking.firewall.extraCommands = lib.mkAfter ''
+        # Mark the resolver's upstream queries by cgroup — its uid is dynamic and
+        # cannot be named here — and let the rule above route them into the
+        # tunnel's table. The kernel re-runs the route lookup after this hook
+        # because the mark changed; that reroute is what makes it work for a
+        # locally-generated packet.
+        iptables -t mangle -D OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
+        iptables -t mangle -A OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark}
+
+        iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
+        iptables -t nat -A POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE
+      '';
+
+      networking.firewall.extraStopCommands = ''
+        iptables -t mangle -D OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
+        iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
+      '';
+    })
   ]);
 }
