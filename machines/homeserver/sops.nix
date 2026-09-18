@@ -371,7 +371,7 @@ in
           # orange cloud here would take inbound mail off the air. It is also the
           # name the fugazi backend STARTTLSes to, matched against the wildcard
           # cert — see my.fugazi-web's smtpHost.
-          ${ddnsZone "acpuchades.com" [ "analytics" "blog" "gps" "mail" "vpn" "www" ]}
+          ${ddnsZone "acpuchades.com" [ "analytics" "blog" "mail" "vpn" "www" ]}
 
           # fugazi-web's origin is this box's dynamic address, so every name that
           # resolves to it needs the same DDNS treatment the zone above gets —

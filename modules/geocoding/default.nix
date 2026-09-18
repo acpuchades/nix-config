@@ -18,9 +18,9 @@
 #     on this host.
 #
 # Nominatim shares the host PostgreSQL cluster (see ../postgresql-server),
-# which also backs NextCloud, Traccar, Prefect, Umami and Immich. The initial
-# import is extremely write-heavy — expect those services to be sluggish while
-# it runs, and prefer to kick it off when the host is otherwise idle.
+# which also backs NextCloud, Prefect, Umami and Immich. The initial import is
+# extremely write-heavy — expect those services to be sluggish while it runs,
+# and prefer to kick it off when the host is otherwise idle.
 #
 # `tablespace` exists because that cluster lives on /srv/encrypted, which is a
 # 5.5 TB spinning disk behind LUKS on btrfs. Nominatim is almost entirely

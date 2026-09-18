@@ -559,7 +559,6 @@ let
         ../../modules/samba-server
         ../../modules/media-server
         ../../modules/print-server
-        ../../modules/gps-backend
         ../../modules/geocoding
         ../../modules/openclaw
         ../../modules/tor-bridge
@@ -814,7 +813,6 @@ let
           { domain = "media.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
           { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "gps.acpuchades.com";       answer = homeServerLocalAddress; }
           { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
           { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
           { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
@@ -1285,20 +1283,10 @@ let
         }];
       };
 
-      my.gps-backend = {
-        enable = true;
-        hostName = "gps.acpuchades.com";
-        email.from = "noreply@acpuchades.com";
-        # Reverse-geocode positions with the self-hosted Nominatim (my.geocoding
-        # below), over its loopback nginx port. Traccar turns fixes into
-        # addresses without hitting the public OSM endpoint.
-        geocoder.url = "http://127.0.0.1:${toString config.my.geocoding.port}/reverse";
-      };
-
       # Nominatim. Kept LAN/WireGuard-only: a public geocoding endpoint is a
-      # scraper magnet, and the only consumers here are Traccar and Home
-      # Assistant. See the module header — enabling this creates an EMPTY
-      # database; the Spain extract has to be imported by hand once.
+      # scraper magnet, and the only consumer here is Home Assistant. See the
+      # module header — enabling this creates an EMPTY database; the Spain
+      # extract has to be imported by hand once.
       my.geocoding = {
         enable = true;
         hostName = "nominatim.acpuchades.com";
@@ -1605,7 +1593,6 @@ let
             services = [
               { name = "Prefect";     icon = "https://avatars.githubusercontent.com/u/39270919?s=200&v=4"; description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
               { name = "Umami";       icon = "umami.png";      description = "Web analytics";          href = "https://${config.my.web-analytics.hostName}"; }
-              { name = "GPS Backend"; icon = "mdi-map-marker"; description = "Location tracking backend"; href = "https://${config.my.gps-backend.hostName}"; }
               { name = "Nominatim";   icon = "mdi-map-search"; description = "OSM geocoding & reverse geocoding"; href = "https://${config.my.geocoding.hostName}"; }
             ];
           }

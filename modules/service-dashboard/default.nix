@@ -80,7 +80,6 @@ in
 
     port = lib.mkOption {
       type = lib.types.port;
-      # NB: 8082 is Traccar's (gps-backend) default web port — keep these apart.
       default = 8083;
       description = "Dashboard listen port (loopback only)";
     };
