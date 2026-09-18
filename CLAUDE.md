@@ -46,7 +46,7 @@ config = lib.mkIf config.my.<module>.enable { ... };
 
 **Development modules**: `python-dev` (Python 3, Jupyter, ruff, uv, pyright, conda/mamba), `r-dev` (R + devtools/renv/rix, uses rstats-on-nix cachix cache).
 
-**Server modules** (homeserver only): `cloud-suite` (NextCloud, Collabora, Vaultwarden), `dns-filtering` (AdGuard Home + DNSCrypt), `web-server` (nginx + ACME), `vpn-server` (WireGuard + hostapd WiFi hotspot), `mail-server` (Postfix inbound receive → eva's Maildir + Mailjet relay for outbound, rspamd, ACME STARTTLS).
+**Server modules** (homeserver only): `cloud-suite` (NextCloud, Collabora, Vaultwarden), `dns-filtering` (AdGuard Home + DNSCrypt), `web-server` (Caddy + ACME — NOT nginx; there is no `services.nginx` anywhere in this repo), `vpn-server` (WireGuard + hostapd WiFi hotspot), `protonvpn` (ProtonVPN egress: prefix-steered client tunnel for selected wg0 peers, plus a netns-isolated P2P tunnel for Transmission with NAT-PMP port renewal; see `scripts/verify-protonvpn.sh`), `mail-server` (Postfix inbound receive → eva's Maildir + Mailjet relay for outbound, rspamd, ACME STARTTLS).
 
 ### User Configuration (`users/alex/`)
 
