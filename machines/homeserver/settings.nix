@@ -171,4 +171,64 @@
   # Enable Mesa userspace drivers (VAAPI) for hardware-accelerated transcoding
   hardware.graphics.enable = true;
 
+  # Upstream workaround: hold yellow_carp's DMCUB blob at the 20260810 build.
+  #
+  # linux-firmware 20260910, which arrived with the 2026-09-11 lock bump, ships
+  # an OLDER yellow_carp_dmcub.bin than 20260810 did — version 0x0400004A where
+  # the previous release carried 0x0400004C. It is the only amdgpu blob this
+  # host loads that changed in that release: yellow_carp_toc, psp_13_0_5_ta and
+  # psp_13_0_8_asd are byte-identical across the two.
+  #
+  # This board's PSP rejects the older blob, so the display microcontroller
+  # never starts:
+  #     amdgpu: [drm] Loading DMUB firmware via PSP: version=0x0400004A
+  #     amdgpu: failed to load ucode DMCUB(0x3D)
+  #     amdgpu: psp gfx command LOAD_IP_FW(0x6) failed and response status is (0xFFFF0008)
+  #     amdgpu: [drm] Wait for DMUB auto-load failed: -62
+  # and with DMUB dead, every display-core command fails and logs its own
+  # failure, roughly five times a second, forever:
+  #     [drm] *ERROR* Error queueing DMUB command: status=2
+  #     [drm] *ERROR* dc_dmub_srv_log_diagnostic_data: DMCUB error - collecting diagnostic data
+  # 1,237,377 of those over the 09-11 → 09-15 boot; zero in every boot before it.
+  # The retry loop pins one core's `events` kworker at ~98% around the clock,
+  # which held Tctl at 91 °C and the fan at full — the visible symptom, and why
+  # this is worth a firmware workaround rather than a log filter.
+  #
+  # Patch the one blob rather than pin the whole package: the rest of 20260910
+  # is wanted, and there is nowhere to pin to anyway — nixpkgs-unstable carries
+  # the same 20260910. Taken from the upstream 20260810 tag and verified
+  # byte-identical (sha256 4bcb91d5…) to the blob generation 569 ran for months.
+  #
+  # `amdgpu.dc=0` was the other candidate, rejected on purpose: this iGPU also
+  # serves /dev/dri/renderD128 to Jellyfin and Immich, and dropping the display
+  # core on a DCN-only ASIC risks taking the render node and the local console
+  # with it — on the one machine we would then have to recover blind.
+  #
+  # Drop when linux-firmware ships a yellow_carp_dmcub.bin at 0x0400004C or
+  # later (`xxd -s 16 -l 4` on the blob, little-endian). Re-check on each
+  # `nix flake update`: delete this overlay, rebuild, REBOOT — firmware loads at
+  # amdgpu probe, so a switch alone proves nothing — and confirm
+  # `journalctl -b -k | grep -c 'Error queueing DMUB'` reads 0.
+  # Last checked: 2026-09-15.
+  nixpkgs.overlays = [
+    (
+      final: prev:
+      let
+        # linux-firmware 20260810's yellow_carp_dmcub.bin, DMUB version 0x0400004C.
+        dmcub = prev.fetchurl {
+          url = "https://gitlab.com/kernel-firmware/linux-firmware/-/raw/20260810/amdgpu/yellow_carp_dmcub.bin";
+          hash = "sha256-S8uR1YunJ2hIRbAqnN0y83y1qfcb1Lk9TmeAlEZc2kc=";
+        };
+      in
+      {
+        linux-firmware = prev.linux-firmware.overrideAttrs (old: {
+          # After `install` AND `dedup`, so rdfind cannot leave a symlink here.
+          postInstall = (old.postInstall or "") + ''
+            install -Dm444 ${dmcub} $out/lib/firmware/amdgpu/yellow_carp_dmcub.bin
+          '';
+        });
+      }
+    )
+  ];
+
 }
