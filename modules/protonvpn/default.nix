@@ -111,6 +111,66 @@ let
       "${ip} route del blackhole default table ${toString cfg.clientTunnel.table} metric 1000 || true"}
   '';
 
+  # The kill-switch chain. Read the ORDER, because the guarantee is structural:
+  # local destinations RETURN to normal processing, traffic correctly leaving via
+  # the tunnel is ACCEPTed, and everything else from a steered source is DROPped.
+  #
+  # There is deliberately NO rule matching a steered source to the WAN interface.
+  # Not a rule that drops it — no rule at all. The chain simply cannot express
+  # "tunneled client goes out the ISP", so no future edit to the surrounding
+  # ruleset, and no tunnel failure, can produce that packet. That is the whole
+  # design: the fallback path does not exist rather than being forbidden.
+  ksChain = "protonvpn-ks";
+
+  steeredSources = lib.concatMap (g: g.sources) steeredGroups;
+
+  ksStart = ''
+    iptables -N ${ksChain} 2>/dev/null || iptables -F ${ksChain}
+    ${lib.concatMapStringsSep "\n" (net:
+      "iptables -A ${ksChain} -d ${net} -j RETURN") cfg.localPrefixes}
+    iptables -A ${ksChain} -o ${cfg.clientTunnel.interface} -j ACCEPT
+    iptables -A ${ksChain} -j DROP
+    ${lib.concatMapStringsSep "\n" (src: ''
+      iptables -D FORWARD -s ${src} -j ${ksChain} 2>/dev/null || true
+      iptables -I FORWARD 1 -s ${src} -j ${ksChain}'') steeredSources}
+
+    # IPv6 guard. This host has no IPv6 at all — no global address, no v6
+    # default route — and peer profiles are generated IPv4-only, so tunneled
+    # clients have no routable v6 through us and there is nothing here to leak
+    # today. This rule is what keeps that true if a v6 address is ever added to
+    # the WireGuard interface without revisiting this module: tunneled clients
+    # would otherwise silently acquire dual-stack egress that bypasses the
+    # tunnel entirely. "No routable IPv6" is a supported answer; "IPv6 that
+    # quietly goes around Proton" is not.
+    ip6tables -D FORWARD -i ${cfg.wgInterface} -j DROP 2>/dev/null || true
+    ip6tables -I FORWARD 1 -i ${cfg.wgInterface} -j DROP
+  '';
+
+  ksStop = ''
+    ${lib.concatMapStringsSep "\n" (src:
+      "iptables -D FORWARD -s ${src} -j ${ksChain} 2>/dev/null || true") steeredSources}
+    iptables -F ${ksChain} 2>/dev/null || true
+    iptables -X ${ksChain} 2>/dev/null || true
+    ip6tables -D FORWARD -i ${cfg.wgInterface} -j DROP 2>/dev/null || true
+  '';
+
+  # SNAT to the tunnel address, and clamp MSS on the way in. The clamp matters
+  # more here than usual: the peer has already crossed one WireGuard hop, so the
+  # path it is about to enter is narrower than anything its own PMTU discovery
+  # can observe, and without the clamp large TCP transfers black-hole while small
+  # requests succeed — which reads as "the VPN is up but the internet is broken".
+  natStart = lib.concatMapStringsSep "\n" (src: ''
+    iptables -t nat -D POSTROUTING -s ${src} -o ${cfg.clientTunnel.interface} -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -A POSTROUTING -s ${src} -o ${cfg.clientTunnel.interface} -j MASQUERADE
+    iptables -t mangle -D FORWARD -p tcp --syn -s ${src} -o ${cfg.clientTunnel.interface} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+    iptables -t mangle -A FORWARD -p tcp --syn -s ${src} -o ${cfg.clientTunnel.interface} -j TCPMSS --clamp-mss-to-pmtu
+  '') steeredSources;
+
+  natStop = lib.concatMapStringsSep "\n" (src: ''
+    iptables -t nat -D POSTROUTING -s ${src} -o ${cfg.clientTunnel.interface} -j MASQUERADE 2>/dev/null || true
+    iptables -t mangle -D FORWARD -p tcp --syn -s ${src} -o ${cfg.clientTunnel.interface} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+  '') steeredSources;
+
   tunnelOptions = { name, defaultTable }: {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -525,6 +585,27 @@ in
           '';
         };
       };
+    })
+
+    ##########################################################################
+    # Fail-closed forwarding, NAT and MSS clamping for the client tunnel.
+    #
+    # These live in the firewall hooks rather than in a oneshot because the
+    # firewall service flushes and rebuilds its chains on every reload, which
+    # would silently wipe rules an external unit had added. The `ip rule`s and
+    # routes above are the opposite case — they are preserved by
+    # ManageForeignRoutingPolicyRules = false — which is why the two halves of
+    # this module are installed by different mechanisms.
+    ##########################################################################
+    (lib.mkIf cfg.clientTunnel.enable {
+      networking.firewall.extraCommands = lib.mkAfter ''
+        ${ksStart}
+        ${natStart}
+      '';
+      networking.firewall.extraStopCommands = ''
+        ${ksStop}
+        ${natStop}
+      '';
     })
   ]);
 }
