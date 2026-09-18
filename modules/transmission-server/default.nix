@@ -45,7 +45,33 @@ in
     rpcPort = lib.mkOption {
       type = lib.types.port;
       default = 9091;
-      description = "Loopback port the RPC/web UI binds to (fronted by Caddy).";
+      description = "Port the RPC/web UI binds to (fronted by Caddy).";
+    };
+
+    rpcAddress = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = ''
+        Address the RPC/web UI binds to, and the address Caddy proxies to — one
+        option for both, so the two cannot drift apart.
+
+        Defaults to loopback. It exists as an option because the daemon does not
+        always share a network namespace with Caddy; when it does not, this is
+        the address of whatever link the two actually share. Whatever it is set
+        to must NOT be an interface with a path to the internet: the RPC endpoint
+        has no authentication of its own (see `rpc-authentication-required`
+        below) and relies entirely on being unreachable except through Caddy.
+      '';
+    };
+
+    rpcWhitelist = lib.mkOption {
+      type = lib.types.str;
+      default = "127.0.0.1";
+      description = ''
+        Comma-separated list of addresses permitted to make RPC calls
+        (Transmission's `rpc-whitelist`). Must contain the address Caddy connects
+        FROM, which is not necessarily the address the daemon binds to.
+      '';
     };
 
     allowedNetworks = lib.mkOption {
@@ -133,11 +159,11 @@ in
       openRPCPort = false;
 
       settings = {
-        # Web UI / RPC — loopback only, Caddy fronts it.
-        rpc-bind-address = "127.0.0.1";
+        # Web UI / RPC — Caddy fronts it; see rpcAddress for where it binds.
+        rpc-bind-address = cfg.rpcAddress;
         rpc-port = cfg.rpcPort;
         rpc-whitelist-enabled = true;
-        rpc-whitelist = "127.0.0.1";
+        rpc-whitelist = cfg.rpcWhitelist;
         # Caddy forwards Host: ${hostName}; the host whitelist would 409 it, and
         # access is already gated by allowedNetworks + basic auth.
         rpc-host-whitelist-enabled = false;
@@ -194,7 +220,7 @@ in
         "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
       (lib.optionalString (cfg.basicAuthFile != null)
         "import ${cfg.basicAuthFile}")
-      "reverse_proxy http://127.0.0.1:${toString cfg.rpcPort}"
+      "reverse_proxy http://${cfg.rpcAddress}:${toString cfg.rpcPort}"
       "encode gzip"
     ]);
   };
