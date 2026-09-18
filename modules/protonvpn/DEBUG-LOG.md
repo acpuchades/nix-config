@@ -249,3 +249,89 @@ privacy nicety.
   `nobody`-owned curl by uid — a *stand-in* that tested the reroute, so it could
   pass while the real resolver path failed. It now runs curl **as the resolver's
   own uid**, which is the actual path, and asserts table 44 has no blackhole.
+
+---
+
+## 2026-09-19 — first verify run: 8 failures, one real bug behind most of them
+
+`sudo ./scripts/verify-protonvpn.sh` after the uid-steering switch. The uid rule
+itself was fine — `PASS resolver uid 969 is steered into table 44` — but §6 tore
+the client tunnel down and **it never came back**, so §8, §11 and the rest ran
+against a dead tunnel.
+
+### The real bug: a .device unit tracks EXISTENCE, not UP
+
+`ip link set proton-client down` flushes the routes through that device, but the
+interface never leaves sysfs — so `sys-subsystem-net-devices-proton\x2dclient.device`
+**stayed active**, `BindsTo` never fired, and the oneshot stayed `active` with
+`RemainAfterExit=true`. The script's `systemctl start protonvpn-route-…` was
+therefore a no-op on an already-started unit. Tunnel back, routes gone,
+`ip route show table 42` left holding nothing but its blackhole.
+
+So the oneshot was wrong twice, for two different reasons: first anchored to a
+unit that does not exist under networkd (never ran at all), then anchored to a
+device unit that cannot observe the event that matters.
+
+**Fix: networkd owns the routes.** It already owns the interface and re-applies
+`[Route]` on carrier gain, which is precisely the event the oneshot was blind to.
+The unit is deleted. Generated `40-proton-client.network`:
+
+```ini
+[Route]
+Destination=0.0.0.0/0
+Scope=link
+Table=42
+
+[Route]
+Destination=0.0.0.0/0
+PreferredSource=10.2.0.2
+Scope=link
+Table=44
+```
+
+Both pin `Table=`, so neither can touch `main` — still consistent with
+`allowedIPsAsRoutes = false`, which exists to stop WireGuard installing 0.0.0.0/0
+into `main`. `PreferredSource` pins the source so the uid rule's whole purpose
+cannot be undone by a second address appearing.
+
+Note the degrade path worked exactly as designed even in the failure: with the
+tunnel dead, table 44 was empty and §8 reported `resolver-uid egress:
+207.188.163.51` — the ISP, not a timeout. Under the old shared-table design that
+same state was a host-wide DNS outage.
+
+### Test defects found (the system was fine; the checks were not)
+
+* **§2 "not a Proton address"** — `130.195.250.74` is in the *same /24* as the
+  configured endpoint `130.195.250.66`. The check asserted ASN org contains
+  "Proton", but Proton leases capacity, so a healthy exit reports the lessor
+  (M247, Datacamp, …). Now the endpoint's /24 is the primary signal and ASN is
+  only a fallback.
+* **§3 NAT-PMP "<no reply>"** — the script issued its *own* `natpmpc` request
+  while `protonvpn-natpmp` renews the same tcp mapping every 45s; the collision
+  went unanswered and read as "Proton does not do NAT-PMP", while the service
+  had in fact mapped port 51073 minutes earlier. Now reads the port from the
+  service's journal, with a live probe only as fallback.
+* **§5 p2p "did NOT recover"** — recovery there is *not* `ip link set up`: the
+  namespace has no networkd and nothing reinstates the flushed default route.
+  In production the watchdog restarts the unit. The test now does that, and
+  polls up to 30s instead of a single try after `sleep 3`.
+* **§10 all SKIP** — `ip route get <dst> from 10.0.1.1 iif wg0` uses wg0's *own*
+  address as an input source, which the kernel rejects with `Invalid argument`.
+  All three checks had been silently skipping. Now uses a peer address
+  (10.0.1.2) and actually runs.
+* **§6/§5 timing** — added a `wait_for` helper; a single try after a fixed sleep
+  turns a slow-but-working recovery into a red FAIL.
+
+### Unrelated, still open: cloud.acpuchades.com returns 503
+
+**Not a protonvpn problem and not caused by any of this.** Traced it out:
+Caddy → nginx → php-fpm, and `curl -H 'Host: cloud.acpuchades.com'
+http://127.0.0.1:8080/` returns **503 straight from nginx**, with nginx and
+phpfpm-nextcloud both active and the socket permissions correct. So the 503
+originates inside Nextcloud/PHP (maintenance mode or a PHP error), not in the
+web tier. Needs its own look.
+
+Worth noting: CLAUDE.md claims "web-server (Caddy + ACME — NOT nginx; there is
+no `services.nginx` anywhere in this repo)". That is **wrong** —
+`modules/cloud-suite/default.nix:423` enables `services.nginx`, and Nextcloud is
+deliberately served Caddy → nginx → php-fpm. The file needs correcting.

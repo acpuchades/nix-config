@@ -1,4 +1,4 @@
-{ config, lib, pkgs, utils, ... }:
+{ config, lib, pkgs, ... }:
 
 # ProtonVPN egress, in two independent tunnels that never share an exit IP:
 #
@@ -226,13 +226,6 @@ let
   # single unresponsive Proton endpoint, and reaching for a unit restart first
   # would take Transmission down with it (it is PartOf the P2P tunnel) for
   # something a live `wg set` fixes without dropping a single transfer.
-  # The systemd .device unit backing an interface. This host runs
-  # networking.useNetworkd, under which networking.wireguard.interfaces emits
-  # systemd-networkd .netdev/.network files and NO wireguard-<iface>.service —
-  # so the device unit is the only thing that actually tracks this tunnel's
-  # lifetime, and the only sound anchor for ordering and binding.
-  devUnit = iface:
-    "${utils.escapeSystemdPath "/sys/subsystem/net/devices/${iface}"}.device";
 
   mkWatchdog = { t, resetCmd, resetName, probePrefix, curlArgs, wgPrefix }:
     let
@@ -923,65 +916,58 @@ in
     }
 
     (lib.mkIf cfg.clientTunnel.enable {
-      systemd.services."protonvpn-route-${cfg.clientTunnel.interface}" = {
-        description = "Default route for ${cfg.clientTunnel.interface} in table ${toString cfg.clientTunnel.table}";
-        # Anchored to the interface's .device unit, not to a
-        # wireguard-<iface>.service — under networkd that service does not
-        # exist, and a Requires= on a unit that does not exist means this one
-        # can never start. It never did: the tunnel's table held nothing but its
-        # blackhole, so every steered packet — the resolver's marked queries
-        # included — was dropped on the floor.
-        #
-        # The device unit is also a better trigger than multi-user.target ever
-        # was: it gives what the old PartOf was reaching for, and gives it more
-        # precisely. The route is installed when the interface appears, torn
-        # down when it goes, and reinstalled when it comes back.
-        wantedBy = [ (devUnit cfg.clientTunnel.interface) ];
-        after = [ (devUnit cfg.clientTunnel.interface) "protonvpn-policy.service" ];
-        bindsTo = [ (devUnit cfg.clientTunnel.interface) ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-start" ''
-            set -eu
-            ${ip} route replace default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table}
-            ${lib.optionalString cfg.resolver.routeUpstreamThroughClient ''
-              # The resolver's table. Deliberately holds ONLY this route and no
-              # blackhole, which is what makes upstream DNS DEGRADE instead of
-              # dying: when the interface goes, the kernel drops this route with
-              # it, the table is empty, rule 1002 matches nothing and the lookup
-              # falls through to `main` — queries leave over the ISP, still
-              # encrypted to the same no-log resolvers. That is this module's
-              # stated intent for DNS ("fallback means degraded, not leaking"),
-              # and it is why the resolver does not share table
-              # ${toString cfg.clientTunnel.table}, whose blackhole exists to
-              # keep PEER traffic fail-closed and once took the whole LAN's name
-              # resolution down with it.
-              #
-              # `src` is explicit so the address cannot be ambiguous if a second
-              # one is ever added to the interface. networkd assigns it
-              # asynchronously after the device appears, so wait for it briefly
-              # rather than racing; on timeout, install without `src` and let
-              # the kernel select, which is correct today with a single address.
-              for _ in $(${pkgs.coreutils}/bin/seq 50); do
-                ${ip} -4 addr show dev ${cfg.clientTunnel.interface} \
-                  | ${pkgs.gnugrep}/bin/grep -qw "${clientTunnelAddr}" && break
-                ${pkgs.coreutils}/bin/sleep 0.1
-              done
-              if ! ${ip} route replace default dev ${cfg.clientTunnel.interface} \
-                     table ${toString cfg.resolver.table} src ${clientTunnelAddr}; then
-                echo "protonvpn: ${clientTunnelAddr} not on ${cfg.clientTunnel.interface} yet; installing the resolver route without an explicit source" >&2
-                ${ip} route replace default dev ${cfg.clientTunnel.interface} table ${toString cfg.resolver.table}
-              fi
-            ''}
-          '';
-          ExecStop = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-stop" ''
-            ${ip} route del default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table} || true
-            ${lib.optionalString cfg.resolver.routeUpstreamThroughClient
-              "${ip} route del default dev ${cfg.clientTunnel.interface} table ${toString cfg.resolver.table} || true"}
-          '';
+      # The tunnel's routes are owned by NETWORKD, not by a oneshot unit.
+      #
+      # A oneshot was tried twice and is wrong both times. Anchored to
+      # multi-user.target it required a wireguard-<iface>.service that does not
+      # exist under networkd, so it never ran at all and the tunnel's table held
+      # nothing but its blackhole. Re-anchored to the interface's .device unit it
+      # started correctly at boot, but a .device unit tracks the device's
+      # EXISTENCE in sysfs, not whether it is UP — so `ip link set <iface> down`
+      # flushed these routes while the unit stayed `active` with RemainAfterExit,
+      # BindsTo never fired, and `systemctl start` was a no-op. The tunnel came
+      # back and its routes did not.
+      #
+      # networkd already owns this interface and re-applies its configuration
+      # whenever the link is reconfigured or regains carrier, which is exactly
+      # the event the oneshot had no way to observe. Declaring the routes here
+      # makes recovery automatic and deletes the unit and its failure modes.
+      #
+      # Neither route can touch `main`: both pin an explicit Table=. This is
+      # still consistent with allowedIPsAsRoutes = false — that keeps WireGuard
+      # from installing ITS notion of routes (0.0.0.0/0 into main); these are
+      # policy-table routes that only a policy rule can ever reach.
+      systemd.network.networks."40-${cfg.clientTunnel.interface}".routes =
+        [
+          # Scope=link because a WireGuard device has no gateway to speak of;
+          # this reproduces `ip route add default dev <iface> scope link`.
+          {
+            Destination = "0.0.0.0/0";
+            Table = cfg.clientTunnel.table;
+            Scope = "link";
+          }
+        ]
+        ++ lib.optional cfg.resolver.routeUpstreamThroughClient {
+          # The resolver's table. Deliberately holds ONLY this route and no
+          # blackhole, which is what makes upstream DNS DEGRADE instead of
+          # dying: when the link goes, the kernel drops this route with it, the
+          # table is empty, rule 1002 matches nothing and the lookup falls
+          # through to `main` — queries leave over the ISP, still encrypted to
+          # the same no-log resolvers. That is this module's stated intent for
+          # DNS, and it is why the resolver does not share table
+          # ${toString cfg.clientTunnel.table}, whose blackhole exists to keep
+          # PEER traffic fail-closed and once took the whole LAN's name
+          # resolution down with it.
+          #
+          # PreferredSource pins the source address rather than leaving it to
+          # selection, so the uid rule's whole purpose — a correct source at
+          # connect() time — cannot be quietly undone by a second address
+          # appearing on the interface.
+          Destination = "0.0.0.0/0";
+          Table = cfg.resolver.table;
+          Scope = "link";
+          PreferredSource = clientTunnelAddr;
         };
-      };
     })
 
     ##########################################################################

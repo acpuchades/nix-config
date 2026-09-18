@@ -18,11 +18,16 @@ CLIENT_IF=proton-client
 P2P_IF=proton-p2p
 CLIENT_TABLE=42
 TUNNELED_SRC=10.0.1.1          # wg0's address inside the tunneled prefix
+TUNNELED_PEER=10.0.1.2         # a PEER address in that prefix, for input-route simulation
 VETH_NS_ADDR=10.200.0.2
 RPC_PORT=9091
 GW=10.2.0.1
 DNS_TABLE=44                   # resolver upstream table (no blackhole: degrades to ISP)
 RESOLVER_USER=dnscrypt-proxy
+# The configured Proton endpoints. An exit address in the same /24 as the peer
+# we tunnel to is Proton's by construction — a far better test than ASN org.
+CLIENT_ENDPOINT=$(nix eval --raw ".#nixosConfigurations.homeserver.config.my.protonvpn.clientTunnel.peer.endpoint" 2>/dev/null | cut -d: -f1)
+P2P_ENDPOINT=$(nix eval --raw ".#nixosConfigurations.homeserver.config.my.protonvpn.p2pTunnel.peer.endpoint" 2>/dev/null | cut -d: -f1)
 IP_ECHO=https://ifconfig.co
 IP_ECHO_JSON=https://ifconfig.co/json
 
@@ -47,14 +52,40 @@ note() { printf '        %s\n' "$1"; }
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 2; }
 
+# Poll a command until it succeeds, up to N seconds. Recovery is not
+# instantaneous and asserting it with a single try after a fixed sleep turns a
+# slow-but-working path into a red FAIL — which is exactly what it did before.
+wait_for() {
+  local secs="$1"; shift
+  local i
+  for (( i=0; i<secs; i++ )); do
+    "$@" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
 egress()     { curl -fsS --max-time 15 "$IP_ECHO" 2>/dev/null; }
 egress_src() { curl -fsS --max-time 15 --interface "$1" "$IP_ECHO" 2>/dev/null; }
 egress_ns()  { ip netns exec "$NS" curl -fsS --max-time 15 "$IP_ECHO" 2>/dev/null; }
 
-# Proton's ASN org, when the echo service reports it. Falls back to "differs
-# from the ISP address", which is weaker but never wrong.
+# Is this egress address one of Proton's?
+#
+# The ASN org is NOT a reliable test and must not be the deciding one: Proton
+# leases capacity from hosting providers, so a perfectly good Proton exit
+# reports the lessor's name (M247, Datacamp, …) and never the word "Proton".
+# That is why this check used to FAIL on 130.195.250.74 — an address in the
+# very same /24 as the configured endpoint.
+#
+# The reliable signal is the configured endpoint itself: an exit in the same
+# /24 as the peer we are tunnelling to is Proton's by construction. ASN is kept
+# only as a second chance for exits that sit in a different block.
 is_proton() {
   local addr="$1" json org
+  local endpoint_net="${3:-}"
+  if [[ -n "$endpoint_net" && "${addr%.*}" == "${endpoint_net%.*}" ]]; then
+    return 0
+  fi
   json=$(curl -fsS --max-time 15 "$IP_ECHO_JSON" --interface "${2:-}" 2>/dev/null) || return 2
   org=$(printf '%s' "$json" | grep -o '"asn_org"[^,]*' | cut -d'"' -f4)
   [[ -z "$org" ]] && return 2
@@ -94,12 +125,12 @@ elif [[ "$CLIENT_IP" == "$HOST_IP" ]]; then
   no "tunneled source left via the ISP — it is NOT being steered"
 else
   ok "tunneled source egresses somewhere other than the ISP"
-  if is_proton "$CLIENT_IP" "$TUNNELED_SRC"; then
-    ok "tunneled egress is a Proton address (by ASN)"
+  if is_proton "$CLIENT_IP" "$TUNNELED_SRC" "$CLIENT_ENDPOINT"; then
+    ok "tunneled egress is a Proton address"
   elif [[ $? -eq 2 ]]; then
-    sk "ASN lookup unavailable; distinctness checked only"
+    sk "could not corroborate the exit as Proton's; distinctness checked only"
   else
-    no "tunneled egress is not a Proton address"
+    no "tunneled egress is neither in the endpoint's /24 nor a Proton ASN"
   fi
 fi
 
@@ -121,16 +152,31 @@ else
   ok "namespace egresses via the tunnel, not the ISP"
 fi
 
-PORT=$(ip netns exec "$NS" natpmpc -a 1 0 tcp 60 -g "$GW" 2>/dev/null \
-        | sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' | head -1)
+# Read the port the RENEWAL SERVICE holds, rather than issuing a competing
+# NAT-PMP request of our own. protonvpn-natpmp renews the same tcp mapping every
+# 45s; a second client asking for the same thing at the same moment is liable to
+# go unanswered, and that silence then reads as "Proton does not do NAT-PMP" —
+# which is how this check failed while the service itself was working fine and
+# had a port mapped. The service logs only on change, so its last logged port is
+# the current one for as long as the unit is up.
+PORT=$(journalctl -u protonvpn-natpmp --no-pager 2>/dev/null \
+        | sed -n 's/.*forwarded port changed .* -> \([0-9]\{1,\}\),.*/\1/p' | tail -1)
+PORT_SRC="renewal service"
+if [[ -z "$PORT" ]]; then
+  PORT=$(ip netns exec "$NS" natpmpc -a 1 0 tcp 60 -g "$GW" 2>/dev/null \
+          | sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' | head -1)
+  PORT_SRC="live probe"
+fi
 LISTEN=$(ip netns exec "$NS" transmission-remote "$VETH_NS_ADDR:$RPC_PORT" -si 2>/dev/null \
         | sed -n 's/.*Listenport: *\([0-9]\{1,\}\).*/\1/p' | head -1)
-note "NAT-PMP forwarded port: ${PORT:-<no reply>}"
+note "NAT-PMP forwarded port: ${PORT:-<no reply>} (via $PORT_SRC)"
 note "transmission peer-port: ${LISTEN:-<unknown>}"
-if [[ -z "$PORT" ]]; then
-  no "Proton did not answer NAT-PMP (is this server P2P-flagged with NAT-PMP enabled?)"
+if ! systemctl is-active --quiet protonvpn-natpmp.service; then
+  no "protonvpn-natpmp.service is not running — the mapping will expire"
+elif [[ -z "$PORT" ]]; then
+  no "no forwarded port from either the service or a probe (is this server P2P-flagged with NAT-PMP enabled?)"
 elif [[ "$PORT" == "$LISTEN" ]]; then
-  ok "forwarded port matches Transmission's peer-port"
+  ok "forwarded port $PORT matches Transmission's peer-port"
 else
   no "forwarded port $PORT != Transmission's $LISTEN (renewal service not applying it)"
 fi
@@ -161,9 +207,15 @@ if (( RUN_DISRUPTIVE )); then
   else
     ok "namespace has no path to the internet with the tunnel down"
   fi
+  # Bringing the link back up is NOT what recovers this tunnel. It lives in a
+  # namespace with no networkd, and `ip link set up` cannot reinstate the
+  # default route the kernel flushed on down. In production the watchdog
+  # notices the dead probe and restarts the unit, which rebuilds the tunnel and
+  # its route; that is the path exercised here, rather than a bare link-up that
+  # was always going to leave the namespace routeless and read as a failure.
   ip netns exec "$NS" ip link set "$P2P_IF" up
-  sleep 3
-  if ip netns exec "$NS" curl -fsS --max-time 20 "$IP_ECHO" >/dev/null 2>&1; then
+  systemctl restart "protonvpn-$P2P_IF.service" >/dev/null 2>&1 || true
+  if wait_for 30 ip netns exec "$NS" curl -fsS --max-time 10 "$IP_ECHO"; then
     ok "namespace recovered after the tunnel came back"
   else
     no "namespace did NOT recover — check protonvpn-$P2P_IF.service"
@@ -188,13 +240,17 @@ if (( RUN_DISRUPTIVE )); then
   else
     no "no blackhole in table $CLIENT_TABLE — a lookup could fall through to main"
   fi
+  # networkd owns this tunnel's table routes, so bringing the link up is all
+  # that should be needed — it re-applies [Route] on carrier gain. There is no
+  # longer a protonvpn-route-<iface>.service to poke: a oneshot could not see
+  # this event at all, because the interface never leaves sysfs when it goes
+  # down, so its .device unit stays active and the unit stays "already started".
   ip link set "$CLIENT_IF" up
-  sleep 3
-  systemctl start "protonvpn-route-$CLIENT_IF.service" >/dev/null 2>&1 || true
-  if curl -fsS --max-time 20 --interface "$TUNNELED_SRC" "$IP_ECHO" >/dev/null 2>&1; then
-    ok "tunneled egress recovered"
+  if wait_for 30 curl -fsS --max-time 10 --interface "$TUNNELED_SRC" "$IP_ECHO"; then
+    ok "tunneled egress recovered on its own (networkd re-applied the routes)"
   else
-    no "tunneled egress did NOT recover — check protonvpn-route-$CLIENT_IF.service"
+    no "tunneled egress did NOT recover — check 40-$CLIENT_IF.network's [Route] sections"
+    note "ip route show table $CLIENT_TABLE"
   fi
 else
   sk "disruptive test skipped (--safe)"
@@ -295,8 +351,12 @@ fi
 
 ###############################################################################
 hdr "10. LAN and inter-client traffic is not tunneled"
+# Simulate a packet arriving from a PEER, not from wg0's own address. With
+# `iif`, the kernel does an input lookup and rejects a source that is local to
+# this host outright ("Invalid argument") — which silently turned all three of
+# these into SKIPs, so the check was never actually running.
 for dst in 192.168.2.1 192.168.2.2 10.0.0.2; do
-  DEV=$(ip route get "$dst" from "$TUNNELED_SRC" iif wg0 2>/dev/null | grep -o 'dev [^ ]*' | head -1 | cut -d' ' -f2)
+  DEV=$(ip route get "$dst" from "$TUNNELED_PEER" iif wg0 2>/dev/null | grep -o 'dev [^ ]*' | head -1 | cut -d' ' -f2)
   if [[ "$DEV" == "$CLIENT_IF" ]]; then
     no "traffic from a tunneled source to $dst would go through the tunnel"
   elif [[ -n "$DEV" ]]; then
