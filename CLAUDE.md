@@ -83,7 +83,7 @@ Defined in `machines/homeserver/services.nix` and modules:
 
 ## Upstream-Tracked Workarounds (check periodically; drop when possible)
 
-These carry ongoing bookkeeping tied to external state. On each `nix flake update` (or every few months), re-check each one and remove it once its drop condition is met. Last reviewed: 2026-09-11.
+These carry ongoing bookkeeping tied to external state. On each `nix flake update` (or every few months), re-check each one and remove it once its drop condition is met. Last reviewed: 2026-09-18.
 
 | Workaround | Location | Drop condition | Status (2026-07-26) |
 |---|---|---|---|
