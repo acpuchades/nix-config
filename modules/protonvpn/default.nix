@@ -744,7 +744,12 @@ in
           # The daemon binds its RPC to the namespace end; Caddy connects from
           # the host end, which is what the whitelist has to name.
           rpcAddress = v.namespaceAddress;
-          rpcWhitelist = v.hostAddress;
+          # Both ends of the link. Caddy reaches the daemon from the host end;
+          # the NAT-PMP renewal unit runs INSIDE the namespace and therefore
+          # reaches it from the namespace end, where source selection picks the
+          # local address. Omitting the second address makes every port update
+          # fail with a 403 that nothing surfaces.
+          rpcWhitelist = "${v.hostAddress},${v.namespaceAddress}";
         };
 
         services.transmission.settings = {
@@ -798,6 +803,80 @@ in
             # Upstream binds /etc read-only into RootDirectory; this lands on top
             # of it. Both are lists, so this concatenates rather than replaces.
             BindReadOnlyPaths = [ "/etc/netns/${ns}/resolv.conf:/etc/resolv.conf" ];
+          };
+        };
+      }
+    ))
+
+    ##########################################################################
+    # NAT-PMP port renewal.
+    #
+    # Proton's forwarded port is randomly assigned and the lease is ~60 seconds,
+    # so this is not a setup step that runs once — it is a permanent loop, and if
+    # it stops the port goes away within a minute. It renews on a 45s cadence,
+    # notices when the assigned port CHANGES, and pushes the new value into the
+    # running daemon over RPC. The daemon is never restarted for a port change:
+    # that would interrupt every transfer, repeatedly, for a routine event.
+    ##########################################################################
+    (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
+      let
+        t = cfg.p2pTunnel;
+        ns = t.netns;
+        v = cfg.transmission.veth;
+        rpc = "${v.namespaceAddress}:${toString config.my.transmission-server.rpcPort}";
+      in
+      {
+        systemd.services.protonvpn-natpmp = {
+          description = "ProtonVPN NAT-PMP forwarded-port renewal for transmission";
+          wantedBy = [ "multi-user.target" ];
+          after = [
+            "protonvpn-${t.interface}.service"
+            "protonvpn-veth-${ns}.service"
+            "transmission.service"
+          ];
+          requires = [ "protonvpn-veth-${ns}.service" ];
+          bindsTo = [ "protonvpn-${t.interface}.service" ];
+          partOf = [ "protonvpn-${t.interface}.service" ];
+          serviceConfig = {
+            Type = "simple";
+            User = "transmission";
+            Group = config.my.transmission-server.group;
+            # Same namespace as the daemon: the gateway it has to talk to exists
+            # nowhere else.
+            NetworkNamespacePath = "/var/run/netns/${ns}";
+            Restart = "always";
+            RestartSec = 10;
+            ExecStart = pkgs.writeShellScript "protonvpn-natpmp" ''
+              set -u
+              last=""
+              while :; do
+                # Both protocols are renewed every cycle. Proton returns the same
+                # public port for each, but the two leases expire independently,
+                # so renewing only one silently loses half the mapping.
+                ${pkgs.libnatpmp}/bin/natpmpc -a 1 0 udp 60 -g ${t.dns} >/dev/null 2>&1 || true
+                out=$(${pkgs.libnatpmp}/bin/natpmpc -a 1 0 tcp 60 -g ${t.dns} 2>/dev/null) || true
+                port=$(printf '%s\n' "$out" \
+                  | ${pkgs.gnused}/bin/sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' \
+                  | ${pkgs.coreutils}/bin/head -1)
+
+                if [ -z "$port" ]; then
+                  # No reply. Either the tunnel is down or this Proton server is
+                  # not servicing NAT-PMP — the request leaves either way, so
+                  # silence is all we get to distinguish them by. Keep retrying;
+                  # the loop is the whole mechanism.
+                  :
+                elif [ "$port" != "$last" ]; then
+                  if ${pkgs.transmission_4}/bin/transmission-remote ${rpc} --port "$port" >/dev/null 2>&1; then
+                    echo "natpmp: forwarded port changed ''${last:-none} -> $port, pushed to transmission"
+                    last="$port"
+                  else
+                    echo "natpmp: got forwarded port $port but the RPC update failed; will retry"
+                  fi
+                fi
+
+                ${pkgs.coreutils}/bin/sleep 45
+              done
+            '';
           };
         };
       }
