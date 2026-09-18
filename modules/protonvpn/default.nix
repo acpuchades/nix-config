@@ -453,12 +453,6 @@ in
       example = [ "192.168.2.0/24" "10.0.0.0/24" "10.0.1.0/24" ];
     };
 
-    uplinkInterface = lib.mkOption {
-      type = lib.types.str;
-      description = "WAN interface. Referenced only to keep it out of the tunneled path.";
-      example = "wlp3s0";
-    };
-
     lanRedirect = {
       enable = lib.mkEnableOption ''
         steering entire LAN hosts through the client tunnel.
@@ -581,6 +575,10 @@ in
           Name of the network namespace the P2P tunnel and its consumer live in.
           The tunnel is the only route inside it, so a dead tunnel leaves the
           daemon with no network path at all.
+
+          Note that this makes the inherited `table` option INERT for this
+          tunnel: there is no policy routing here to need a table, because the
+          namespace has exactly one route and no alternative to choose between.
         '';
       };
     };

@@ -728,7 +728,6 @@ let
       my.protonvpn = {
         enable = true;
 
-        uplinkInterface = uplinkInterface;
         wgInterface = config.my.vpn-server.interface;
 
         # Tunneled peers are allocated out of 10.0.1.0/24; the existing peers on
