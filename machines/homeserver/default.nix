@@ -743,6 +743,13 @@ let
         # directly, they reach the web UI through Caddy like everything else.
         localPrefixes = privateNetworks ++ [ "10.0.1.0/24" ];
 
+        # TEMPORARY (2026-09-19, see modules/protonvpn/DEBUG-LOG.md): upstream
+        # DNS stays on the ISP path while the mark+MASQUERADE path is still
+        # under investigation. Steering it is a privacy win, and the module's
+        # own docs say it is "worth having, not worth an outage" — it has now
+        # cost two. Flip back to true (the default) once root cause #2 is fixed.
+        resolver.routeUpstreamThroughClient = false;
+
         clientTunnel = {
           server = "ES#95";
           privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;

@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, utils, ... }:
 
 # ProtonVPN egress, in two independent tunnels that never share an exit IP:
 #
@@ -210,7 +210,15 @@ let
   # single unresponsive Proton endpoint, and reaching for a unit restart first
   # would take Transmission down with it (it is PartOf the P2P tunnel) for
   # something a live `wg set` fixes without dropping a single transfer.
-  mkWatchdog = { t, unit, probePrefix, curlArgs, wgPrefix }:
+  # The systemd .device unit backing an interface. This host runs
+  # networking.useNetworkd, under which networking.wireguard.interfaces emits
+  # systemd-networkd .netdev/.network files and NO wireguard-<iface>.service —
+  # so the device unit is the only thing that actually tracks this tunnel's
+  # lifetime, and the only sound anchor for ordering and binding.
+  devUnit = iface:
+    "${utils.escapeSystemdPath "/sys/subsystem/net/devices/${iface}"}.device";
+
+  mkWatchdog = { t, resetCmd, resetName, probePrefix, curlArgs, wgPrefix }:
     let
       eps = endpointsOf t;
       stateFile = "/run/protonvpn-${t.interface}.endpoint";
@@ -300,13 +308,13 @@ let
             # tunnel it takes Transmission down with it. So it, alone, waits for
             # the failure count.
             if [ "$fails" -lt ${toString cfg.watchdog.failuresBeforeRestart} ]; then
-              echo "watchdog: deferring restart of ${unit}"
+              echo "watchdog: deferring reset of ${resetName}"
               exit 0
             fi
 
-            echo "watchdog: restarting ${unit} after $fails consecutive failures"
+            echo "watchdog: resetting ${resetName} after $fails consecutive failures"
             ${pkgs.coreutils}/bin/rm -f ${failFile}
-            exec ${pkgs.systemd}/bin/systemctl restart ${unit}
+            exec ${resetCmd}
           '';
         };
       };
@@ -875,13 +883,20 @@ in
     (lib.mkIf cfg.clientTunnel.enable {
       systemd.services."protonvpn-route-${cfg.clientTunnel.interface}" = {
         description = "Default route for ${cfg.clientTunnel.interface} in table ${toString cfg.clientTunnel.table}";
-        wantedBy = [ "multi-user.target" ];
-        after = [ "wireguard-${cfg.clientTunnel.interface}.service" "protonvpn-policy.service" ];
-        requires = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
-        # PartOf, so a tunnel restart re-installs the route the kernel dropped
-        # along with the device.
-        partOf = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
-        bindsTo = [ "wireguard-${cfg.clientTunnel.interface}.service" ];
+        # Anchored to the interface's .device unit, not to a
+        # wireguard-<iface>.service — under networkd that service does not
+        # exist, and a Requires= on a unit that does not exist means this one
+        # can never start. It never did: the tunnel's table held nothing but its
+        # blackhole, so every steered packet — the resolver's marked queries
+        # included — was dropped on the floor.
+        #
+        # The device unit is also a better trigger than multi-user.target ever
+        # was: it gives what the old PartOf was reaching for, and gives it more
+        # precisely. The route is installed when the interface appears, torn
+        # down when it goes, and reinstalled when it comes back.
+        wantedBy = [ (devUnit cfg.clientTunnel.interface) ];
+        after = [ (devUnit cfg.clientTunnel.interface) "protonvpn-policy.service" ];
+        bindsTo = [ (devUnit cfg.clientTunnel.interface) ];
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
@@ -1212,7 +1227,13 @@ in
     (lib.mkIf (cfg.watchdog.enable && cfg.clientTunnel.enable) (
       mkWatchdog {
         t = cfg.clientTunnel;
-        unit = "wireguard-${cfg.clientTunnel.interface}.service";
+        # There is no wireguard-<iface>.service to restart under networkd.
+        # `networkctl reconfigure` re-applies the .netdev/.network pair, which
+        # is the same reset: the interface is torn back to its configured state
+        # and the peer re-resolved. The table route survives it — we own that
+        # route, and ManageForeignRoutes=false keeps networkd's hands off it.
+        resetCmd = "${pkgs.systemd}/bin/networkctl reconfigure ${cfg.clientTunnel.interface}";
+        resetName = "${cfg.clientTunnel.interface} (networkctl reconfigure)";
         # Probed from the tunnel's own source address, which priority 1003 routes
         # into the tunnel's table.
         probePrefix = "";
@@ -1224,7 +1245,10 @@ in
     (lib.mkIf (cfg.watchdog.enable && cfg.p2pTunnel.enable) (
       mkWatchdog {
         t = cfg.p2pTunnel;
-        unit = "protonvpn-${cfg.p2pTunnel.interface}.service";
+        # The P2P tunnel IS a real service — it is built by hand rather than
+        # through networkd, because it has to be created inside a namespace.
+        resetCmd = "${pkgs.systemd}/bin/systemctl restart protonvpn-${cfg.p2pTunnel.interface}.service";
+        resetName = "protonvpn-${cfg.p2pTunnel.interface}.service";
         # Probed from inside the namespace, where the tunnel is the only route,
         # so no source binding is needed or wanted.
         probePrefix = "${ip} netns exec ${cfg.p2pTunnel.netns} ";
