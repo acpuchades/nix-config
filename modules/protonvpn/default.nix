@@ -56,6 +56,20 @@ let
   # (re)installed, which is what makes the unit idempotent — `ip rule add` is
   # not, and re-running it otherwise stacks duplicates until the table is
   # unreadable.
+  # Installed and removed by dnscrypt-proxy.service itself; see the comment at
+  # the use site for why it cannot live in the firewall hooks.
+  dnsCgroup = "system.slice/dnscrypt-proxy.service";
+
+  dnsMarkInstall = pkgs.writeShellScript "protonvpn-dns-mark-install" ''
+    set -eu
+    ${pkgs.iptables}/bin/iptables -t mangle -D OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
+    ${pkgs.iptables}/bin/iptables -t mangle -A OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark}
+  '';
+
+  dnsMarkRemove = pkgs.writeShellScript "protonvpn-dns-mark-remove" ''
+    ${pkgs.iptables}/bin/iptables -t mangle -D OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
+  '';
+
   # The client tunnel's address without its mask.
   clientTunnelAddr = lib.head (lib.splitString "/" (lib.head cfg.clientTunnel.address));
 
@@ -1094,21 +1108,36 @@ in
           ${ip} rule add fwmark ${toString dnsMark} lookup ${toString cfg.clientTunnel.table} priority 1002
         '';
 
-      networking.firewall.extraCommands = lib.mkAfter ''
-        # Mark the resolver's upstream queries by cgroup — its uid is dynamic and
-        # cannot be named here — and let the rule above route them into the
-        # tunnel's table. The kernel re-runs the route lookup after this hook
-        # because the mark changed; that reroute is what makes it work for a
-        # locally-generated packet.
-        iptables -t mangle -D OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
-        iptables -t mangle -A OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark}
+      # The marking rule is installed by the RESOLVER's own unit, not by the
+      # firewall hooks, and that is not a stylistic choice — `-m cgroup --path`
+      # resolves the path to a live cgroup when the rule is INSERTED, so it has
+      # two failure modes the firewall hooks cannot avoid:
+      #
+      #   * inserted while dnscrypt-proxy is stopped, it fails outright (the
+      #     cgroup does not exist), which would fail firewall.service at boot,
+      #     where the firewall reliably starts first;
+      #   * the cgroup is destroyed and recreated on every service RESTART, so a
+      #     rule inserted once silently stops matching afterwards — and a marking
+      #     rule that stops matching means upstream DNS quietly reverts to the
+      #     ISP path, with nothing failing to announce it.
+      #
+      # Binding it to the unit whose cgroup it names fixes both: it can only be
+      # inserted when the cgroup exists, and it is reinserted every time that
+      # cgroup is recreated. `+` runs it as root — the service itself is
+      # DynamicUser and could not call iptables. The mangle OUTPUT chain is not
+      # touched by firewall reloads (the NixOS firewall only manages its own
+      # nixos-fw-rpfilter chain in mangle), so the rule survives them.
+      systemd.services.dnscrypt-proxy.serviceConfig = {
+        ExecStartPost = [ "+${dnsMarkInstall}" ];
+        ExecStopPost = [ "+${dnsMarkRemove}" ];
+      };
 
+      networking.firewall.extraCommands = lib.mkAfter ''
         iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
         iptables -t nat -A POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE
       '';
 
       networking.firewall.extraStopCommands = ''
-        iptables -t mangle -D OUTPUT -m cgroup --path system.slice/dnscrypt-proxy.service -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
         iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
       '';
     })
