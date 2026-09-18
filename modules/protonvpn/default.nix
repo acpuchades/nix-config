@@ -214,13 +214,22 @@ let
     let
       eps = endpointsOf t;
       stateFile = "/run/protonvpn-${t.interface}.endpoint";
+      failFile = "/run/protonvpn-${t.interface}.fails";
     in
     {
       systemd.timers."protonvpn-watchdog-${t.interface}" = {
         description = "Probe ${t.interface} and rotate its endpoint on failure";
         wantedBy = [ "timers.target" ];
         timerConfig = {
-          OnBootSec = cfg.watchdog.interval * 2;
+          # Deliberately OnActiveSec, not OnBootSec. A monotonic timer whose
+          # deadline is already in the past when it starts fires immediately,
+          # and on a `nixos-rebuild switch`/`test` into a host that booted days
+          # ago an OnBootSec deadline always is — so the first probe landed in
+          # the same second the tunnel came up, long before any handshake could
+          # complete, and the watchdog restarted it on the spot. OnActiveSec is
+          # relative to the timer's own activation, so the grace window is real
+          # both at boot and at switch.
+          OnActiveSec = cfg.watchdog.interval * 2;
           OnUnitActiveSec = cfg.watchdog.interval;
           AccuracySec = "5s";
         };
@@ -242,40 +251,61 @@ let
                 ${cfg.watchdog.probeUrl}
             }
 
+            # Consecutive failures, carried across invocations: this unit is a
+            # oneshot, so the count cannot live in memory.
+            fails=0
+            [ -r ${failFile} ] && fails=$(${pkgs.coreutils}/bin/cat ${failFile} 2>/dev/null || echo 0)
+
             if probe; then
+              ${pkgs.coreutils}/bin/rm -f ${failFile}
               exit 0
             fi
 
-            echo "watchdog: ${t.interface} failed its probe"
+            fails=$((fails + 1))
+            echo "$fails" > ${failFile}
+            echo "watchdog: ${t.interface} failed its probe ($fails/${toString cfg.watchdog.failuresBeforeRestart})"
 
-            if [ "$n" -le 1 ]; then
-              echo "watchdog: only one endpoint configured, restarting ${unit}"
-              exec ${pkgs.systemd}/bin/systemctl restart ${unit}
+            # Rotation is NOT gated on the failure count. `wg set` swaps the
+            # endpoint on a live interface, so a rotation that works costs
+            # nothing — no interface teardown, no dropped sockets, no restart
+            # cascade — and there is no reason to sit on a dead endpoint while a
+            # counter fills.
+            if [ "$n" -gt 1 ]; then
+              idx=0
+              [ -r ${stateFile} ] && idx=$(${pkgs.coreutils}/bin/cat ${stateFile} 2>/dev/null || echo 0)
+
+              # Try each remaining endpoint once.
+              for _ in $(${pkgs.coreutils}/bin/seq 1 "$((n - 1))"); do
+                idx=$(( (idx + 1) % n ))
+                next=''${endpoints[$idx]}
+                echo "watchdog: rotating ${t.interface} to $next"
+                ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} \
+                  peer ${t.peer.publicKey} endpoint "$next" || continue
+                echo "$idx" > ${stateFile}
+
+                # Give the new endpoint a handshake window before judging it.
+                ${pkgs.coreutils}/bin/sleep 5
+                if probe; then
+                  echo "watchdog: ${t.interface} recovered on $next"
+                  ${pkgs.coreutils}/bin/rm -f ${failFile}
+                  exit 0
+                fi
+              done
+
+              echo "watchdog: no endpoint answered for ${t.interface}"
             fi
 
-            idx=0
-            [ -r ${stateFile} ] && idx=$(${pkgs.coreutils}/bin/cat ${stateFile} 2>/dev/null || echo 0)
+            # The restart is the only destructive step here: it resets a
+            # handshake that may simply not have completed yet, and for the P2P
+            # tunnel it takes Transmission down with it. So it, alone, waits for
+            # the failure count.
+            if [ "$fails" -lt ${toString cfg.watchdog.failuresBeforeRestart} ]; then
+              echo "watchdog: deferring restart of ${unit}"
+              exit 0
+            fi
 
-            # Try each remaining endpoint once. `wg set` swaps the endpoint on a
-            # live interface, so a rotation that works costs nothing — no
-            # interface teardown, no dropped sockets, no restart cascade.
-            for _ in $(${pkgs.coreutils}/bin/seq 1 "$((n - 1))"); do
-              idx=$(( (idx + 1) % n ))
-              next=''${endpoints[$idx]}
-              echo "watchdog: rotating ${t.interface} to $next"
-              ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} \
-                peer ${t.peer.publicKey} endpoint "$next" || continue
-              echo "$idx" > ${stateFile}
-
-              # Give the new endpoint a handshake window before judging it.
-              ${pkgs.coreutils}/bin/sleep 5
-              if probe; then
-                echo "watchdog: ${t.interface} recovered on $next"
-                exit 0
-              fi
-            done
-
-            echo "watchdog: no endpoint answered for ${t.interface}, restarting ${unit}"
+            echo "watchdog: restarting ${unit} after $fails consecutive failures"
+            ${pkgs.coreutils}/bin/rm -f ${failFile}
             exec ${pkgs.systemd}/bin/systemctl restart ${unit}
           '';
         };
@@ -509,14 +539,39 @@ in
         '';
       };
 
+      failuresBeforeRestart = lib.mkOption {
+        type = lib.types.ints.positive;
+        default = 2;
+        description = ''
+          Consecutive failed probes required before the watchdog restarts the
+          tunnel's unit.
+
+          Endpoint rotation is deliberately not gated on this — `wg set` is free
+          and drops nothing, so it happens on the first failure. Only the restart
+          waits, because only the restart is destructive: it resets a handshake
+          that may simply not have completed yet, and a single failure is enough
+          to guillotine a tunnel that was seconds away from coming up. At the
+          default interval this gives a new tunnel two minutes to settle.
+        '';
+      };
+
       probeUrl = lib.mkOption {
         type = lib.types.str;
-        default = "https://protonstatus.com/";
+        default = "https://1.1.1.1/";
         description = ''
           URL fetched through the tunnel to prove it carries traffic. Any small,
           reliable HTTPS endpoint works; what matters is that a full request
-          completes, since that exercises DNS-free connectivity, routing, NAT and
-          MTU in one go.
+          completes, since that exercises connectivity, routing, NAT and MTU in
+          one go.
+
+          It MUST address its host by IP, never by name. With
+          `resolver.routeUpstreamThroughClient` enabled the resolver's own
+          upstream queries leave through this tunnel, so a hostname here is
+          circular: the probe cannot resolve until the tunnel carries traffic,
+          the watchdog reads that as the tunnel being down, and it restarts the
+          tunnel every interval while DNS stays dead host-wide. `1.1.1.1` is
+          used rather than a Proton endpoint because it is anycast, stable, and
+          serves a certificate valid for the literal address.
         '';
       };
     };
