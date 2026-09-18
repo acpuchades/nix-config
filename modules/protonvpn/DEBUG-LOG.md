@@ -187,3 +187,65 @@ module's own docs say should happen for DNS.
 
 Contrast: `curl --interface 10.2.0.2` works perfectly, because it owns a correct
 source address from the start and matches rule 1003. That is the path to copy.
+
+---
+
+## 2026-09-19 — #2 fixed: uid steering + a table that degrades
+
+Two decisions, both taken deliberately rather than patched around.
+
+### Mechanism: uid rule, not firewall mark
+
+The mark approach was not misconfigured, it was **unfixable as designed**.
+`-j MARK` in `mangle OUTPUT` runs after `connect()` has already done the route
+lookup, chosen `192.168.2.2` from `main` and bound the socket to it. The
+post-mangle reroute changes the *route* and never the *source*, so the query
+reached Proton carrying an RFC1918 address — dropped silently, which is exactly
+the `i/o timeout` with source `192.168.2.2` we saw. The MASQUERADE existed only
+to paper over a source that was wrong by construction.
+
+A **uid rule is consulted by that first lookup**, so source selection lands on
+10.2.0.2 from the start — the same path `curl --interface 10.2.0.2` already
+proves works. Gone: the cgroup match, the mangle rule, the mark, the SNAT, and
+the ExecStartPost/ExecStopPost pair on the resolver.
+
+The cost is dropping `DynamicUser` for dnscrypt-proxy, since an `ip rule` can
+match a uid but knows nothing of cgroups. Every other sandboxing directive
+nixpkgs sets is untouched. **No uid is written down** — NixOS allocates it and
+the scripts read it back with `id -u`, so there is no number to collide with the
+host's other services (which allocate descending from 999) or to drift.
+
+### Failure mode: degrade, don't die
+
+Upstream DNS now uses **table 44**, holding only the tunnel default and **no
+blackhole**. When the interface goes the kernel drops that route with it, the
+table empties, rule 1002 matches nothing, and the lookup falls through to `main`
+— queries leave over the ISP, still encrypted to the same no-log resolvers.
+
+Table 42 keeps its blackhole unchanged; that fail-closed guarantee is for **peer**
+traffic, and sharing it with the resolver is what took the LAN's DNS down twice.
+This is what the module's docs already claimed ("fallback means degraded, not
+leaking") — now the code agrees with them.
+
+Hardening worth keeping: the uid lookup in `protonvpn-policy` is **non-fatal**.
+The blackhole and peer steering rules are installed before it, and letting a
+missing uid abort the unit would drop the fail-closed guarantees to protect a
+privacy nicety.
+
+### Notes for next time
+
+* `systemd.sysusers.enable = false` here, so `users.users` is realised into
+  `/etc/passwd` by the activation script before any unit starts. There is no
+  unit to order against — an `After=systemd-sysusers.service` would be a
+  no-op that reads like a guarantee. Don't add one back.
+* Loopback is unaffected: rule 0 (`local`) is consulted before 1002, so
+  dnscrypt's replies to AdGuard on 127.0.0.1:5300 never reach the uid rule.
+* Flipping DynamicUser off makes systemd migrate `StateDirectory` from
+  `/var/lib/private/dnscrypt-proxy` back to `/var/lib/dnscrypt-proxy`. If that
+  ever fails, the only loss is the cached resolver lists; dnscrypt re-fetches
+  them through its own bootstrap resolvers. Not fatal, but check
+  `journalctl -u dnscrypt-proxy` for "loaded" lines after the first switch.
+* `verify-protonvpn.sh` §8 was rewritten. The old disruptive check marked a
+  `nobody`-owned curl by uid — a *stand-in* that tested the reroute, so it could
+  pass while the real resolver path failed. It now runs curl **as the resolver's
+  own uid**, which is the actual path, and asserts table 44 has no blackhole.

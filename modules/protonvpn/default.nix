@@ -56,29 +56,14 @@ let
   # (re)installed, which is what makes the unit idempotent — `ip rule add` is
   # not, and re-running it otherwise stacks duplicates until the table is
   # unreadable.
-  # Installed and removed by dnscrypt-proxy.service itself; see the comment at
-  # the use site for why it cannot live in the firewall hooks.
-  dnsCgroup = "system.slice/dnscrypt-proxy.service";
-
-  dnsMarkInstall = pkgs.writeShellScript "protonvpn-dns-mark-install" ''
-    set -u
-    ${pkgs.iptables}/bin/iptables -t mangle -D OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
-    if ! ${pkgs.iptables}/bin/iptables -t mangle -A OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark}; then
-      echo "protonvpn: FAILED to install the DNS mark rule — upstream DNS will leave via the ISP, not the tunnel" >&2
-      exit 1
-    fi
-  '';
-
-  dnsMarkRemove = pkgs.writeShellScript "protonvpn-dns-mark-remove" ''
-    ${pkgs.iptables}/bin/iptables -t mangle -D OUTPUT -m cgroup --path ${dnsCgroup} -j MARK --set-mark ${toString dnsMark} 2>/dev/null || true
-  '';
-
   # The client tunnel's address without its mask.
   clientTunnelAddr = lib.head (lib.splitString "/" (lib.head cfg.clientTunnel.address));
 
-  # Firewall mark for the resolver's upstream queries. Priority 1002 carries
-  # the matching rule and is cleared with the rest in protonvpn-policy.
-  dnsMark = 66;
+  # The resolver's own user. Declared (not DynamicUser) so its uid is STABLE,
+  # which is the whole basis of the steering below — see the resolver section.
+  # The uid itself is never named here: NixOS allocates it and the scripts read
+  # it back with `id -u`, so there is no number to collide or drift.
+  resolverUser = "dnscrypt-proxy";
 
   ownedPriorities = [ 1000 1001 1010 1011 1002 1003 ];
 
@@ -137,6 +122,37 @@ let
     # anything less than an end-to-end probe tests nothing.
     ${lib.optionalString cfg.clientTunnel.enable
       "${ip} rule add from ${clientTunnelAddr} lookup ${toString cfg.clientTunnel.table} priority 1003"}
+
+    # The resolver's upstream queries, steered BY UID.
+    #
+    # This is a uid rule and not a firewall mark, and the difference is the
+    # whole reason the previous attempt could not work. A `-j MARK` in mangle
+    # OUTPUT lands AFTER connect() has already run the route lookup, chosen the
+    # WAN source address and bound the socket to it; the post-mangle reroute
+    # then changes the route but never the source, so the query entered the
+    # tunnel carrying an RFC1918 address that Proton drops — a silent timeout,
+    # not an error. A uid rule is consulted BY that first lookup, so source
+    # selection lands on the tunnel address from the start. No mark, no cgroup
+    # match, no SNAT to paper over a wrong source, and nothing to re-resolve
+    # when the unit restarts.
+    #
+    # The uid is read at runtime rather than baked in: NixOS allocates it (see
+    # resolverUser), so there is no number here to collide with another service
+    # or to drift if allocation changes.
+    #
+    # Non-fatal on purpose. Everything above this point — the blackhole and the
+    # peer steering rules — is already installed, and those are the fail-closed
+    # guarantees; letting a missing resolver uid abort the unit would take them
+    # down to protect a privacy nicety. If the lookup fails, upstream DNS stays
+    # on the ISP path and says so, which is the same degraded state a dead
+    # tunnel produces.
+    ${lib.optionalString (cfg.clientTunnel.enable && cfg.resolver.routeUpstreamThroughClient) ''
+      if resolver_uid="$(${pkgs.coreutils}/bin/id -u ${resolverUser} 2>/dev/null)"; then
+        ${ip} rule add uidrange "$resolver_uid-$resolver_uid" lookup ${toString cfg.resolver.table} priority 1002
+      else
+        echo "protonvpn: user ${resolverUser} does not exist — upstream DNS will leave via the ISP, not the tunnel" >&2
+      fi
+    ''}
   '';
 
   policyStop = pkgs.writeShellScript "protonvpn-policy-stop" ''
@@ -596,18 +612,44 @@ in
           from the local resolver either way — this only moves where a query that
           has to leave the house goes out.
 
-          Marking is done by cgroup rather than by uid because the upstream
-          dnscrypt-proxy unit runs under DynamicUser, so its uid is not stable
-          and cannot be named at evaluation time. The kernel re-runs the route
-          lookup after the OUTPUT mangle hook when the mark changes, which is
-          what makes a locally-generated packet honour the rule; if that ever
-          stops holding, the symptom is upstream DNS leaving via the ISP rather
-          than failing, so verify-protonvpn.sh asserts it explicitly.
+          Steering is BY UID, which is why enabling this also takes the resolver
+          off DynamicUser and gives it a declared user. A uid rule is consulted
+          by the route lookup that `connect()` itself performs, so the socket is
+          bound to the tunnel address from the start. The obvious-looking
+          alternative — marking the packets in the OUTPUT mangle hook — cannot
+          work: it runs after the source address has already been chosen, and
+          the post-mangle reroute changes the route without revisiting the
+          source, so queries leave for Proton carrying an RFC1918 address and
+          are silently dropped.
 
-          Set to false to leave upstream DNS on the ISP path. Queries are already
-          encrypted to no-log resolvers there, so what this buys is hiding the
+          Failure here is DEGRADED, NOT DEAD. `resolver.table` holds only the
+          tunnel route and no blackhole, so a dead tunnel empties it, this rule
+          stops matching, and queries fall through to the ISP path still
+          encrypted to the same no-log resolvers. verify-protonvpn.sh asserts
+          both the rule and its effect, so the degraded state is visible rather
+          than silent.
+
+          Set to false to leave upstream DNS on the ISP path permanently, and to
+          leave the resolver on DynamicUser. What this option buys is hiding the
           source address from those resolvers — worth having, not worth an
           outage, which is why the fallback below exists.
+        '';
+      };
+
+      table = lib.mkOption {
+        type = lib.types.int;
+        default = 44;
+        description = ''
+          Routing table for the resolver's upstream queries, used by the uid
+          rule at priority 1002.
+
+          Deliberately NOT `clientTunnel.table`. That table carries a blackhole
+          default so steered PEER traffic fails closed, and pointing DNS at it
+          means a dead tunnel takes name resolution down for the entire LAN and
+          every VPN peer — which is exactly what happened, twice, before this
+          was split out. This table holds the tunnel's default route and nothing
+          else, so when the interface goes the table empties and the lookup
+          falls through to `main` instead of terminating.
         '';
       };
 
@@ -903,9 +945,40 @@ in
           ExecStart = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-start" ''
             set -eu
             ${ip} route replace default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table}
+            ${lib.optionalString cfg.resolver.routeUpstreamThroughClient ''
+              # The resolver's table. Deliberately holds ONLY this route and no
+              # blackhole, which is what makes upstream DNS DEGRADE instead of
+              # dying: when the interface goes, the kernel drops this route with
+              # it, the table is empty, rule 1002 matches nothing and the lookup
+              # falls through to `main` — queries leave over the ISP, still
+              # encrypted to the same no-log resolvers. That is this module's
+              # stated intent for DNS ("fallback means degraded, not leaking"),
+              # and it is why the resolver does not share table
+              # ${toString cfg.clientTunnel.table}, whose blackhole exists to
+              # keep PEER traffic fail-closed and once took the whole LAN's name
+              # resolution down with it.
+              #
+              # `src` is explicit so the address cannot be ambiguous if a second
+              # one is ever added to the interface. networkd assigns it
+              # asynchronously after the device appears, so wait for it briefly
+              # rather than racing; on timeout, install without `src` and let
+              # the kernel select, which is correct today with a single address.
+              for _ in $(${pkgs.coreutils}/bin/seq 50); do
+                ${ip} -4 addr show dev ${cfg.clientTunnel.interface} \
+                  | ${pkgs.gnugrep}/bin/grep -qw "${clientTunnelAddr}" && break
+                ${pkgs.coreutils}/bin/sleep 0.1
+              done
+              if ! ${ip} route replace default dev ${cfg.clientTunnel.interface} \
+                     table ${toString cfg.resolver.table} src ${clientTunnelAddr}; then
+                echo "protonvpn: ${clientTunnelAddr} not on ${cfg.clientTunnel.interface} yet; installing the resolver route without an explicit source" >&2
+                ${ip} route replace default dev ${cfg.clientTunnel.interface} table ${toString cfg.resolver.table}
+              fi
+            ''}
           '';
           ExecStop = pkgs.writeShellScript "protonvpn-route-${cfg.clientTunnel.interface}-stop" ''
             ${ip} route del default dev ${cfg.clientTunnel.interface} table ${toString cfg.clientTunnel.table} || true
+            ${lib.optionalString cfg.resolver.routeUpstreamThroughClient
+              "${ip} route del default dev ${cfg.clientTunnel.interface} table ${toString cfg.resolver.table} || true"}
           '';
         };
       };
@@ -1172,53 +1245,47 @@ in
     }
 
     (lib.mkIf (cfg.clientTunnel.enable && cfg.resolver.routeUpstreamThroughClient) {
-      systemd.services.protonvpn-policy.serviceConfig.ExecStartPost =
-        pkgs.writeShellScript "protonvpn-dns-rule-start" ''
-          set -eu
-          while ${ip} rule del priority 1002 2>/dev/null; do :; done
-          ${ip} rule add fwmark ${toString dnsMark} lookup ${toString cfg.clientTunnel.table} priority 1002
-        '';
+      # A STABLE uid is the entire mechanism here, so the resolver cannot keep
+      # nixpkgs' DynamicUser. An `ip rule` can match uidrange but has no notion
+      # of a cgroup, and cgroup matching was the previous approach precisely
+      # because a dynamic uid cannot be named — but it had to be done in mangle
+      # OUTPUT, which is too late to influence source selection (see the rule in
+      # protonvpn-policy). Trading DynamicUser for a declared user is what buys
+      # a correct source address, and it is the smaller loss: every other
+      # sandboxing directive nixpkgs sets on this unit is untouched, and the
+      # uid is still unprivileged and owns nothing but its own state.
+      #
+      # No uid is written down. NixOS allocates one for a declared system user
+      # and records it in /var/lib/nixos, so it is stable across rebuilds and
+      # reboots without this module picking a number that could collide with
+      # another service on the host.
+      users.users.${resolverUser} = {
+        isSystemUser = true;
+        group = resolverUser;
+        description = "dnscrypt-proxy, with a stable uid so its upstream queries can be steered into the ProtonVPN tunnel";
+      };
+      users.groups.${resolverUser} = { };
 
-      # The marking rule is installed by the RESOLVER's own unit, not by the
-      # firewall hooks, and that is not a stylistic choice — `-m cgroup --path`
-      # resolves the path to a live cgroup when the rule is INSERTED, so it has
-      # two failure modes the firewall hooks cannot avoid:
-      #
-      #   * inserted while dnscrypt-proxy is stopped, it fails outright (the
-      #     cgroup does not exist), which would fail firewall.service at boot,
-      #     where the firewall reliably starts first;
-      #   * the cgroup is destroyed and recreated on every service RESTART, so a
-      #     rule inserted once silently stops matching afterwards — and a marking
-      #     rule that stops matching means upstream DNS quietly reverts to the
-      #     ISP path, with nothing failing to announce it.
-      #
-      # Binding it to the unit whose cgroup it names fixes both: it can only be
-      # inserted when the cgroup exists, and it is reinserted every time that
-      # cgroup is recreated. `+` runs it as root — the service itself is
-      # DynamicUser and could not call iptables. The mangle OUTPUT chain is not
-      # touched by firewall reloads (the NixOS firewall only manages its own
-      # nixos-fw-rpfilter chain in mangle), so the rule survives them.
+      # systemd migrates StateDirectory/CacheDirectory between
+      # /var/lib/private/<name> and /var/lib/<name> when DynamicUser flips, so
+      # the existing resolver state and cache move across on the first start
+      # rather than being abandoned.
       systemd.services.dnscrypt-proxy.serviceConfig = {
-        # "+-": root (the unit is DynamicUser), and a FAILURE HERE DOES NOT KILL
-        # THE RESOLVER. That direction is chosen deliberately. If the rule cannot
-        # be installed, the cost is upstream DNS taking the ISP path — degraded
-        # privacy — whereas failing the unit costs name resolution for the entire
-        # LAN and every VPN peer, and would do it at boot, before anyone could
-        # intervene. The script still logs the failure loudly, and
-        # verify-protonvpn.sh asserts both the rule and its effect, so this is a
-        # verified control rather than a silent one.
-        ExecStartPost = [ "+-${dnsMarkInstall}" ];
-        ExecStopPost = [ "+${dnsMarkRemove}" ];
+        DynamicUser = lib.mkForce false;
+        User = resolverUser;
+        Group = resolverUser;
       };
 
-      networking.firewall.extraCommands = lib.mkAfter ''
-        iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
-        iptables -t nat -A POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE
-      '';
+      # No ordering is added against user creation. systemd.sysusers is off on
+      # this host, so users.users is realised by the activation script into
+      # /etc/passwd before any unit is started, and at boot the file is simply
+      # already correct — there is no unit to order against. protonvpn-policy
+      # looks the uid up defensively regardless.
 
-      networking.firewall.extraStopCommands = ''
-        iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
-      '';
+      # Nothing to add to the firewall. The old mark-66 MASQUERADE existed only
+      # to rewrite a source address that was wrong by construction; with the
+      # uid rule the socket is bound to ${clientTunnelAddr} from the start and
+      # there is nothing left to translate.
     })
 
     ##########################################################################

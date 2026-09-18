@@ -21,7 +21,8 @@ TUNNELED_SRC=10.0.1.1          # wg0's address inside the tunneled prefix
 VETH_NS_ADDR=10.200.0.2
 RPC_PORT=9091
 GW=10.2.0.1
-DNS_MARK=66
+DNS_TABLE=44                   # resolver upstream table (no blackhole: degrades to ISP)
+RESOLVER_USER=dnscrypt-proxy
 IP_ECHO=https://ifconfig.co
 IP_ECHO_JSON=https://ifconfig.co/json
 
@@ -228,37 +229,48 @@ if grep -q '127.0.0.1' /etc/netns/"$NS"/resolv.conf 2>/dev/null; then
   no "namespace resolv.conf still points at loopback (the host's resolver)"
 fi
 
-if iptables -t mangle -S OUTPUT | grep -q "dnscrypt-proxy.service.*--set-xmark 0x$(printf '%x' $DNS_MARK)"; then
-  ok "resolver upstream is marked for the tunnel"
+# Upstream DNS is steered BY UID, not by a firewall mark. The rule has to be a
+# uidrange one: a mark set in mangle OUTPUT lands after connect() has already
+# bound the socket to the WAN address, and the reroute that follows changes the
+# route without revisiting the source, so queries reach Proton with an RFC1918
+# source and are dropped. Assert the mechanism, not just that something exists.
+RESOLVER_UID=$(id -u "$RESOLVER_USER" 2>/dev/null || true)
+if [[ -z "$RESOLVER_UID" ]]; then
+  sk "$RESOLVER_USER has no stable uid (routeUpstreamThroughClient off?)"
+elif ip rule show | grep -q "uidrange $RESOLVER_UID-$RESOLVER_UID.*lookup $DNS_TABLE"; then
+  ok "resolver uid $RESOLVER_UID is steered into table $DNS_TABLE"
 else
-  sk "resolver upstream marking rule not found (routeUpstreamThroughClient off?)"
-fi
-if ip rule show | grep -q "fwmark 0x$(printf '%x' $DNS_MARK).*lookup $CLIENT_TABLE"; then
-  ok "fwmark rule routes marked traffic into table $CLIENT_TABLE"
-else
-  sk "no fwmark rule for the resolver"
+  sk "no uidrange rule for $RESOLVER_USER (routeUpstreamThroughClient off?)"
 fi
 
-# Prove the mark -> reroute path actually works on this kernel, which is the
-# one assumption the resolver routing rests on. Marking by uid here is only a
-# stand-in for the cgroup match; what is being tested is the reroute.
-if (( RUN_DISRUPTIVE )); then
-  TESTUID=$(id -u nobody 2>/dev/null || echo 65534)
-  iptables -t mangle -I OUTPUT -m owner --uid-owner "$TESTUID" -j MARK --set-mark "$DNS_MARK"
-  RESTORE+=("iptables -t mangle -D OUTPUT -m owner --uid-owner $TESTUID -j MARK --set-mark $DNS_MARK")
-  MARKED_IP=$(setpriv --reuid="$TESTUID" --regid=65534 --clear-groups \
-                curl -fsS --max-time 15 "$IP_ECHO" 2>/dev/null || true)
-  note "marked-process egress: ${MARKED_IP:-<none>}"
-  if [[ -z "$MARKED_IP" ]]; then
-    no "marked traffic had no egress at all"
-  elif [[ "$MARKED_IP" == "$HOST_IP" ]]; then
-    no "marked traffic left via the ISP — the post-mangle reroute is NOT happening"
-    note "set my.protonvpn.resolver.routeUpstreamThroughClient = false"
+# The resolver table must NOT carry a blackhole. That is what makes upstream DNS
+# degrade to the ISP when the tunnel dies instead of taking the whole LAN's name
+# resolution down with it — which is exactly what a shared table once did.
+if ip route show table "$DNS_TABLE" | grep -q blackhole; then
+  no "table $DNS_TABLE has a blackhole — a dead tunnel will kill DNS host-wide"
+elif ip route show table "$DNS_TABLE" | grep -q "dev $CLIENT_IF"; then
+  ok "table $DNS_TABLE routes via $CLIENT_IF with no blackhole (degrades to ISP)"
+else
+  sk "table $DNS_TABLE is empty — upstream DNS is currently on the ISP path"
+fi
+
+# End-to-end proof, run AS THE RESOLVER'S OWN UID. This is the real path now,
+# not a stand-in: same uid, same rule, same source selection dnscrypt-proxy gets.
+if (( RUN_DISRUPTIVE )) && [[ -n "$RESOLVER_UID" ]]; then
+  RESOLVER_GID=$(id -g "$RESOLVER_USER" 2>/dev/null || echo 65534)
+  DNS_EGRESS=$(setpriv --reuid="$RESOLVER_UID" --regid="$RESOLVER_GID" --clear-groups \
+                 curl -fsS --max-time 15 "$IP_ECHO" 2>/dev/null || true)
+  note "resolver-uid egress: ${DNS_EGRESS:-<none>}"
+  if [[ -z "$DNS_EGRESS" ]]; then
+    no "resolver-uid traffic had no egress at all — DNS is failing CLOSED"
+    note "table $DNS_TABLE must not contain a blackhole; check the route unit"
+  elif [[ "$DNS_EGRESS" == "$HOST_IP" ]]; then
+    no "resolver-uid traffic left via the ISP — the uid rule is not steering"
   else
-    ok "marked traffic is rerouted into the tunnel (reroute works on this kernel)"
+    ok "resolver-uid traffic leaves via the tunnel ($DNS_EGRESS)"
   fi
 else
-  sk "mark/reroute proof skipped (--safe)"
+  sk "resolver-uid egress proof skipped (--safe)"
 fi
 
 ###############################################################################
