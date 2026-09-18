@@ -167,8 +167,15 @@ if [[ -z "$PORT" ]]; then
           | sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' | head -1)
   PORT_SRC="live probe"
 fi
-LISTEN=$(ip netns exec "$NS" transmission-remote "$VETH_NS_ADDR:$RPC_PORT" -si 2>/dev/null \
-        | sed -n 's/.*Listenport: *\([0-9]\{1,\}\).*/\1/p' | head -1)
+# Read Transmission's peer-port back. Keep the raw output: the field's spelling
+# has moved between Transmission versions ("Listenport", "Peer listening port"),
+# and swallowing a parse miss made a healthy daemon look like the renewal
+# service was not applying the port at all.
+SI_OUT=$(ip netns exec "$NS" transmission-remote "$VETH_NS_ADDR:$RPC_PORT" -si 2>&1)
+SI_RC=$?
+LISTEN=$(printf '%s\n' "$SI_OUT" \
+        | grep -iE 'listen[ -]?port|peer listening port' \
+        | grep -oE '[0-9]{2,5}' | head -1)
 note "NAT-PMP forwarded port: ${PORT:-<no reply>} (via $PORT_SRC)"
 note "transmission peer-port: ${LISTEN:-<unknown>}"
 if ! systemctl is-active --quiet protonvpn-natpmp.service; then
@@ -177,6 +184,13 @@ elif [[ -z "$PORT" ]]; then
   no "no forwarded port from either the service or a probe (is this server P2P-flagged with NAT-PMP enabled?)"
 elif [[ "$PORT" == "$LISTEN" ]]; then
   ok "forwarded port $PORT matches Transmission's peer-port"
+elif [[ -z "$LISTEN" ]]; then
+  # Distinguish "cannot read it" from "it disagrees". The renewal service logs
+  # only after transmission-remote --port succeeds, so a mapped port that was
+  # pushed is evidence RPC works and this is a read-side problem, not a
+  # forwarding one.
+  sk "could not read Transmission's peer-port (rc=$SI_RC) — port $PORT was mapped and pushed"
+  note "transmission-remote -si said: $(printf '%s' "$SI_OUT" | head -3 | tr '\n' ' ')"
 else
   no "forwarded port $PORT != Transmission's $LISTEN (renewal service not applying it)"
 fi
