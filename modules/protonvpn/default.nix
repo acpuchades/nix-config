@@ -381,6 +381,51 @@ in
         '';
       };
     };
+
+    transmission = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Move the Transmission daemon into the P2P namespace and point its RPC
+          endpoint at the veth below. This is the one place the daemon and the
+          tunnel are wired together; modules/transmission-server stays unaware of
+          both, as its header promises.
+        '';
+      };
+
+      # A /30 carrying exactly two addresses and no default route. It exists so
+      # Caddy can reach the web UI, and for nothing else: without a route to the
+      # internet on it, and with the host refusing to forward anything off it
+      # (see the FORWARD drop below), it cannot become a way around the tunnel.
+      veth = {
+        hostInterface = lib.mkOption {
+          type = lib.types.str;
+          default = "vt-host";
+          description = "Host-side veth peer name.";
+        };
+        namespaceInterface = lib.mkOption {
+          type = lib.types.str;
+          default = "vt-ns";
+          description = "Namespace-side veth peer name.";
+        };
+        hostAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "10.200.0.1";
+          description = "Host end of the RPC link. This is what Caddy connects from.";
+        };
+        namespaceAddress = lib.mkOption {
+          type = lib.types.str;
+          default = "10.200.0.2";
+          description = "Namespace end of the RPC link. This is what the daemon binds its RPC to.";
+        };
+        prefixLength = lib.mkOption {
+          type = lib.types.int;
+          default = 30;
+          description = "Prefix length of the RPC link. A /30 holds exactly these two addresses.";
+        };
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable (lib.mkMerge [
@@ -449,6 +494,14 @@ in
               set -eu
               ${ip} netns list | ${pkgs.gnugrep}/bin/grep -qx '${ns}' || ${ip} netns add ${ns}
               ${ip} -n ${ns} link set lo up
+
+              # No IPv6 in here at all. The tunnel is IPv4-only and this host has
+              # no IPv6 anywhere, so a v6 address inside the namespace could only
+              # ever be a link-local that some future change turns into a leak.
+              # Disabling it outright makes "no routable IPv6" a property of the
+              # namespace rather than an accident of the current configuration.
+              ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.all.disable_ipv6=1
+              ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.default.disable_ipv6=1
             '';
             ExecStop = pkgs.writeShellScript "netns-${ns}-stop" ''
               ${ip} netns del ${ns} || true
@@ -607,5 +660,147 @@ in
         ${natStop}
       '';
     })
+
+    ##########################################################################
+    # Transmission inside the P2P namespace.
+    #
+    # This is the strongest isolation available here and the reason a namespace
+    # was chosen over policy routing: the daemon does not have a rule that sends
+    # its traffic down a tunnel, it has NO OTHER ROUTE IN EXISTENCE. A firewall
+    # kill switch drops packets the daemon can still form; this removes the path
+    # itself. If the tunnel dies the daemon cannot address the internet at all.
+    ##########################################################################
+    (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
+      let
+        t = cfg.p2pTunnel;
+        ns = t.netns;
+        v = cfg.transmission.veth;
+        nsPath = "/var/run/netns/${ns}";
+        # The tunnel address without its mask — what the daemon binds its peer
+        # sockets to. Never 0.0.0.0: an unbound daemon would happily use the veth
+        # if one ever gained a route.
+        tunnelAddr = lib.head (lib.splitString "/" (lib.head t.address));
+      in
+      {
+        # Proton's in-tunnel resolver, for the namespace only. Placed at the path
+        # `ip netns exec` looks for, so anything entered into this namespace by
+        # hand or by the NAT-PMP unit picks it up automatically, and bind-mounted
+        # into the daemon (which systemd's NetworkNamespacePath does NOT do — the
+        # /etc/netns convention belongs to iproute2, not systemd). Without this
+        # the daemon would inherit the host's `nameserver 127.0.0.1`, which
+        # inside the namespace is a loopback with nothing listening on it.
+        environment.etc."netns/${ns}/resolv.conf".text = ''
+          nameserver ${t.dns}
+          options edns0
+        '';
+
+        systemd.services."protonvpn-veth-${ns}" = {
+          description = "RPC veth link into namespace ${ns}";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "netns-${ns}.service" ];
+          requires = [ "netns-${ns}.service" ];
+          bindsTo = [ "netns-${ns}.service" ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = pkgs.writeShellScript "protonvpn-veth-${ns}-start" ''
+              set -eu
+              ${ip} link del ${v.hostInterface} 2>/dev/null || true
+
+              ${ip} link add ${v.hostInterface} type veth peer name ${v.namespaceInterface}
+              ${ip} link set ${v.namespaceInterface} netns ${ns}
+
+              ${ip} address add ${v.hostAddress}/${toString v.prefixLength} dev ${v.hostInterface}
+              ${ip} link set ${v.hostInterface} up
+
+              ${ip} -n ${ns} address add ${v.namespaceAddress}/${toString v.prefixLength} dev ${v.namespaceInterface}
+              ${ip} -n ${ns} link set ${v.namespaceInterface} up
+
+              # NOTE the absence of a default route via this link, on both ends.
+              # The only route it creates is the kernel's on-link /${toString v.prefixLength}, which reaches
+              # exactly one address. Adding a default here would quietly undo the
+              # entire isolation.
+            '';
+            ExecStop = pkgs.writeShellScript "protonvpn-veth-${ns}-stop" ''
+              ${ip} link del ${v.hostInterface} 2>/dev/null || true
+            '';
+          };
+        };
+
+        # Belt and braces for the veth: even if something inside the namespace
+        # acquired a default route via the host end, the host will not forward a
+        # packet off this link. Combined with the absent route and the absent
+        # SNAT rule, that is three independent reasons the namespace cannot reach
+        # the internet except through Proton.
+        networking.firewall.extraCommands = lib.mkAfter ''
+          iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
+          iptables -I FORWARD 1 -i ${v.hostInterface} -j DROP
+        '';
+        networking.firewall.extraStopCommands = ''
+          iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
+        '';
+
+        my.transmission-server = {
+          # The daemon binds its RPC to the namespace end; Caddy connects from
+          # the host end, which is what the whitelist has to name.
+          rpcAddress = v.namespaceAddress;
+          rpcWhitelist = v.hostAddress;
+        };
+
+        services.transmission.settings = {
+          # Peer traffic is pinned to the tunnel address explicitly rather than
+          # left on 0.0.0.0. In this namespace that is belt and braces — the
+          # tunnel is the only route — but it means a misconfiguration shows up
+          # as a daemon that will not bind rather than as one quietly using
+          # another interface.
+          bind-address-ipv4 = tunnelAddr;
+          bind-address-ipv6 = "::1";
+
+          # Transmission's own port mapping stays OFF. The forwarded port comes
+          # from Proton's NAT-PMP, renewed by protonvpn-natpmp, and two things
+          # negotiating the same mapping would fight over it.
+          port-forwarding-enabled = false;
+
+          # LPD is already off in modules/transmission-server; it is restated
+          # here because it is an ISOLATION property, not a preference. LPD
+          # announces to the local link, which in this namespace means the tunnel
+          # — broadcasting our presence to whatever else Proton has on it.
+          lpd-enabled = false;
+
+          # DHT and PEX stay ON, deliberately and unchanged. Both are fine behind
+          # a VPN — they reveal the Proton exit address, not ours — and turning
+          # them off measurably hurts peer discovery on smaller swarms. Flagged
+          # rather than silently flipped: if the threat model is "no participation
+          # in any distributed tracker at all", these are the two to reconsider,
+          # and that is a decision to take on purpose.
+          dht-enabled = true;
+          pex-enabled = true;
+        };
+
+        systemd.services.transmission = {
+          after = [
+            "netns-${ns}.service"
+            "protonvpn-${t.interface}.service"
+            "protonvpn-veth-${ns}.service"
+          ];
+          requires = [
+            "netns-${ns}.service"
+            "protonvpn-veth-${ns}.service"
+          ];
+          # BindsTo the tunnel: if it stops, the daemon stops with it. PartOf so
+          # that a tunnel RESTART (the watchdog rotating an endpoint) takes the
+          # daemon with it — the interface is recreated, so the sockets bound to
+          # its address have to be as well.
+          bindsTo = [ "protonvpn-${t.interface}.service" ];
+          partOf = [ "protonvpn-${t.interface}.service" ];
+          serviceConfig = {
+            NetworkNamespacePath = nsPath;
+            # Upstream binds /etc read-only into RootDirectory; this lands on top
+            # of it. Both are lists, so this concatenates rather than replaces.
+            BindReadOnlyPaths = [ "/etc/netns/${ns}/resolv.conf:/etc/resolv.conf" ];
+          };
+        };
+      }
+    ))
   ]);
 }
