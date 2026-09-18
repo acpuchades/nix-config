@@ -56,11 +56,14 @@ let
   # (re)installed, which is what makes the unit idempotent — `ip rule add` is
   # not, and re-running it otherwise stacks duplicates until the table is
   # unreadable.
+  # The client tunnel's address without its mask.
+  clientTunnelAddr = lib.head (lib.splitString "/" (lib.head cfg.clientTunnel.address));
+
   # Firewall mark for the resolver's upstream queries. Priority 1002 carries
   # the matching rule and is cleared with the rest in protonvpn-policy.
   dnsMark = 66;
 
-  ownedPriorities = [ 1000 1001 1010 1011 1002 ];
+  ownedPriorities = [ 1000 1001 1010 1011 1002 1003 ];
 
   # Groups of steered sources, each with the priority pair it uses: the bypass
   # rule sits one below the steering rule so local destinations are resolved in
@@ -107,6 +110,16 @@ let
       "${ip} route replace blackhole default table ${toString cfg.clientTunnel.table} metric 1000"}
 
     ${lib.concatStringsSep "\n    " ruleLines}
+
+    # Let anything on this host that deliberately binds the tunnel's own source
+    # address route through the tunnel's table. Without it a socket bound to
+    # that address has no route at all, because `main` knows nothing about the
+    # tunnel by design. This is what lets the watchdog probe THROUGH the
+    # interface rather than merely checking that it exists — a WireGuard
+    # interface stays up and happy with a dead peer on the other side, so
+    # anything less than an end-to-end probe tests nothing.
+    ${lib.optionalString cfg.clientTunnel.enable
+      "${ip} rule add from ${clientTunnelAddr} lookup ${toString cfg.clientTunnel.table} priority 1003"}
   '';
 
   policyStop = pkgs.writeShellScript "protonvpn-policy-stop" ''
@@ -174,6 +187,83 @@ let
     iptables -t nat -D POSTROUTING -s ${src} -o ${cfg.clientTunnel.interface} -j MASQUERADE 2>/dev/null || true
     iptables -t mangle -D FORWARD -p tcp --syn -s ${src} -o ${cfg.clientTunnel.interface} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
   '') steeredSources;
+
+  # One watchdog timer per tunnel. The probe, the rotation and the restart are
+  # deliberately three escalating steps rather than one: most failures are a
+  # single unresponsive Proton endpoint, and reaching for a unit restart first
+  # would take Transmission down with it (it is PartOf the P2P tunnel) for
+  # something a live `wg set` fixes without dropping a single transfer.
+  mkWatchdog = { t, unit, probePrefix, curlArgs, wgPrefix }:
+    let
+      eps = endpointsOf t;
+      stateFile = "/run/protonvpn-${t.interface}.endpoint";
+    in
+    {
+      systemd.timers."protonvpn-watchdog-${t.interface}" = {
+        description = "Probe ${t.interface} and rotate its endpoint on failure";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = cfg.watchdog.interval * 2;
+          OnUnitActiveSec = cfg.watchdog.interval;
+          AccuracySec = "5s";
+        };
+      };
+
+      systemd.services."protonvpn-watchdog-${t.interface}" = {
+        description = "ProtonVPN watchdog for ${t.interface}";
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = pkgs.writeShellScript "protonvpn-watchdog-${t.interface}" ''
+            set -u
+
+            endpoints=(${lib.concatMapStringsSep " " (e: "'${e}'") eps})
+            n=''${#endpoints[@]}
+
+            probe() {
+              ${probePrefix}${pkgs.curl}/bin/curl -fsS -o /dev/null \
+                ${curlArgs} --max-time ${toString cfg.watchdog.timeout} \
+                ${cfg.watchdog.probeUrl}
+            }
+
+            if probe; then
+              exit 0
+            fi
+
+            echo "watchdog: ${t.interface} failed its probe"
+
+            if [ "$n" -le 1 ]; then
+              echo "watchdog: only one endpoint configured, restarting ${unit}"
+              exec ${pkgs.systemd}/bin/systemctl restart ${unit}
+            fi
+
+            idx=0
+            [ -r ${stateFile} ] && idx=$(${pkgs.coreutils}/bin/cat ${stateFile} 2>/dev/null || echo 0)
+
+            # Try each remaining endpoint once. `wg set` swaps the endpoint on a
+            # live interface, so a rotation that works costs nothing — no
+            # interface teardown, no dropped sockets, no restart cascade.
+            for _ in $(${pkgs.coreutils}/bin/seq 1 "$((n - 1))"); do
+              idx=$(( (idx + 1) % n ))
+              next=''${endpoints[$idx]}
+              echo "watchdog: rotating ${t.interface} to $next"
+              ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} \
+                peer ${t.peer.publicKey} endpoint "$next" || continue
+              echo "$idx" > ${stateFile}
+
+              # Give the new endpoint a handshake window before judging it.
+              ${pkgs.coreutils}/bin/sleep 5
+              if probe; then
+                echo "watchdog: ${t.interface} recovered on $next"
+                exit 0
+              fi
+            done
+
+            echo "watchdog: no endpoint answered for ${t.interface}, restarting ${unit}"
+            exec ${pkgs.systemd}/bin/systemctl restart ${unit}
+          '';
+        };
+      };
+    };
 
   tunnelOptions = { name, defaultTable }: {
     enable = lib.mkOption {
@@ -368,6 +458,54 @@ in
         description = ''
           LAN source addresses/prefixes to steer when `lanRedirect.enable` is on.
           These must be hosts that actually route through this machine.
+        '';
+      };
+    };
+
+    watchdog = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Probe each tunnel end-to-end and rotate its endpoint when it stops
+          answering.
+
+          This exists because a WireGuard interface gives no useful health
+          signal on its own: it stays up, configured and entirely happy with a
+          dead peer on the other side, forwarding into a void. Only traffic that
+          completes a round trip proves anything, so the probe goes THROUGH the
+          interface rather than looking at it.
+
+          Rotation has to be explicit for the same structural reason. WireGuard
+          does not fail over between peers inside one interface — it has no
+          concept of a peer being down — so nothing moves us off a dead endpoint
+          unless something replaces it.
+        '';
+      };
+
+      interval = lib.mkOption {
+        type = lib.types.int;
+        default = 60;
+        description = "Seconds between probes.";
+      };
+
+      timeout = lib.mkOption {
+        type = lib.types.int;
+        default = 8;
+        description = ''
+          Per-probe timeout in seconds. Kept well under `interval` so a hung
+          probe cannot overlap the next one.
+        '';
+      };
+
+      probeUrl = lib.mkOption {
+        type = lib.types.str;
+        default = "https://protonstatus.com/";
+        description = ''
+          URL fetched through the tunnel to prove it carries traffic. Any small,
+          reliable HTTPS endpoint works; what matters is that a full request
+          completes, since that exercises DNS-free connectivity, routing, NAT and
+          MTU in one go.
         '';
       };
     };
@@ -974,5 +1112,32 @@ in
         iptables -t nat -D POSTROUTING -o ${cfg.clientTunnel.interface} -m mark --mark ${toString dnsMark} -j MASQUERADE 2>/dev/null || true
       '';
     })
+
+    ##########################################################################
+    # Watchdog and endpoint rotation.
+    ##########################################################################
+    (lib.mkIf (cfg.watchdog.enable && cfg.clientTunnel.enable) (
+      mkWatchdog {
+        t = cfg.clientTunnel;
+        unit = "wireguard-${cfg.clientTunnel.interface}.service";
+        # Probed from the tunnel's own source address, which priority 1003 routes
+        # into the tunnel's table.
+        probePrefix = "";
+        curlArgs = "--interface ${clientTunnelAddr}";
+        wgPrefix = "";
+      }
+    ))
+
+    (lib.mkIf (cfg.watchdog.enable && cfg.p2pTunnel.enable) (
+      mkWatchdog {
+        t = cfg.p2pTunnel;
+        unit = "protonvpn-${cfg.p2pTunnel.interface}.service";
+        # Probed from inside the namespace, where the tunnel is the only route,
+        # so no source binding is needed or wanted.
+        probePrefix = "${ip} netns exec ${cfg.p2pTunnel.netns} ";
+        curlArgs = "";
+        wgPrefix = "${ip} netns exec ${cfg.p2pTunnel.netns} ";
+      }
+    ))
   ]);
 }
