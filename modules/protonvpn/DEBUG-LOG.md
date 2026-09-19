@@ -370,7 +370,10 @@ the table they use carries no blackhole to strand them if the tunnel dies.
   moved between Transmission versions; the check now matches loosely, keeps the
   raw output, and reports an unreadable port as a SKIP that says so rather than
   as "the renewal service is not applying it".
-* **§9 cloud.acpuchades.com 503** — unrelated to this module, still open. nginx
+* **§9 cloud.acpuchades.com 503** — unrelated to this module. **RESOLVED
+  2026-09-19**, see `modules/cloud-suite/DEBUG-LOG.md`: a stale `apps_paths`
+  entry in Nextcloud's stateful config.php pointed at a garbage-collected
+  package. nginx
   answers 503 directly on 127.0.0.1:8080, so it originates inside Nextcloud/PHP.
   CLAUDE.md has been corrected: it claimed no `services.nginx` exists here, when
   cloud-suite enables it on loopback for NextCloud's PHP-FPM.
