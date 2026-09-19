@@ -729,40 +729,92 @@ let
 
         wgInterface = config.my.vpn-server.interface;
 
-        # Tunneled peers are allocated out of 10.0.1.0/24; the existing peers on
-        # 10.0.0.0/24 keep direct, untunneled access to Nextcloud, Immich and
-        # Vaultwarden. Selection is the prefix itself, so adding a tunneled peer
-        # is `wg-create-profile <name> 10.0.1.x` plus the usual sops + peer block
+        # One prefix per exit country, allocated out of 10.0.N.0/24. Peers on
+        # 10.0.0.0/24 stay UNTUNNELED and egress via the ISP — that is the right
+        # default, not a leftover: it is the path that reaches Nextcloud, Immich
+        # and Vaultwarden at full LAN speed, presents a residential Spanish IP to
+        # banks and streaming, and keeps working when Proton is down. A device
+        # gets a second (third, fourth) profile for the exits it wants and picks
+        # one in the WireGuard app; adding a peer to an exit is
+        # `wg-create-profile <name> 10.0.N.x` plus the usual sops + peer block,
         # and nothing here changes.
-        tunneledPeerPrefix = "10.0.1.0/24";
-        tunneledGateway = "10.0.1.1/24";
-
+        #
+        #   10.0.0.0/24  untunneled (ISP)
+        #   10.0.1.0/24  es
+        #   10.0.2.0/24  in
+        #   10.0.3.0/24  us
+        #
         # Every locally-reachable prefix, so traffic between them is never
-        # tunneled. The transmission RPC veth (10.200.0.0/30) is deliberately
-        # absent: tunneled clients have no business reaching the daemon's RPC
-        # directly, they reach the web UI through Caddy like everything else.
-        localPrefixes = privateNetworks ++ [ "10.0.1.0/24" ];
+        # tunneled — including between two tunneled prefixes, which must stay on
+        # wg0 rather than hairpin out through Proton and back. The transmission
+        # RPC veth (10.200.0.0/30) is deliberately absent: tunneled clients have
+        # no business reaching the daemon's RPC directly, they reach the web UI
+        # through Caddy like everything else.
+        localPrefixes = privateNetworks ++ [
+          "10.0.1.0/24"
+          "10.0.2.0/24"
+          "10.0.3.0/24"
+        ];
 
-        clientTunnel = {
-          server = "ES#95";
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton".path;
-          address = [ "10.2.0.2/32" ];
-          peer = {
-            publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
-            endpoint = "130.195.250.66:51820";
+        clientTunnels = {
+          es = {
+            server = "ES#124";
+            table = 42;
+            sourcePrefixes = [ "10.0.1.0/24" ];
+            gateway = "10.0.1.1/24";
+            privateKeyFile = config.sops.secrets."wireguard-client/wgproton-es".path;
+            address = [ "10.2.0.2/32" ];
+            peer = {
+              publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";
+              endpoint = "130.195.250.98:51820";
+            };
+
+            # India and the United States. Tables 42/43/44 are taken
+            # (es, p2p, resolver), hence 45 and 46.
+            "in" = { # quoted: `in` is a Nix keyword
+              server = "IN#";
+              table = 45;
+              sourcePrefixes = [ "10.0.2.0/24" ];
+              gateway = "10.0.2.1/24";
+              privateKeyFile = config.sops.secrets."wireguard-client/wgproton-in".path;
+              address = [ "10.2.0.2/32" ];
+              peer = {
+                publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
+                endpoint = "146.70.142.18:51820";
+              };
+            };
+
+            us = {
+              server = "US-NY#608";
+              table = 46;
+              sourcePrefixes = [ "10.0.3.0/24" ];
+              gateway = "10.0.3.1/24";
+              privateKeyFile = config.sops.secrets."wireguard-client/wgproton-us".path;
+              address = [ "10.2.0.2/32" ];
+              peer = {
+                publicKey = "R8Of+lrl8DgOQmO6kcjlX7SchP4ncvbY90MB7ZUNmD8=";
+                endpoint = "";
+              };
+            };
           };
         };
 
+        # Upstream DNS leaves through one exit, not per-client: the resolver is
+        # a single host-wide service shared by the LAN and by every peer
+        # whatever exit that peer uses, so there is no per-query country to
+        # honour. Spain is chosen to match where this line actually is.
+        resolver.viaTunnel = "es";
+
         p2pTunnel = {
-          server = "ES#124 (P2P-flagged, NAT-PMP enabled)";
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
+          server = "ES#33 (P2P-flagged, NAT-PMP enabled)";
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-".path;
           address = [ "10.2.0.2/32" ];
           # The same 10.2.0.2 as the client tunnel, which is what Proton hands
           # every config. Harmless here: this one lives in its own network
           # namespace, so the two addresses never share a routing table.
           peer = {
-            publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";
-            endpoint = "130.195.250.98:51820";
+            publicKey = "roOsz9dJeKKVt6E3EIEKXQfZsmhSfsqOceZWiuGLIgg=";
+            endpoint = "185.76.11.17:51820";
           };
         };
       };

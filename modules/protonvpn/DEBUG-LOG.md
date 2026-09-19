@@ -377,3 +377,99 @@ the table they use carries no blackhole to strand them if the tunnel dies.
   answers 503 directly on 127.0.0.1:8080, so it originates inside Nextcloud/PHP.
   CLAUDE.md has been corrected: it claimed no `services.nginx` exists here, when
   cloud-suite enables it on loopback for NextCloud's PHP-FPM.
+
+---
+
+## 2026-09-19 — one client tunnel → N, one per exit country
+
+### Why
+
+The single `clientTunnel` could only ever offer one exit. The goal is several
+(`es`, `in`, `us`), with a peer's exit decided by which wg0 prefix its address
+came out of — so a device carries one profile per country and picks in the
+WireGuard app.
+
+### Shape
+
+`my.protonvpn.clientTunnel` → `my.protonvpn.clientTunnels.<name>`, an attrset.
+Each entry owns `sourcePrefixes`, `gateway`, `table`, its own kill-switch chain
+(`protonvpn-ks-<name>`), its own blackhole and its own watchdog. Peers on
+10.0.0.0/24 remain untunneled.
+
+Much of the module already generalised for free: `tunnelOptions` and
+`mkWatchdog` were already factories, `steeredGroups` was already a list of
+groups with a priority pair, and routes were already declared per-interface.
+
+### Three things that were NOT free
+
+**1. Proton hands every profile the same 10.2.0.2/32.** The old
+`ip rule from 10.2.0.2 lookup 42` (prio 1003) was unambiguous only because there
+was exactly one such interface in the root namespace. With three, three
+identical selectors — first match wins, so every watchdog's
+`curl --interface 10.2.0.2` would have probed whichever tunnel sorted first
+while reporting on its own, and a dead tunnel would read as healthy for as long
+as any tunnel was up.
+
+Verified in a throwaway netns before committing to the design: the same /32 on
+two interfaces is accepted (both get `local` entries), and `ip rule … oif <dev>`
+resolves correctly (`ip route get 1.1.1.1 oif tun2` → `dev tun2`). So the rule
+is now `oif <interface>`, and the probe binds the device (`--interface
+if!proton-es`) rather than the address. This is arguably a latent correctness
+fix for the single-tunnel case too. Forwarded traffic is unaffected — it matches
+`from <prefix>` and is SNATted per outgoing interface.
+
+**2. One kill-switch chain per tunnel.** The chain's ACCEPT names an interface,
+so a shared chain would have accepted an `es`-prefix packet leaving down the
+`us` tunnel. Not a leak to the ISP, but a silent violation of the thing the user
+actually chose, and invisible at runtime. verify-protonvpn.sh now asserts each
+chain accepts exactly one interface and terminates in DROP.
+
+**3. Infinite recursion in the module system.** `mkMerge (map mkWatchdog
+activeTunnels)` made the SHAPE of `config` depend on `cfg.clientTunnels`, and
+the module system must know the shape before it can evaluate any option — so it
+forced the option while computing it. `mkWatchdog` now returns `{ timer;
+service; }` and the caller places them under static paths (`systemd.timers`,
+`systemd.services`) with `listToAttrs`, moving everything config-derived into
+lazy VALUES. Same class of problem as the openclaw multi-agent submodule.
+
+Also: rule cleanup now sweeps priorities 1000–1259 read back FROM THE KERNEL
+rather than from a config-derived list, because a config-derived list cannot
+remove the rules of a tunnel that has just been deleted from the config — and a
+steering rule outliving its tunnel points into a table whose route is gone. The
+range starts at 1000 so the old scheme's 1000/1001/1003/1010/1011 are swept on
+the first switch onto this version.
+
+And: `in` is a Nix keyword. A tunnel named for India must be written `"in" = {
+… }` or the file does not parse.
+
+### Migration — ONE MANUAL STEP after the first switch
+
+The `es` tunnel's interface is now `proton-es`, not `proton-client`.
+systemd-networkd does not delete a kernel device when its `.netdev` disappears,
+and `ManageForeignRoutes = false` means it will not clean up the device's routes
+either. So after the switch the box has BOTH `proton-client` (stale, still
+holding `default dev proton-client` in table 42) and `proton-es` (new, same
+route, same table). Two defaults in one table: the kernel picks one
+non-deterministically. Not a leak — the stale device is still the same ES#95
+tunnel — but it is not the configured path and the `oif` rule will not match it.
+
+    ip link del proton-client
+
+A reboot does the same thing. Verify with `ip route show table 42` — exactly one
+`default dev proton-es` plus the blackhole at metric 1000.
+
+### State
+
+`es` is live and wired. `in` and `us` are commented blocks in
+`machines/homeserver/default.nix` awaiting the one thing that cannot be
+generated here: a WireGuard profile per country from Proton's portal, plus its
+PrivateKey in sops. Tables 45 and 46 are reserved for them (42/43/44 = es, p2p,
+resolver); prefixes 10.0.2.0/24 and 10.0.3.0/24 are already in `localPrefixes`.
+
+Verified by construction, not on the live host: `nixos-rebuild build` succeeds;
+the generated policy script, firewall rules, wg0 addresses and unit names were
+inspected with a temporary second tunnel in place and are correct (per-tunnel
+blackholes, per-tunnel bypass rules covering every other tunneled prefix,
+per-tunnel oif rules, per-tunnel chains and NAT). The duplicate-table and
+`sourcePrefixes ⊄ localPrefixes` assertions were both made to fire. NOT yet
+switched — the live behaviour test is `verify-protonvpn.sh` after the switch.

@@ -3,6 +3,15 @@
 #
 # Run as root on the homeserver:  sudo ./scripts/verify-protonvpn.sh
 #
+# These tests are PER CLIENT TUNNEL. With several exits configured (es, in, us
+# …) one run proves one of them; pass --tunnel to pick, or run it once per
+# tunnel. Without the flag it takes the first name alphabetically.
+#
+#   sudo ./scripts/verify-protonvpn.sh --tunnel us
+#   sudo ./scripts/verify-protonvpn.sh --tunnel in --safe
+#
+# The P2P tunnel and the resolver checks are not per-tunnel and run every time.
+#
 # Tests 5, 6 and 8 are DISRUPTIVE — they take a tunnel administratively down, or
 # add a temporary firewall rule, to prove the failure modes behave. Everything is
 # restored by an EXIT trap, including on interrupt. Pass --safe to skip them.
@@ -14,25 +23,56 @@
 set -uo pipefail
 
 NS=torrent
-CLIENT_IF=proton-client
 P2P_IF=proton-p2p
-CLIENT_TABLE=42
-TUNNELED_SRC=10.0.1.1          # wg0's address inside the tunneled prefix
-TUNNELED_PEER=10.0.1.2         # a PEER address in that prefix, for input-route simulation
 VETH_NS_ADDR=10.200.0.2
 RPC_PORT=9091
 GW=10.2.0.1
 DNS_TABLE=44                   # resolver upstream table (no blackhole: degrades to ISP)
 RESOLVER_USER=dnscrypt-proxy
-# The configured Proton endpoints. An exit address in the same /24 as the peer
-# we tunnel to is Proton's by construction — a far better test than ASN org.
-CLIENT_ENDPOINT=$(nix eval --raw ".#nixosConfigurations.homeserver.config.my.protonvpn.clientTunnel.peer.endpoint" 2>/dev/null | cut -d: -f1)
-P2P_ENDPOINT=$(nix eval --raw ".#nixosConfigurations.homeserver.config.my.protonvpn.p2pTunnel.peer.endpoint" 2>/dev/null | cut -d: -f1)
 IP_ECHO=https://ifconfig.co
 IP_ECHO_JSON=https://ifconfig.co/json
 
+CLIENT_TUNNEL=""
 RUN_DISRUPTIVE=1
-[[ "${1:-}" == "--safe" ]] && RUN_DISRUPTIVE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --safe)   RUN_DISRUPTIVE=0; shift ;;
+    --tunnel) CLIENT_TUNNEL="${2:-}"; [[ -n "$CLIENT_TUNNEL" ]] || { echo "--tunnel needs a name" >&2; exit 2; }; shift 2 ;;
+    *)        echo "usage: $0 [--safe] [--tunnel <name>]" >&2; exit 2 ;;
+  esac
+done
+
+# Everything about the tunnel under test is READ FROM THE CONFIGURATION rather
+# than hardcoded. With one tunnel that was merely tidy; with several it is the
+# difference between testing the tunnel you named and testing whichever one the
+# constants happened to describe.
+CFG=".#nixosConfigurations.homeserver.config.my.protonvpn"
+cfgs() { nix eval --raw "$CFG.$1" 2>/dev/null; }          # string-valued
+cfgn() { nix eval "$CFG.$1" 2>/dev/null; }                # number-valued
+
+if [[ -z "$CLIENT_TUNNEL" ]]; then
+  CLIENT_TUNNEL=$(nix eval --raw --apply 'x: builtins.head (builtins.attrNames x)' \
+    "$CFG.clientTunnels" 2>/dev/null)
+fi
+[[ -n "$CLIENT_TUNNEL" ]] || { echo "no client tunnels configured" >&2; exit 2; }
+
+T="clientTunnels.\"$CLIENT_TUNNEL\""
+CLIENT_IF=$(cfgs "$T.interface")
+CLIENT_TABLE=$(cfgn "$T.table")
+KS_CHAIN="protonvpn-ks-$CLIENT_TUNNEL"
+GATEWAY_CIDR=$(cfgs "$T.gateway")
+TUNNELED_SRC=${GATEWAY_CIDR%%/*}   # wg0's address inside this tunnel's prefix
+TUNNELED_PEER="${TUNNELED_SRC%.*}.2"  # a PEER address in it, for input-route simulation
+[[ -n "$CLIENT_IF" && -n "$CLIENT_TABLE" && -n "$TUNNELED_SRC" ]] || {
+  echo "could not read tunnel '$CLIENT_TUNNEL' from the flake" >&2; exit 2; }
+
+# The configured Proton endpoints. An exit address in the same /24 as the peer
+# we tunnel to is Proton's by construction — a far better test than ASN org.
+CLIENT_ENDPOINT=$(cfgs "$T.peer.endpoint" | cut -d: -f1)
+P2P_ENDPOINT=$(cfgs "p2pTunnel.peer.endpoint" | cut -d: -f1)
+
+printf '\033[1mTesting client tunnel: %s (%s, table %s, prefix via %s)\033[0m\n' \
+  "$CLIENT_TUNNEL" "$CLIENT_IF" "$CLIENT_TABLE" "$TUNNELED_SRC"
 
 pass=0; fail=0; skip=0
 RESTORE=()
@@ -239,7 +279,34 @@ else
 fi
 
 ###############################################################################
-hdr "6. proton-client down blackholes tunneled sources (fail closed)"
+hdr "6. $CLIENT_IF down blackholes tunneled sources (fail closed)"
+
+# The kill switch is PER TUNNEL, and that is the property worth asserting: the
+# chain this tunnel's sources jump to may accept traffic leaving via THIS
+# interface and nothing else. A chain that accepted another tunnel's interface
+# would not leak to the ISP, but it would silently hand the user a different
+# exit country than the one they chose — and nothing at runtime would say so.
+if iptables -S "$KS_CHAIN" >/dev/null 2>&1; then
+  if iptables -S "$KS_CHAIN" | grep -q -- "-o $CLIENT_IF -j ACCEPT"; then
+    ok "$KS_CHAIN accepts egress via $CLIENT_IF"
+  else
+    no "$KS_CHAIN has no ACCEPT for $CLIENT_IF"
+  fi
+  if [[ $(iptables -S "$KS_CHAIN" | grep -c -- "-j ACCEPT") -eq 1 ]]; then
+    ok "$KS_CHAIN accepts exactly one interface"
+  else
+    no "$KS_CHAIN accepts more than one interface — exits can cross over"
+    note "iptables -S $KS_CHAIN"
+  fi
+  if iptables -S "$KS_CHAIN" | tail -1 | grep -q -- "-j DROP"; then
+    ok "$KS_CHAIN terminates in DROP"
+  else
+    no "$KS_CHAIN does not end in DROP — traffic can fall through to the ISP"
+  fi
+else
+  no "$KS_CHAIN does not exist — this tunnel's sources have no kill switch"
+fi
+
 if (( RUN_DISRUPTIVE )); then
   RESTORE+=("ip link set $CLIENT_IF up")
   ip link set "$CLIENT_IF" down
@@ -306,11 +373,11 @@ fi
 # source and are dropped. Assert the mechanism, not just that something exists.
 RESOLVER_UID=$(id -u "$RESOLVER_USER" 2>/dev/null || true)
 if [[ -z "$RESOLVER_UID" ]]; then
-  sk "$RESOLVER_USER has no stable uid (routeUpstreamThroughClient off?)"
+  sk "$RESOLVER_USER has no stable uid (resolver.viaTunnel unset?)"
 elif ip rule show | grep -q "uidrange $RESOLVER_UID-$RESOLVER_UID.*lookup $DNS_TABLE"; then
   ok "resolver uid $RESOLVER_UID is steered into table $DNS_TABLE"
 else
-  sk "no uidrange rule for $RESOLVER_USER (routeUpstreamThroughClient off?)"
+  sk "no uidrange rule for $RESOLVER_USER (resolver.viaTunnel unset?)"
 fi
 
 # The resolver table must NOT carry a blackhole. That is what makes upstream DNS
