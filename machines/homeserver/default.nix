@@ -37,7 +37,23 @@ let
   # string; grep for it before moving hardware, and change it here only.
   uplinkInterface = "wlp3s0";
   adminEmailAddress = "admin@acpuchades.com";
-  privateNetworks = [ "192.168.2.0/24" "10.0.0.0/24" ];
+  lanNetwork = "192.168.2.0/24";
+
+  # Every prefix of the WireGuard server's address space — one per exit, plus
+  # the untunneled one. They are ALL equally trusted, and that is the point: a
+  # peer is authenticated by its key and preshared key before it has an address
+  # at all, so which prefix it was allocated out of decides where its traffic
+  # EXITS and nothing about what it may reach. Leaving a prefix out of this list
+  # does not harden anything — it silently costs those peers AdGuard, the file
+  # shares, Transmission and the dashboards, with no error anywhere to say so.
+  wgNetworks = [
+    "10.0.0.0/24" # untunneled — straight out the ISP
+    "10.0.1.0/24" # es
+    "10.0.2.0/24" # in
+    "10.0.3.0/24" # us
+  ];
+
+  privateNetworks = [ lanNetwork ] ++ wgNetworks;
 
   # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
   # deliberately runs ahead of nixpkgs-26.05. Two consumers today — openclaw and
@@ -197,47 +213,47 @@ let
         peers = {
           alex-laptop = {
             publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
-            allowedIPs = [ "10.0.0.2/32" ];
+            allowedIPs = [ "10.0.1.2/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-laptop".path;
           };
           alex-ipad = {
             publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
-            allowedIPs = [ "10.0.0.3/32" ];
+            allowedIPs = [ "10.0.1.3/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
           };
           alex-phone-owner = {
             publicKey = "jzXucrFLPLL0og1QXP75R+oYUyTqNCRnD6gw3SMPI0M=";
-            allowedIPs = [ "10.0.0.4/32" ];
+            allowedIPs = [ "10.0.1.4/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-owner".path;
           };
           alex-phone-personal = {
             publicKey = "ayIoJHS1QIvbyixoVTRMuDB+RMoh6N7mgscfP7RY7wY=";
-            allowedIPs = [ "10.0.0.5/32" ];
+            allowedIPs = [ "10.0.1.5/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-personal".path;
           };
           alex-phone-work = {
             publicKey = "r/0vQN5JOLlWWOBwIi9SRJj8F06FrMP9xywO+PMs6Rc=";
-            allowedIPs = [ "10.0.0.6/32" ];
+            allowedIPs = [ "10.0.1.6/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-work".path;
           };
           mubin-laptop-personal = {
             publicKey = "Wk0VWDe0KNjrG8fDDTfFXpuNfZ8BNxLxhYiF1LFyCA4=";
-            allowedIPs = [ "10.0.0.10/32" ];
+            allowedIPs = [ "10.0.1.10/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-personal".path;
           };
           mubin-laptop-work = {
             publicKey = "3jUISZl3AQAScASjxNnoGPvayi1/3jbLUzVS+6Kzfmo=";
-            allowedIPs = [ "10.0.0.11/32" ];
+            allowedIPs = [ "10.0.1.11/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-work".path;
           };
           mubin-phone-personal = {
             publicKey = "y5XFrY1BT+lG25DM+0se9GBTiGcAv69Ag2twUbcWugE=";
-            allowedIPs = [ "10.0.0.12/32" ];
+            allowedIPs = [ "10.0.1.12/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
           };
           mubin-phone-work = {
             publicKey = "efhtt7/eRYIvoyda7u+0GUA7y6WOxZtbPjIUNwdOsF4=";
-            allowedIPs = [ "10.0.0.13/32" ];
+            allowedIPs = [ "10.0.1.13/32" ];
             presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
           };
         };
@@ -255,32 +271,40 @@ let
 
         wgInterface = config.my.vpn-server.interface;
 
-        # One prefix per exit country, allocated out of 10.0.N.0/24. Peers on
-        # 10.0.0.0/24 stay UNTUNNELED and egress via the ISP — that is the right
-        # default, not a leftover: it is the path that reaches Nextcloud, Immich
-        # and Vaultwarden at full LAN speed, presents a residential Spanish IP to
-        # banks and streaming, and keeps working when Proton is down. A device
-        # gets a second (third, fourth) profile for the exits it wants and picks
-        # one in the WireGuard app; adding a peer to an exit is
-        # `wg-create-profile <name> 10.0.N.x` plus the usual sops + peer block,
-        # and nothing here changes.
+        # One prefix per exit, allocated out of 10.0.N.0/24. A peer's exit is
+        # decided by which prefix its address came from and by nothing else, so
+        # moving a device between exits is an address change in its profile plus
+        # the matching allowedIPs here — the keys never move.
         #
-        #   10.0.0.0/24  untunneled (ISP)
-        #   10.0.1.0/24  es
+        #   10.0.0.0/24  untunneled (straight out the ISP)
+        #   10.0.1.0/24  es      ← every peer today
         #   10.0.2.0/24  in
         #   10.0.3.0/24  us
         #
+        # 10.0.0.0/24 is deliberately kept and deliberately empty. It is the
+        # fallback: a device that needs the residential Spanish address (a bank,
+        # a streaming licence) or that must keep working while Proton is down
+        # gets a SECOND profile on it and switches in the WireGuard app. Nothing
+        # about that path depends on Proton, which is exactly why it is worth a
+        # reserved prefix rather than being reclaimed.
+        #
+        # Note what moving every peer to es costs, because it is not nothing:
+        # the kill switch is fail-closed, so ES#124 going down now takes every
+        # peer's internet with it rather than a subset. The watchdog rotates
+        # endpoints on the first failed probe and resets the interface after
+        # two, but the window is real and the fallback is manual — hence the
+        # paragraph above.
+        #
         # Every locally-reachable prefix, so traffic between them is never
         # tunneled — including between two tunneled prefixes, which must stay on
-        # wg0 rather than hairpin out through Proton and back. The transmission
-        # RPC veth (10.200.0.0/30) is deliberately absent: tunneled clients have
+        # wg0 rather than hairpin out through Proton and back. Identical to
+        # privateNetworks by construction: a peer that can be reached locally is
+        # exactly a peer that is trusted locally, and keeping two lists in step
+        # by hand is how one of them goes stale. The transmission RPC veth
+        # (10.200.0.0/30) is deliberately absent from both: tunneled clients have
         # no business reaching the daemon's RPC directly, they reach the web UI
         # through Caddy like everything else.
-        localPrefixes = privateNetworks ++ [
-          "10.0.1.0/24"
-          "10.0.2.0/24"
-          "10.0.3.0/24"
-        ];
+        localPrefixes = privateNetworks;
 
         clientTunnels = {
           es = {
