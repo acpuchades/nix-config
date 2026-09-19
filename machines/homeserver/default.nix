@@ -793,11 +793,18 @@ let
           # is getting this HOST back.
           "/srv/shared/NGS"
           # Re-derivable from the media itself: artwork/NFO scraped from the
-          # metadata providers, and transcodes that are pure cache. The parts of
-          # /var/lib/jellyfin worth keeping (library.db, users, playstate) are
-          # not in these.
+          # metadata providers. The parts of /var/lib/jellyfin worth keeping
+          # (library.db, users, playstate) are not in here. Transcodes need no
+          # exclude: Jellyfin writes them under its cacheDir
+          # (/var/cache/jellyfin), which is not a backup path at all.
           "/var/lib/jellyfin/metadata"
-          "/var/lib/jellyfin/transcodes"
+          # Immich's derivatives live INSIDE mediaLocation, so without these
+          # they ride along with the originals — regenerable data (3.x
+          # derivatives can rival the originals in size) paying for B2 space
+          # and restore time. Immich rebuilds both from the originals;
+          # profile/ (avatars, not regenerable) stays in.
+          "${config.my.cloud-suite.immich.mediaLocation}/thumbs"
+          "${config.my.cloud-suite.immich.mediaLocation}/encoded-video"
           "/srv/shared/**/.incomplete"
           "/var/lib/hass/*.log*"
           # Per-home caches / build artifacts: re-acquirable and they churn every
