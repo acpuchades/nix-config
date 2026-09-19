@@ -43,16 +43,35 @@
       ];
     };
 
+    # Both of these carry service state (nextcloud, immich, vaultwarden,
+    # postgresql, bitcoind, prefect, the media shares) that systemd-tmpfiles has
+    # rules for, so tmpfiles MUST NOT run before they are mounted.
+    #
+    # It did. `nofail` keeps a missing disk from wedging the boot, but it also
+    # drops the mount out of `local-fs.target`'s ordering — and
+    # systemd-tmpfiles-setup.service is only `After=local-fs.target`, so it stops
+    # waiting for these. Measured on the 2026-09-19 boot: tmpfiles ran at
+    # 01:18:05, srv-encrypted.mount became active at 01:18:20, fifteen seconds
+    # later. Every rule under these paths therefore applied to the empty stub
+    # directory UNDERNEATH the mountpoint, which the real filesystem then hid:
+    # ownership and modes silently never reached the actual directories, and an
+    # `L+` symlink written there is invisible the moment the disk mounts over it.
+    #
+    # `x-systemd.before=` orders WITHOUT requiring, which is the distinction that
+    # matters here: tmpfiles waits for the mount to be attempted, but a disk that
+    # never shows up still cannot fail the boot, so `nofail` keeps its meaning.
+    # Safe against hangs because the unlock is unattended — crypttab uses
+    # tpm2-device=auto, so nothing waits on a passphrase.
     "/srv" = {
       device = "/dev/disk/by-uuid/20240caa-cc06-4e97-8537-1a1ae9e617ba";
       fsType = "btrfs";
-      options = [ "compress=zstd" "noatime" "nofail" ];
+      options = [ "compress=zstd" "noatime" "nofail" "x-systemd.before=systemd-tmpfiles-setup.service" ];
     };
 
     "/srv/encrypted" = {
       device = "/dev/mapper/srv-encrypted";
       fsType = "btrfs";
-      options = [ "compress=zstd" "noatime" "nofail" ];
+      options = [ "compress=zstd" "noatime" "nofail" "x-systemd.before=systemd-tmpfiles-setup.service" ];
     };
 
   };
