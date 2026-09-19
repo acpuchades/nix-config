@@ -17,8 +17,8 @@
 # Topics (create ACLs for the `homeserver` ntfy user accordingly):
 #   - systemTopic (default alerts-system) — systemd unit failures
 #   - powerTopic  (default alerts-power)  — UPS/power events
-# These are distinct from backup's own `backups` topic/token: one publisher
-# identity per concern, matching the existing ntfy convention.
+# Backup failures also flow through here (my.backup delegates its alerting to
+# this module; restic-backups-* is just another failureUnits entry).
 #
 let
   cfg = config.my.ntfy-alert;

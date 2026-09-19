@@ -593,6 +593,16 @@ let
   };
 in
 {
+  # This module configures both of these (my.wireguard-client for the client
+  # tunnels, my.transmission-server for the P2P netns wiring), so it declares
+  # the dependency instead of relying on the host importing them alongside it.
+  # Importing the same path twice is a no-op, so hosts that already list them
+  # lose nothing.
+  imports = [
+    ../wireguard-client
+    ../transmission-server
+  ];
+
   options.my.protonvpn = {
     enable = lib.mkEnableOption "ProtonVPN egress (selective client tunnel + isolated P2P tunnel)";
 

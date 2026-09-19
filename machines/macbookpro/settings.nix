@@ -6,6 +6,20 @@
   # Allow installation of not-free software
   nixpkgs.config.allowUnfree = true;
 
+  # Nix policy (flakes, store dedup, GC) — kept here so both machines answer
+  # "where does nix policy live?" with their settings.nix. The homeserver's
+  # equivalents are NixOS-flavored (auto-optimise-store, gc.dates).
+  nix.settings.experimental-features = "nix-command flakes";
+
+  # Deduplicate identical files in the store to reclaim disk, weekly.
+  nix.optimise.automatic = true;
+  nix.optimise.interval = { Weekday = 0; Hour = 3; Minute = 30; };
+
+  # Garbage-collect old generations weekly so /nix/store doesn't grow unbounded.
+  nix.gc.automatic = true;
+  nix.gc.interval = { Weekday = 0; Hour = 3; Minute = 0; };
+  nix.gc.options = "--delete-older-than 14d";
+
   # Enable the touch ID authentication for sudo.
   security.pam.services.sudo_local.touchIdAuth = true;
 

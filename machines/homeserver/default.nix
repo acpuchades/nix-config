@@ -1021,23 +1021,13 @@ in
 
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
-  modules = [
-
-    ../../modules/r-dev/system.nix
-    ../../modules/prefect-server/system.nix
-    (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
-
+  modules = import ../common.nix {
+    host = "homeserver";
+    homeDirectory = "/home/alex";
+    inherit sops-nix emacs-overlay;
+  } ++ [
     configuration
     sops-nix.nixosModules.sops
     home-manager.nixosModules.home-manager
-    {
-      home-manager.useGlobalPkgs = true;
-      home-manager.useUserPackages = true;
-      home-manager.users.alex = import ../../users/alex;
-      home-manager.extraSpecialArgs = { host = "homeserver"; };
-      home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
-
-      users.users.alex.home = "/home/alex";
-    }
   ];
 }

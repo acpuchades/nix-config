@@ -12,25 +12,6 @@ let
 
   configuration = inputs@{ config, pkgs, ... }: {
 
-    # Necessary for using flakes on this system.
-    nix.settings.experimental-features = "nix-command flakes";
-
-    # Binary cache for emacs-overlay / nix-community builds so they download
-    # instead of compiling locally. Merges with the rstats cache from r-dev.
-    nix.settings.extra-substituters = [ "https://nix-community.cachix.org" ];
-    nix.settings.extra-trusted-public-keys = [
-      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
-    ];
-
-    # Deduplicate identical files in the store to reclaim disk, weekly.
-    nix.optimise.automatic = true;
-    nix.optimise.interval = { Weekday = 0; Hour = 3; Minute = 30; };
-
-    # Garbage-collect old generations weekly so /nix/store doesn't grow unbounded.
-    nix.gc.automatic = true;
-    nix.gc.interval = { Weekday = 0; Hour = 3; Minute = 0; };
-    nix.gc.options = "--delete-older-than 14d";
-
     # Set Git commit hash for darwin-version.
     system.configurationRevision = self.rev or self.dirtyRev or null;
 
@@ -57,30 +38,21 @@ let
 in
   nix-darwin.lib.darwinSystem {
 
-    modules = [
-      ../../modules/r-dev/system.nix
-      ../../modules/prefect-server/system.nix
-
-      (import ../../modules/emacs-core/system.nix { inherit emacs-overlay; })
-
+    modules = import ../common.nix {
+      host = "macbookpro";
+      homeDirectory = "/Users/alex";
+      inherit sops-nix emacs-overlay;
+    } ++ [
       ./settings.nix
 
       configuration
       sops-nix.darwinModules.sops
       home-manager.darwinModules.home-manager
       {
-        home-manager.useGlobalPkgs = true;
-        home-manager.useUserPackages = true;
-        home-manager.users.alex = {
-          imports = [
-            ../../users/alex
-            (import ./browser.nix { inherit better-zen; })
-          ];
-        };
-        home-manager.extraSpecialArgs = { host = "macbookpro"; };
-        home-manager.sharedModules = [ sops-nix.homeManagerModules.sops ];
+        home-manager.users.alex.imports = [
+          (import ./browser.nix { inherit better-zen; })
+        ];
 
-        users.users.alex.home = "/Users/alex";
         users.users.alex.openssh.authorizedKeys.keys = [
           "sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29tAAAAIOsBCI8pMjSqQFPxJsyFWBrKxo2scz9zLhCyJKKiBJZFAAAABHNzaDo= acpuchades-nitrokey-20260225"
         ];

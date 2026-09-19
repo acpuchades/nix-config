@@ -12,4 +12,12 @@
 { emacs-overlay }:
 {
   nixpkgs.overlays = [ emacs-overlay.overlays.default ];
+
+  # Binary cache for the overlay's builds so they download instead of compiling
+  # locally. Lives here so the cache follows the overlay onto every host that
+  # imports it (cf. the rstats cache in r-dev/system.nix).
+  nix.settings.extra-substituters = [ "https://nix-community.cachix.org" ];
+  nix.settings.extra-trusted-public-keys = [
+    "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+  ];
 }
