@@ -294,33 +294,33 @@ let
               publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";
               endpoint = "130.195.250.98:51820";
             };
+          };
 
-            # India and the United States. Tables 42/43/44 are taken
-            # (es, p2p, resolver), hence 45 and 46.
-            "in" = { # quoted: `in` is a Nix keyword
-              server = "IN#";
-              table = 45;
-              sourcePrefixes = [ "10.0.2.0/24" ];
-              gateway = "10.0.2.1/24";
-              privateKeyFile = config.sops.secrets."wireguard-client/wgproton-in".path;
-              address = [ "10.2.0.2/32" ];
-              peer = {
-                publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
-                endpoint = "146.70.142.18:51820";
-              };
+          # India and the United States. Tables 42/43/44 are taken
+          # (es, p2p, resolver), hence 45 and 46.
+          "in" = { # quoted: `in` is a Nix keyword
+            server = "IN#"; # FIXME: server number
+            table = 45;
+            sourcePrefixes = [ "10.0.2.0/24" ];
+            gateway = "10.0.2.1/24";
+            privateKeyFile = config.sops.secrets."wireguard-client/wgproton-in".path;
+            address = [ "10.2.0.2/32" ];
+            peer = {
+              publicKey = "QnqJI0C2xQZrKfZLrBaCHa2h3TZ9CBt6sCuzg3ue4X4=";
+              endpoint = "146.70.142.18:51820";
             };
+          };
 
-            us = {
-              server = "US-NY#608";
-              table = 46;
-              sourcePrefixes = [ "10.0.3.0/24" ];
-              gateway = "10.0.3.1/24";
-              privateKeyFile = config.sops.secrets."wireguard-client/wgproton-us".path;
-              address = [ "10.2.0.2/32" ];
-              peer = {
-                publicKey = "R8Of+lrl8DgOQmO6kcjlX7SchP4ncvbY90MB7ZUNmD8=";
-                endpoint = "";
-              };
+          us = {
+            server = "US-NY#608";
+            table = 46;
+            sourcePrefixes = [ "10.0.3.0/24" ];
+            gateway = "10.0.3.1/24";
+            privateKeyFile = config.sops.secrets."wireguard-client/wgproton-us".path;
+            address = [ "10.2.0.2/32" ];
+            peer = {
+              publicKey = "R8Of+lrl8DgOQmO6kcjlX7SchP4ncvbY90MB7ZUNmD8=";
+              endpoint = ""; # FIXME: empty — the tunnel cannot come up
             };
           };
         };
@@ -333,7 +333,7 @@ let
 
         p2pTunnel = {
           server = "ES#33 (P2P-flagged, NAT-PMP enabled)";
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-".path;
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
           address = [ "10.2.0.2/32" ];
           # The same 10.2.0.2 as the client tunnel, which is what Proton hands
           # every config. Harmless here: this one lives in its own network

@@ -101,8 +101,26 @@ in
 
       "wireguard/private-key" = { key = "wireguard/private-key"; };
 
-      "wireguard-client/wgproton" = { key = "wireguard-client/wgproton"; };
+      # One Proton profile per client tunnel, named for the exit country, plus
+      # the P2P tunnel's. These track my.protonvpn.clientTunnels.<name> in
+      # ./default.nix — a name here that the vault does not carry evaluates fine
+      # and then fails at ACTIVATION, which is a worse place to find out.
+      "wireguard-client/wgproton-es" = { key = "wireguard-client/wgproton-es"; };
 
+      "wireguard-client/wgproton-in" = { key = "wireguard-client/wgproton-in"; };
+
+      "wireguard-client/wgproton-us" = { key = "wireguard-client/wgproton-us"; };
+
+      # FIXME: NOT IN THE VAULT. The rename to wgproton-<country> dropped
+      # wgproton-bt, and nothing replaced it, so the P2P tunnel Transmission
+      # lives in has no private key — this declaration is what p2pTunnel
+      # references, and the switch will fail here until the key is added.
+      # The previous one is still recoverable if the p2p profile was NOT
+      # regenerated:
+      #   git show f60c2ab:machines/homeserver/secrets/default.yml
+      # It is only the right key if p2pTunnel's peer is still ES#124
+      # (XkiKln3Se…, 130.195.250.98) — ./default.nix currently says ES#33 with a
+      # different peer key, which needs the private key from THAT profile.
       "wireguard-client/wgproton-bt" = { key = "wireguard-client/wgproton-bt"; };
 
       # htpasswd hash for the torrent.acpuchades.com basic-auth (rendered into the
