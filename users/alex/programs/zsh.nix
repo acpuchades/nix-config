@@ -16,7 +16,7 @@
           alias emacs="emacs -nw"
         fi
 
-        unalias rm 2>/dev/null
+        unalias rm cp mv 2>/dev/null
 
         if [ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ]; then
           exec tmux new-session -A -s main
