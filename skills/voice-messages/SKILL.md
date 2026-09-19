@@ -7,20 +7,20 @@ description: When and how to send voice audio — native delivery via ElevenLabs
 
 Use this skill whenever you need to send audio, decide whether to respond with voice, or add emotional expressiveness via TTS.
 
-## Cuándo usar voz
+## When to use voice
 
-- **Responde con voz** si el mensaje entrante es una nota de voz (audio).
-- **Puedes usar voz opcionalmente** para contenido narrativo, historias, resúmenes, o momentos "storytime" donde el audio añade valor real.
-- **No uses voz** para respuestas técnicas, listas, código, o cualquier cosa que el usuario necesite leer o copiar.
-- **Nunca** combines texto y audio en la misma respuesta. Es uno o el otro — nunca los dos a la vez.
+- **Reply with voice** if the incoming message is a voice note (audio).
+- **You may optionally use voice** for narrative content, stories, summaries, or "storytime" moments where audio adds real value.
+- **Do not use voice** for technical answers, lists, code, or anything the user needs to read or copy.
+- **Never** combine text and audio in the same reply. It is one or the other — never both at once.
 
-## Cómo generar y enviar audio
+## How to generate and send audio
 
-El tool `mcp__openclaw__tts` **no entrega audio a Telegram** — devuelve "(spoken)" pero el usuario solo recibe texto. Usa siempre este método de dos pasos:
+The `mcp__openclaw__tts` tool **does not deliver audio to Telegram** — it returns "(spoken)" but the user only receives text. Always use this two-step method:
 
-### Paso 1 — Generar el MP3 con ElevenLabs
+### Step 1 — Generate the MP3 with ElevenLabs
 
-Usa la configuración TTS del agente (voice ID, modelo y parámetros definidos en nix-config). El token está en `/home/eva/.config/eva/elevenlabs-token` y el directorio de salida en `/var/lib/openclaw/eva/media/outbound/`.
+Use the agent's TTS configuration (voice ID, model and parameters defined in nix-config). The token is at `/home/eva/.config/eva/elevenlabs-token` and the output directory is `/var/lib/openclaw/eva/media/outbound/`.
 
 ```bash
 TOKEN=$(cat /home/eva/.config/eva/elevenlabs-token)
@@ -31,14 +31,14 @@ TOKEN=$(cat /home/eva/.config/eva/elevenlabs-token)
   -H "Content-Type: application/json" \
   -H "Accept: audio/mpeg" \
   -d '{
-    "text": "<texto aquí, con marcadores emocionales si procede>",
+    "text": "<text here, with emotion markers where appropriate>",
     "model_id": "<MODEL_ID>",
-    "voice_settings": { <según config del agente> }
+    "voice_settings": { <per the agent config> }
   }' \
   -o /var/lib/openclaw/eva/media/outbound/voice_reply.mp3
 ```
 
-### Paso 2 — Enviar como nota de voz nativa
+### Step 2 — Send as a native voice note
 
 ```
 mcp__openclaw__message(
@@ -49,29 +49,29 @@ mcp__openclaw__message(
 )
 ```
 
-El parámetro `asVoice: true` hace que Telegram lo muestre como nota de voz con forma de onda, no como archivo de audio.
+The `asVoice: true` parameter makes Telegram display it as a voice note with a waveform, not as an audio file.
 
-## Marcadores emocionales
+## Emotion markers
 
-Si el modelo TTS configurado soporta marcadores emocionales (como `eleven_v3`), úsalos en el texto para modular la entonación. Úsalos con naturalidad — no abuses:
+If the configured TTS model supports emotion markers (such as `eleven_v3`), use them in the text to modulate intonation. Use them naturally — do not overdo it:
 
-- `[emocionada]` — voz más viva y energética
-- `[susurrando]` — voz baja e íntima
-- `[risas]` — risa natural intercalada
-- `[suspiro]` — pausa con suspiro
-- `[seria]` — tono más neutro y directo
-- `[cariñosa]` — calidez en la entonación
+- `[excited]` — livelier, more energetic voice
+- `[whispers]` — low, intimate voice
+- `[laughs]` — natural laughter woven in
+- `[sighs]` — pause with a sigh
+- `[serious]` — more neutral, direct tone
+- `[warm]` — warmth in the intonation
 
-Funcionan tanto en español como en inglés (`[excited]`, `[whispers]`, `[laughs]`).
+They work in both Spanish and English (`[emocionada]`, `[susurrando]`, `[risas]`).
 
-Ejemplo:
+Example:
 ```
-[emocionada] ¡Hola! Tengo novedades. [susurrando] Aunque no todas son buenas noticias.
+[excited] Hi! I have news. [whispers] Although not all of it is good news.
 ```
 
-## Resumen de reglas
+## Rules summary
 
-1. Voz → voz, texto → texto. Nunca mezclar.
-2. Generar siempre con curl + ElevenLabs, no con `mcp__openclaw__tts`.
-3. Enviar siempre con `asVoice: true` para que salga como nota de voz nativa.
-4. Usar marcadores emocionales con moderación para sonar natural, no teatral.
+1. Voice → voice, text → text. Never mix.
+2. Always generate with curl + ElevenLabs, not with `mcp__openclaw__tts`.
+3. Always send with `asVoice: true` so it arrives as a native voice note.
+4. Use emotion markers sparingly to sound natural, not theatrical.
