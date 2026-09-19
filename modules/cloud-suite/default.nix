@@ -292,6 +292,17 @@
       # whole site stays down until the stray store-apps copy is removed by
       # hand. Cost of false: no in-UI app browser, so adding an app is an
       # extraApps edit plus a rebuild.
+      #
+      # Related trap, in the STATEFUL config.php this time (bit us 2026-09-19):
+      # Nextcloud writes its merged in-memory config back to config.php on some
+      # setValue paths, so the generated apps_paths entries get copied there and
+      # ride along across upgrades — including a store path that GC later
+      # removes. The 503 then appears when nix-collect-garbage runs, not when
+      # the package is bumped, and occ cannot repair it because occ itself
+      # refuses to start on the broken config. Fix by editing config.php
+      # directly: delete the whole apps_paths key so override.config.php is its
+      # only source. (trusted_domains being absent from config.php is fine — it
+      # comes from the declarative settings via override.config.php.)
       appstoreEnable = false;
       autoUpdateApps.enable = false;
       extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps
