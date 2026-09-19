@@ -145,8 +145,10 @@ time_format = "%R"
 style = "bg:lavender"
 format = '[[  $time ](fg:crust bg:lavender)]($style)'
 
+# Keep the input line separate from the (wide) powerline segments, so typed
+# commands start at the left margin instead of far to the right.
 [line_break]
-disabled = true
+disabled = false
 
 [character]
 disabled = false
