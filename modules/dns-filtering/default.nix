@@ -167,8 +167,9 @@ in
 
     # Accept DNS only from the configured client networks. Inserted at the top of
     # the nixos-fw chain so it precedes the default refuse rule (same pattern as
-    # print-server/samba-server). VPN peers are already covered by the trusted wg
-    # interface; these rules cover the LAN.
+    # print-server/samba-server). VPN peers are covered the same way — the host
+    # includes the wg prefixes in allowedClientNetworks, and a source rule
+    # matches whatever interface the packet arrived on.
     networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
       (rule: "iptables -I ${rule}")
       (dnsFirewallRules config.my.dns-filtering);
@@ -196,6 +197,12 @@ in
     # Adguard Home
     services.adguardhome = {
       enable = true;
+      # The admin UI has no users configured (mutableSettings = false and no
+      # `users:` block), so it must only be reachable through the Caddy vhost,
+      # which adds basic-auth + a remote_ip gate. The nixpkgs default host is
+      # 0.0.0.0, which would hand unauthenticated control of the resolver —
+      # DNS rewrites are a silent MITM — to anyone on the LAN or a VPN peer.
+      host = "127.0.0.1";
       mutableSettings = false;
       settings = {
         dns = {

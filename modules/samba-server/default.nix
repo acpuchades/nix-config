@@ -139,8 +139,9 @@ in
     };
 
     # Allow SMB (TCP 445) only from the configured networks. Inserted at the top
-    # of the nixos-fw chain so it precedes the default refuse rule. VPN peers are
-    # already covered via the trusted wg interface; these rules cover the LAN.
+    # of the nixos-fw chain so it precedes the default refuse rule. VPN peers
+    # are covered the same way: allowedNetworks includes the wg prefixes, and a
+    # source rule matches whatever interface the packet arrived on.
     networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
       (net: "iptables -I nixos-fw -p tcp -s ${net} --dport 445 -j nixos-fw-accept")
       cfg.allowedNetworks;

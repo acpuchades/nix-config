@@ -40,6 +40,10 @@
       nssmdns4 = true;
       publish.enable = true;
       publish.userServices = true;
+      # The nixpkgs default opens UDP 5353 to EVERY source, i.e. the internet
+      # (hostname disclosure + reflection vector). LAN peers still reach it
+      # through the blanket LAN accept in networking.nix.
+      openFirewall = false;
     };
 
     # Bitcoin
@@ -165,7 +169,10 @@
       openFirewall = true;
       settings = {
         PermitRootLogin = "no";
-        PasswordAuthentication = true;
+        # Key-only: port 22 is open to the internet, and password auth there
+        # is a 24/7 online guessing surface that fail2ban only slows down.
+        # alex's key is declared in users.nix, so a rebuild cannot lock it out.
+        PasswordAuthentication = false;
         X11Forwarding = false;
         MaxAuthTries = 3;
         LoginGraceTime = 20;

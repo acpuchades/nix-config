@@ -50,16 +50,21 @@
 
       hashedPasswordFile = config.sops.secrets."passwd/alex".path;
       shell = pkgs.zsh;
+
+      # Declared (not just in ~/.ssh/authorized_keys) because sshd now refuses
+      # passwords: the key must survive a home-directory loss or a fresh
+      # provision, or SSH is locked out entirely.
+      openssh.authorizedKeys.keys = [
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINToP7vyGXG7vrxR8W3T3I2NalZkc1IPd0WaETssf1X5 acaravacapuchades@icloud.com"
+      ];
     };
 
-    # eva's account is defined by modules/openclaw (which puts her in `agents`);
-    # extraGroups merges with that. The journal files are 0640 root:systemd-journal,
-    # so this is what lets her read the *system* journal rather than only her own
-    # entries — enough to diagnose a unit-failure alert herself. It is a real
-    # widening: that journal carries auth, mail and web activity for the whole box,
-    # and she is a network-reachable LLM, so treat anything logged as readable by
-    # her (and by whoever can talk to her).
-    users.eva.extraGroups = [ "systemd-journal" ];
+    # eva's account is defined by modules/openclaw (which puts her in `agents`).
+    # She is deliberately NOT in systemd-journal any more: the whole-box journal
+    # carries auth, mail and web activity, far more than a prompt-injectable
+    # agent needs. Unit-failure diagnosis goes through her sudo-granted
+    # eva-journal wrapper instead (users/alex/agents/eva.nix), which reads only
+    # the managed units' journals, pager-free.
 
     # Service account for the site's GitHub Actions runner. Pinned rather than
     # left to the module's DynamicUser because the web root needs a stable owner

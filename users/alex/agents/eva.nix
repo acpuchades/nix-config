@@ -7,6 +7,35 @@
 { config, pkgs }:
 
 let
+  inherit (pkgs) lib;
+
+  # Units eva manages: exactly the set whose failures page her
+  # (my.ntfy-alert.failureUnits) plus her own service. Drives BOTH grants
+  # below — the per-unit `systemctl restart` sudo entries and the journal
+  # wrapper's read allowlist — so the two can never drift apart.
+  evaManagedUnits = lib.unique
+    ([ "openclaw-eva" ] ++ config.my.ntfy-alert.failureUnits);
+
+  # Root-run journal reader for the managed units, replacing eva's old
+  # systemd-journal group membership (which exposed auth, mail and web
+  # activity for the whole box to a prompt-injectable agent). --no-pager is
+  # load-bearing: a pager spawned under sudo is a root shell escape.
+  evaJournal = pkgs.writeShellApplication {
+    name = "eva-journal";
+    text = ''
+      unit="''${1:?usage: eva-journal <unit> [lines]}"
+      lines="''${2:-200}"
+      case " ${toString evaManagedUnits} " in
+        *" $unit "*) ;;
+        *) echo "eva-journal: unit '$unit' is not in the managed allowlist" >&2
+           exit 1 ;;
+      esac
+      [[ "$lines" =~ ^[0-9]+$ ]] || {
+        echo "eva-journal: lines must be numeric" >&2; exit 1; }
+      exec ${pkgs.systemd}/bin/journalctl --no-pager -q -u "$unit.service" -n "$lines"
+    '';
+  };
+
   # The owner's own addresses eva may email without a per-send approval. Defined
   # ONCE and shared by BOTH outbound mail wrappers so the two lists can never
   # drift apart: send-trusted-mail (actions.trustedMail.trustedAddresses, which
@@ -891,20 +920,25 @@ in
     };
   };
 
-  # Passwordless sudo for host, service and power management. Bare paths,
-  # so any arguments are allowed — a broad grant (an injected agent could
-  # rebuild the system, stop any unit, or power off the box); deliberate,
-  # not least privilege. Paths are the NixOS profile symlinks `sudo`
-  # resolves. This is the single source of truth for eva's sudo access —
-  # it used to live as a standalone security.sudo.extraRules block in
-  # settings.nix.
-  sudoCommands = [
-    "/run/current-system/sw/bin/nixos-rebuild"
-    "/run/current-system/sw/bin/systemctl"
-    "/run/current-system/sw/bin/shutdown"
-    "/run/current-system/sw/bin/reboot"
-    "/run/current-system/sw/bin/journalctl"
-  ];
+  # Passwordless sudo, argument-constrained (2026-09-19; the bare-path grant
+  # this replaces let one injected `sudo systemctl link /tmp/x.service` — or
+  # `sudo nixos-rebuild switch --flake /tmp/evil` — run arbitrary code as
+  # root, bypassing every other gate). What remains:
+  #   * `systemctl restart <unit>` for exactly the managed units — sudoers
+  #     matches the full argument string, so no other verb or unit passes;
+  #   * shutdown/reboot with any args (power management is availability-only);
+  #   * the eva-journal wrapper (validated unit + line count, --no-pager).
+  # nixos-rebuild is gone entirely: a rebuild is not an agent operation.
+  # Paths are the NixOS profile symlinks `sudo` resolves. This is the single
+  # source of truth for eva's sudo access.
+  sudoCommands =
+    map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service")
+      evaManagedUnits
+    ++ [
+      "/run/current-system/sw/bin/shutdown"
+      "/run/current-system/sw/bin/reboot"
+      (lib.getExe evaJournal)
+    ];
 
   # Eva's ONLY grant into alex's tree is write access to the acpuchades-site
   # repo (she maintains it). Everything else is deliberately dropped: no

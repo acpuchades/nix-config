@@ -214,7 +214,13 @@ in
     };
 
     networking.firewall.allowedUDPPorts = [ cfg.listenPort ];
-    networking.firewall.trustedInterfaces = [ cfg.interface ];
+    # The tunnel interface is deliberately NOT in trustedInterfaces: peers are
+    # authenticated, not trusted with every listening socket. Services meant
+    # for them accept by SOURCE prefix instead — each module's allowed-networks
+    # rules include the wg prefixes (privateNetworks), and a source rule
+    # matches wg peers regardless of which interface the packet arrived on.
+    # Peer→internet and peer→peer FORWARDing is unaffected (the NixOS firewall
+    # does not filter FORWARD unless filterForward is set; hairpin NAT above).
 
     environment.systemPackages = [ wg-create-profile ];
   };

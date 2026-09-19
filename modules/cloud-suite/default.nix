@@ -70,6 +70,12 @@
         default = 9980;
         description = "Collabora port";
       };
+
+      allowedNetworks = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [];
+        description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+      };
     };
 
     immich = {
@@ -425,10 +431,13 @@
         "encode gzip"
       ]);
 
-    services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig = ''
-      reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}
-      encode gzip
-    '';
+    services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig =
+      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (config.my.cloud-suite.collabora.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.collabora.allowedNetworks}\nabort @denied")
+        "reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}"
+        "encode gzip"
+      ]);
 
     # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
     services.nginx = {

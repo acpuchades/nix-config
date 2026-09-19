@@ -38,6 +38,13 @@ in
         bantime = cfg.fail2ban.bantime;
         maxretry = cfg.fail2ban.maxretry;
         ignoreIP = cfg.fail2ban.ignoreIP;
+        # A flat short ban caps the cost of a distributed guessing campaign at
+        # (maxretry / bantime) per source forever; doubling per repeat offense
+        # makes persistence exponentially expensive instead.
+        bantime-increment = {
+          enable = true;
+          maxtime = "48h";
+        };
       };
     })
   ]);

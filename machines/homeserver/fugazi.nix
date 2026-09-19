@@ -15,7 +15,7 @@
 # STAYS IN default.nix, deliberately:
 #   * the sops secrets and templates (machines/homeserver/sops.nix) — one place
 #     to answer "what secrets does this host hold" beats proximity
-#   * the `my.ntfy-alert.units` entries naming the fugazi units — that list is a
+#   * the `my.ntfy-alert.failureUnits` entries naming the fugazi units — that list is a
 #     host-level statement of what gets alerted on, and reads as one thing
 #   * nixpkgs.overlays keeps the caddy entry; this file contributes its own
 #
@@ -24,6 +24,9 @@
 { config, lib, pkgs, ... }:
 
 let
+  # LAN + WireGuard prefixes, shared with default.nix.
+  inherit (import ./networks.nix) privateNetworks;
+
   # Cloudflare's published edge ranges (cloudflare.com/ips-v4 + ips-v6, fetched
   # 2026-08-18). fugazitrade.com is proxied through Cloudflare — its public A
   # records are CF anycast addresses — so these, not the visitor, are the peers
@@ -530,6 +533,12 @@ in
   # point of finishing the rename below. Its intended shape is in git — commit
   # 3224eb7, which had both instances defined — rather than sitting here
   # commented out.
+  # Caddy-level counterpart of the app-level trustedProxies below: with the CF
+  # edges declared, {client_ip} in the vhost's rate-limit keys resolves to the
+  # real visitor instead of the edge, so one busy edge no longer shares — and
+  # one abuser no longer drains — a whole per-edge auth budget.
+  my.web-server.trustedProxies = cloudflareNetworks;
+
   my.fugazi-web.instances.testing = {
     hostName = "testing.fugazitrade.com";
     port = 8766;
@@ -573,11 +582,17 @@ in
     # flake.nix for why it is packages rather than a second imported module.
     packages = fugazi-web-testing.packages.${pkgs.stdenv.hostPlatform.system};
 
-    # Reachable from the internet, and no allowedNetworks: this is not a
-    # LAN-only service, it is an unlaunched public one. What stands between a
-    # stranger and this box is the signup domain gate and the tier table
-    # below, plus upstream's per-caller budgets on /v1/auth — and those
-    # budgets are only as good as trustedProxies, hence the next line.
+    # Reachable from the internet, but only THROUGH Cloudflare: the DNS record
+    # is proxied, so legitimate visitors always arrive from a CF edge, and
+    # gating the vhost to those ranges (plus the private networks, for direct
+    # debugging) costs the public nothing while denying direct-to-origin
+    # scanners the bypass around Cloudflare's WAF and this box's rate limits.
+    # This is not a LAN-only service — it is an unlaunched public one; what
+    # stands between a stranger and this box is the signup domain gate and the
+    # tier table below, plus the per-caller budgets on /v1/auth — and those
+    # budgets are only as good as trustedProxies, hence the lines below.
+    allowedNetworks = cloudflareNetworks ++ privateNetworks;
+
     #
     # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
     # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only

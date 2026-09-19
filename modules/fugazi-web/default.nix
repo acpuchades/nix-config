@@ -512,7 +512,9 @@ in
               max_size ${i.maxRequestBodySize}
             }
 
-            # Two budgets, keyed on the peer. `/v1/auth` is the one that matters:
+            # Two budgets, keyed on {client_ip} — the real visitor when the
+            # host declares the CDN's edges in my.web-server.trustedProxies,
+            # and the TCP peer otherwise. `/v1/auth` is the one that matters:
             # register, login and reset each burn an argon2 hash, so an unbudgeted
             # one is a CPU amplifier pointed at this box, and forgot-password also
             # sends mail to an address the caller names.
@@ -532,7 +534,7 @@ in
                 match {
                   path /v1/auth/*
                 }
-                key {remote_host}
+                key {client_ip}
                 events 20
                 window 1m
               }
@@ -545,7 +547,7 @@ in
                   path /v1/*
                   not path /v1/auth/*
                 }
-                key {remote_host}
+                key {client_ip}
                 events 60
                 window 1s
               }

@@ -88,6 +88,18 @@ in
         default = "0.0.0.0";
         description = "Address upsd binds to when network access is enabled";
       };
+
+      allowedNetworks = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "192.168.2.0/24" ];
+        description = ''
+          CIDR ranges allowed to reach upsd from outside this host. Empty
+          opens the port to NOBODY beyond what other firewall rules (e.g. a
+          LAN blanket accept or trusted interfaces) already admit — NUT auth
+          is a plaintext password, so never expose this to the internet.
+        '';
+      };
     };
   };
 
@@ -130,7 +142,16 @@ in
     systemd.services.upsmon.serviceConfig.EnvironmentFile =
       lib.mkIf (cfg.notify.environmentFile != null) [ cfg.notify.environmentFile ];
 
-    networking.firewall.allowedTCPPorts =
-      lib.mkIf cfg.network.enable [ cfg.network.port ];
+    # Source-restricted accepts (same pattern as samba/print/dns-filtering)
+    # rather than allowedTCPPorts, which would open 3493 to every source —
+    # including the internet — for a plaintext-authenticated protocol.
+    networking.firewall.extraCommands = lib.mkIf cfg.network.enable
+      (lib.concatMapStringsSep "\n"
+        (net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept")
+        cfg.network.allowedNetworks);
+    networking.firewall.extraStopCommands = lib.mkIf cfg.network.enable
+      (lib.concatMapStringsSep "\n"
+        (net: "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept || true")
+        cfg.network.allowedNetworks);
   };
 }

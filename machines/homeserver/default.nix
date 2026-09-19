@@ -37,23 +37,8 @@ let
   # string; grep for it before moving hardware, and change it here only.
   uplinkInterface = "wlp3s0";
   adminEmailAddress = "admin@acpuchades.com";
-  lanNetwork = "192.168.2.0/24";
-
-  # Every prefix of the WireGuard server's address space — one per exit, plus
-  # the untunneled one. They are ALL equally trusted, and that is the point: a
-  # peer is authenticated by its key and preshared key before it has an address
-  # at all, so which prefix it was allocated out of decides where its traffic
-  # EXITS and nothing about what it may reach. Leaving a prefix out of this list
-  # does not harden anything — it silently costs those peers AdGuard, the file
-  # shares, Transmission and the dashboards, with no error anywhere to say so.
-  wgNetworks = [
-    "10.0.0.0/24" # untunneled — straight out the ISP
-    "10.0.1.0/24" # es
-    "10.0.2.0/24" # in
-    "10.0.3.0/24" # us
-  ];
-
-  privateNetworks = [ lanNetwork ] ++ wgNetworks;
+  # Shared with fugazi.nix — the whys live in networks.nix.
+  inherit (import ./networks.nix) lanNetwork wgNetworks privateNetworks;
 
   # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
   # deliberately runs ahead of nixpkgs-26.05. Two consumers today — openclaw and
@@ -487,6 +472,10 @@ let
         collabora = {
           hostName = "collabora.acpuchades.com";
           port = 9980;
+          # Its only consumer is Nextcloud (itself LAN-gated), loading the
+          # editor iframe in the user's browser — so nothing public ever needs
+          # this vhost, and the CODE admin console stays off the internet.
+          allowedNetworks = privateNetworks;
         };
         email = {
           from = "noreply@acpuchades.com";
@@ -570,6 +559,9 @@ let
         shareGroup = "share";
         # Internal hosts only — Caddy restricts the vhost to the LAN/VPN subnets.
         allowedNetworks = privateNetworks;
+        # TV/mobile apps keep talking straight to :8096 (this replaced the old
+        # blanket LAN accept; drop it if every client moves to the vhost).
+        allowedDirectNetworks = privateNetworks;
         # Same GPU render node Immich uses; enable the codecs in Jellyfin's UI.
         accelerationDevices = [ "/dev/dri/renderD128" ];
       };
@@ -936,6 +928,7 @@ let
         enable = true;
         monitorPasswordFile = config.sops.secrets."nut/monitor".path;
         network.enable = true;
+        network.allowedNetworks = privateNetworks;
         # Push power events (on-battery, low-battery, back-online…) to ntfy.
         notify.command = config.my.ntfy-alert.powerNotifyCommand;
         notify.environmentFile = config.sops.templates."ntfy/env".path;
@@ -982,7 +975,11 @@ let
 
       my.prefect-server = {
         enable = true;
-        host = "0.0.0.0";
+        # Loopback only: the Prefect API has NO authentication, and it can run
+        # arbitrary code as the prefect user (deployments/flow runs). The Caddy
+        # vhost (basic-auth) is the only intended way in; the local workers
+        # already target 127.0.0.1:4200 directly.
+        host = "127.0.0.1";
         port = 4200;
         dataDir = "/srv/prefect";
         baseUrl = "https://prefect.acpuchades.com";

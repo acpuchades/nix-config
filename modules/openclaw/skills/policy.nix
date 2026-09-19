@@ -144,7 +144,9 @@ pkgs.writeTextDir "policy/SKILL.md" ''
 
         ## Requires approval (or is forbidden)
 
-        - **`sudo`** (nixos-rebuild, systemctl, reboot, …): ALWAYS requires approval.
+        - **`sudo`** (systemctl restart, reboot, eva-journal, …): ALWAYS requires
+          approval, and the sudoers grant itself is argument-constrained to the
+          managed units — other verbs or units fail even after approval.
         - **Shells and interpreters / inline eval**: `bash -c`, `sh -c`, `python -c`,
           `python3`, `R`, `node -e`, `awk`/`sed` with effects… require approval. Do
           not use them to wrap or hide another command.

@@ -3,8 +3,10 @@
 let
   cfg = config.my.media-server;
 
-  # Jellyfin's HTTP port. Not opened in the firewall (openFirewall = false);
-  # reachable only via Caddy on loopback, which enforces allowedNetworks.
+  # Jellyfin's HTTP port. Jellyfin binds 0.0.0.0 (its bind address is stateful
+  # config, not set here); who may actually reach it directly is governed by
+  # the allowedDirectNetworks firewall rules below — plaintext, Jellyfin's own
+  # login, no Caddy. Everyone else comes through the Caddy vhost.
   jellyfinPort = 8096;
 
   # When mediaDir lives inside a shared (Samba) tree, the library folders are
@@ -57,6 +59,17 @@ in
       description = "Restrict access to these CIDR ranges (empty = unrestricted)";
     };
 
+    allowedDirectNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      example = [ "192.168.2.0/24" ];
+      description = ''
+        CIDR ranges allowed to reach Jellyfin's own HTTP port (8096) directly,
+        in plaintext, bypassing Caddy — what TV and mobile apps on the LAN use.
+        Empty closes direct access entirely (the vhost is then the only way in).
+      '';
+    };
+
     accelerationDevices = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
@@ -73,9 +86,19 @@ in
   config = lib.mkIf cfg.enable {
     services.jellyfin = {
       enable = true;
-      # Firewall stays closed; access is mediated by Caddy + allowedNetworks.
+      # No global opening; direct :8096 access is granted per source network
+      # below, everything else goes through Caddy + allowedNetworks.
       openFirewall = false;
     };
+
+    # Source-restricted accepts for direct app access (same pattern as
+    # samba/print/dns-filtering). Jellyfin's own login still applies there.
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
+      (net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept")
+      cfg.allowedDirectNetworks;
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
+      (net: "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept || true")
+      cfg.allowedDirectNetworks;
 
     # Let jellyfin read the (group-owned) share, and reach the GPU when transcoding.
     users.users.jellyfin.extraGroups =
