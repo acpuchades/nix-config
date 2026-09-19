@@ -1,0 +1,48 @@
+# Evaluate both hosts on every push/PR, so breakage is caught before a deploy
+# instead of by `nixos-rebuild` on the box. Eval-only — nothing is built, so
+# this needs no builders, no aarch64-darwin runner (pure evaluation is
+# platform-independent), and no binary cache.
+#
+# One repository secret is required: NIX_GITHUB_PAT, a fine-grained PAT with
+# read access to acpuchades/fugazi-web — the two fugazi tarball inputs are a
+# PRIVATE repo fetched via netrc during evaluation (see flake.nix). Without
+# it the homeserver eval 404s on input fetch, so the job skips with a notice
+# rather than failing (fork PRs never receive secrets). Note the two inputs
+# track branch HEADS unpinned by flake.lock, so CI evaluates against the
+# branches' current tips — the same thing a rebuild on the box would fetch.
+name: eval
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Set up netrc for the private fugazi-web inputs
+        env:
+          NIX_GITHUB_PAT: ${{ secrets.NIX_GITHUB_PAT }}
+        run: |
+          if [ -z "$NIX_GITHUB_PAT" ]; then
+            echo "skip=true" >> "$GITHUB_ENV"
+            echo "::notice::NIX_GITHUB_PAT not available (fork PR?) — skipping evals"
+            exit 0
+          fi
+          umask 077
+          printf 'machine github.com\n  login x-access-token\n  password %s\n' \
+            "$NIX_GITHUB_PAT" > "$RUNNER_TEMP/netrc"
+          echo "NIX_CONFIG=netrc-file = $RUNNER_TEMP/netrc" >> "$GITHUB_ENV"
+
+      - name: Evaluate homeserver
+        if: env.skip != 'true'
+        run: nix eval --raw .#nixosConfigurations.homeserver.config.system.build.toplevel.drvPath
+
+      - name: Evaluate MacBook
+        if: env.skip != 'true'
+        run: nix eval --raw .#darwinConfigurations.MacBook-Pro-de-Alejandro.config.system.build.toplevel.drvPath
