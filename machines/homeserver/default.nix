@@ -333,7 +333,7 @@ let
 
         p2pTunnel = {
           server = "ES#33 (P2P-flagged, NAT-PMP enabled)";
-          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-bt".path;
+          privateKeyFile = config.sops.secrets."wireguard-client/wgproton-p2p".path;
           address = [ "10.2.0.2/32" ];
           # The same 10.2.0.2 as the client tunnel, which is what Proton hands
           # every config. Harmless here: this one lives in its own network

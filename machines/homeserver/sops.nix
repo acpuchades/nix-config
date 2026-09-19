@@ -111,17 +111,10 @@ in
 
       "wireguard-client/wgproton-us" = { key = "wireguard-client/wgproton-us"; };
 
-      # FIXME: NOT IN THE VAULT. The rename to wgproton-<country> dropped
-      # wgproton-bt, and nothing replaced it, so the P2P tunnel Transmission
-      # lives in has no private key — this declaration is what p2pTunnel
-      # references, and the switch will fail here until the key is added.
-      # The previous one is still recoverable if the p2p profile was NOT
-      # regenerated:
-      #   git show f60c2ab:machines/homeserver/secrets/default.yml
-      # It is only the right key if p2pTunnel's peer is still ES#124
-      # (XkiKln3Se…, 130.195.250.98) — ./default.nix currently says ES#33 with a
-      # different peer key, which needs the private key from THAT profile.
-      "wireguard-client/wgproton-bt" = { key = "wireguard-client/wgproton-bt"; };
+      # The P2P tunnel's, formerly wgproton-bt — renamed with the others so every
+      # profile is wgproton-<role>, role being the exit country for the client
+      # tunnels and p2p for the one Transmission lives in.
+      "wireguard-client/wgproton-p2p" = { key = "wireguard-client/wgproton-p2p"; };
 
       # htpasswd hash for the torrent.acpuchades.com basic-auth (rendered into the
       # caddy/torrent-auth template). Generate with: caddy hash-password
