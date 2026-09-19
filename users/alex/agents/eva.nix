@@ -25,7 +25,11 @@ let
     text = ''
       unit="''${1:?usage: eva-journal <unit> [lines]}"
       lines="''${2:-200}"
-      case " ${toString evaManagedUnits} " in
+      # Baked in at build time; a variable rather than a literal case subject
+      # because shellcheck (which writeShellApplication enforces) flags a
+      # constant `case` word as SC2194 and fails the build.
+      allowed=" ${toString evaManagedUnits} "
+      case "$allowed" in
         *" $unit "*) ;;
         *) echo "eva-journal: unit '$unit' is not in the managed allowlist" >&2
            exit 1 ;;
