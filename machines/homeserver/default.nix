@@ -520,6 +520,10 @@ let
             "guests" "news" "nextpod" "notes" "richdocuments" "tasks"
             "twofactor_webauthn"
           ];
+          # Probes status.php every 15 min; nextcloud-health is wired into
+          # my.ntfy-alert.failureUnits below, closing the gap where a dead
+          # Nextcloud (broken stateful config.php) looked green to systemd.
+          healthCheck.enable = true;
         };
       };
 
@@ -942,8 +946,12 @@ let
         environmentFile = config.sops.templates."ntfy/env".path;
         # All suitable long-running services whose failure means a real outage.
         # Bare unit names (no .service). Setup/one-shot units are excluded
-        # (they fail visibly at deploy time, not in steady state).
+        # (they fail visibly at deploy time, not in steady state) — with one
+        # deliberate exception: nextcloud-health, the timer-driven probe that
+        # exists precisely because a Nextcloud dead from a broken stateful
+        # config.php keeps phpfpm-nextcloud and nextcloud-cron green.
         failureUnits = [
+          "nextcloud-health"
           "restic-backups-homeserver"
           "postgresql"
           "redis-nextcloud"

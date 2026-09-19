@@ -57,6 +57,22 @@
           (every cron run will then attempt these jobs).
         '';
       };
+
+      healthCheck = {
+        enable = lib.mkEnableOption ''
+          a periodic HTTP probe of status.php. Exists because unit state is a
+          liar here: a Nextcloud dead from a broken stateful config.php (e.g.
+          a GC'd apps_paths entry) keeps phpfpm-nextcloud and nextcloud-cron
+          green — only an actual HTTP request notices. Wire the
+          nextcloud-health unit into my.ntfy-alert.failureUnits to get paged
+        '';
+
+        interval = lib.mkOption {
+          type = lib.types.str;
+          default = "*:0/15";
+          description = "OnCalendar expression for how often to probe";
+        };
+      };
     };
 
     collabora = {
@@ -438,6 +454,39 @@
         "reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}"
         "encode gzip"
       ]);
+
+    # Periodic HTTP probe of Nextcloud, because unit state alone cannot see the
+    # failure mode that already happened once (2026-09-19): a broken stateful
+    # config.php 503s every request while phpfpm-nextcloud, nextcloud-cron and
+    # nextcloud-setup all stay green. The probe goes through loopback nginx
+    # (the Host header selects the vhost), so it exercises nginx → php-fpm →
+    # config.php without depending on Caddy or the LAN gate. Maintenance mode
+    # is treated as healthy: the nightly backup quiesce is expected state.
+    systemd.services.nextcloud-health =
+      lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
+        description = "Nextcloud HTTP health probe (status.php)";
+        serviceConfig = {
+          Type = "oneshot";
+          DynamicUser = true;
+        };
+        script = ''
+          body=$(${pkgs.curl}/bin/curl -sf --max-time 30 \
+            -H "Host: ${config.my.cloud-suite.nextcloud.hostName}" \
+            http://127.0.0.1:8080/status.php) \
+            || { echo "status.php unreachable" >&2; exit 1; }
+          printf '%s' "$body" | ${pkgs.jq}/bin/jq -e \
+            '(.maintenance == true) or (.installed == true)' >/dev/null \
+            || { echo "unhealthy status.php: $body" >&2; exit 1; }
+        '';
+      };
+    systemd.timers.nextcloud-health =
+      lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = config.my.cloud-suite.nextcloud.healthCheck.interval;
+          RandomizedDelaySec = "2m";
+        };
+      };
 
     # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
     services.nginx = {
