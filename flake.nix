@@ -40,6 +40,14 @@
     sops-nix.url = "github:Mic92/sops-nix";
     sops-nix.inputs.nixpkgs.follows = "nixpkgs";
 
+    # Disko — declarative disk provisioning. Consumed by the homeserver only,
+    # and only as PROVISIONING metadata (disko.enableConfig = false in
+    # machines/homeserver/disko.nix): nothing about the running system is
+    # generated from it. It exists so a rebuild-from-bare-metal can format or
+    # mount the disk layout from the repo instead of prose (MIGRATION.md).
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
+
     # Better Zen — Betterfox-derived privacy/security user.js for Zen browser
     better-zen.url = "github:Codextor/better-zen";
     better-zen.flake = false;
@@ -121,6 +129,7 @@
       nixpkgs-unstable,
       home-manager,
       sops-nix,
+      disko,
       better-zen,
       fugazi-web,
       fugazi-web-testing,

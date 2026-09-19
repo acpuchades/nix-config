@@ -7,6 +7,7 @@
   nixpkgs-unstable,
   home-manager,
   sops-nix,
+  disko,
   emacs-overlay,
   fugazi-web,
   fugazi-web-testing,
@@ -103,6 +104,11 @@ let
         ../../modules/ups-monitor
         ../../modules/backup
         ../../modules/ntfy-alert
+
+        # Disk layout as provisioning metadata only — enableConfig = false in
+        # ./disko.nix, so this changes nothing at runtime; see its header.
+        disko.nixosModules.disko
+        ./disko.nix
 
         # fugazi-web (testing.fugazitrade.com), in its own file: the service is
         # large enough that its policy helpers and instance configuration were
