@@ -299,7 +299,7 @@ let
           # India and the United States. Tables 42/43/44 are taken
           # (es, p2p, resolver), hence 45 and 46.
           "in" = { # quoted: `in` is a Nix keyword
-            server = "IN#"; # FIXME: server number
+            server = "IN#13";
             table = 45;
             sourcePrefixes = [ "10.0.2.0/24" ];
             gateway = "10.0.2.1/24";
@@ -320,7 +320,7 @@ let
             address = [ "10.2.0.2/32" ];
             peer = {
               publicKey = "R8Of+lrl8DgOQmO6kcjlX7SchP4ncvbY90MB7ZUNmD8=";
-              endpoint = ""; # FIXME: empty — the tunnel cannot come up
+              endpoint = "193.148.18.82:51820";
             };
           };
         };
