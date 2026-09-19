@@ -35,9 +35,12 @@
    '(("i" "Entrada" entry
       (file "~/Org/inbox.org")
       "* %?\n%U\n")
+     ;; TAREA is the actual TODO keyword (see org-todo-keywords in
+     ;; 99-personal.el) — a non-keyword here captures a plain headline that
+     ;; no agenda or todo list ever shows.
      ("t" "Tarea" entry
       (file+headline "~/Org/tasks.org" "Tareas")
-      "* PENDIENTE %?")
+      "* TAREA %?")
      ("e" "Evento" entry
       (file+headline "~/Org/events.org" "Eventos")
       "* %^{Título}\n%^{Fecha}T\n%?")

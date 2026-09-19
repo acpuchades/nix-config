@@ -22,7 +22,11 @@
 ;; Disable package-quickstart: with Nix-managed packages the store paths
 ;; change on each rebuild, leaving the cache pointing at deleted paths.
 (setq package-quickstart nil)
-(setq native-comp-deferred-compilation t)
+
+;; Nix AOT-compiles every package at build time; JIT compilation would only
+;; churn ~/.emacs.d/eln-cache. (native-comp-deferred-compilation is the
+;; pre-Emacs-29 spelling of this variable.)
+(setq native-comp-jit-compilation nil)
 
 ;;Lower gc during startup and restore thereafter
 (setq gc-cons-threshold most-positive-fixnum
@@ -36,8 +40,6 @@
           gc-cons-percentage 0.1
           file-name-handler-alist file-name-handler-alist-old)))
 
-;; Add package archives
-(setq package-archives
-  '(("melpa" . "https://melpa.org/packages/")
-    ("gnu"   . "https://elpa.gnu.org/packages/")
-    ("nongnu" . "https://elpa.nongnu.org/nongnu/")))
+;; No package-archives on purpose: packages come from Nix, and configured
+;; archives are what once let a startup `package-refresh-contents` install
+;; runtime copies into ~/.emacs.d/elpa that shadowed the pinned set.

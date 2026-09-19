@@ -5,7 +5,14 @@
 ;; `copilot-language-server' binary, so there is no `M-x copilot-install-server'
 ;; step and no Node.js dependency.
 ;;
-;; Division of labour with the corfu/cape stack (05-completion.el):
+;; The CREDENTIAL is the one imperative piece: a one-time `M-x copilot-login'
+;; (device flow) writes ~/.config/github-copilot/apps.json, which no Nix or
+;; sops config manages — redo it after a fresh provision. Until that file
+;; exists the prog-mode hook below stays off, so an unauthenticated host
+;; (e.g. the headless server) doesn't spawn the server and log auth failures
+;; on every file open.
+;;
+;; Division of labour with the corfu/cape stack (10-completion.el):
 ;;   - corfu   -> popup list of LSP/symbol candidates for the current token
 ;;   - copilot -> greyed-out inline suggestion for the rest of the line/block
 ;; They are kept from fighting: Copilot's overlay is hidden while the corfu
@@ -13,7 +20,12 @@
 ;; actually showing (`copilot-completion-map' is live only then, so otherwise
 ;; TAB indents as usual).
 (use-package copilot
-  :hook (prog-mode . copilot-mode)
+  :preface
+  (defun my/copilot-maybe-enable ()
+    "Enable copilot-mode only when a Copilot credential exists."
+    (when (file-exists-p "~/.config/github-copilot/apps.json")
+      (copilot-mode 1)))
+  :hook (prog-mode . my/copilot-maybe-enable)
   :bind (:map copilot-completion-map
               ("<tab>"     . copilot-accept-completion)
               ("TAB"       . copilot-accept-completion)

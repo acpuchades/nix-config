@@ -21,6 +21,6 @@
     };
 
     # Org-mode configuration that will be loaded by init.el
-    home.file.".emacs.d/config/20-org.el".source = ./config/20-org.el;
+    home.file.".emacs.d/config/40-org.el".source = ./config/40-org.el;
   };
 }

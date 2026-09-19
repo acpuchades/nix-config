@@ -2,17 +2,28 @@
 (use-package cape
   :bind ("C-c p" . cape-prefix-map) ;; Alternative key: M-<tab>, M-p, M-+
   :init
-  ;; Add to the global default value of `completion-at-point-functions' which is
-  ;; used by `completion-at-point'.  The order of the functions matters, the
-  ;; first function returning a result wins.  Note that the list of buffer-local
-  ;; completion functions takes precedence over the global list.
+  ;; Only the buffer-agnostic capfs go on the GLOBAL
+  ;; completion-at-point-functions (corfu-auto runs every one of these on each
+  ;; keystroke); mode-specific ones attach per mode below. Note add-hook
+  ;; PREPENDS, so the last one added here is tried first.
   (add-hook 'completion-at-point-functions #'cape-dabbrev)
   (add-hook 'completion-at-point-functions #'cape-file)
-  (add-hook 'completion-at-point-functions #'cape-elisp-block)
-  (add-hook 'completion-at-point-functions #'cape-elisp-symbol)
-  (add-hook 'completion-at-point-functions #'cape-history)
-  (add-hook 'completion-at-point-functions #'cape-keyword)
-  (add-hook 'completion-at-point-functions #'cape-emoji))
+  ;; Mode-scoped capfs: elisp symbols/blocks only where they mean something,
+  ;; keywords in code, emoji in prose, history in shells.
+  (defun my/cape-elisp-capfs ()
+    (add-hook 'completion-at-point-functions #'cape-elisp-symbol nil t)
+    (add-hook 'completion-at-point-functions #'cape-elisp-block nil t))
+  (add-hook 'emacs-lisp-mode-hook #'my/cape-elisp-capfs)
+  (defun my/cape-prog-capfs ()
+    (add-hook 'completion-at-point-functions #'cape-keyword nil t))
+  (add-hook 'prog-mode-hook #'my/cape-prog-capfs)
+  (defun my/cape-text-capfs ()
+    (add-hook 'completion-at-point-functions #'cape-emoji nil t))
+  (add-hook 'text-mode-hook #'my/cape-text-capfs)
+  (defun my/cape-comint-capfs ()
+    (add-hook 'completion-at-point-functions #'cape-history nil t))
+  (add-hook 'comint-mode-hook #'my/cape-comint-capfs)
+  (add-hook 'eshell-mode-hook #'my/cape-comint-capfs))
 
 ;; Consult
 (use-package consult
@@ -37,7 +48,7 @@
    ("M-s r"   . consult-ripgrep)
    ("M-s l"   . consult-line)
    ("M-s L"   . consult-line-multi)
-   ("M-s m"   . consult-multi-occur)
+   ("M-s m"   . consult-line-multi) ;; consult-multi-occur was removed upstream
    ("M-s k"   . consult-keep-lines)
    ("M-s u"   . consult-focus-lines)))
 

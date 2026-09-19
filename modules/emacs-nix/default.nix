@@ -16,10 +16,8 @@
   };
 
   config = {
-    # Herramientas del sistema necesarias para Emacs
-    home.packages = with pkgs; [
-      nil  # Nix LSP server
-    ];
+    # The `nil` LSP binary comes from modules/nix-dev — the *-dev modules own
+    # toolchains, the emacs-* modules own elisp.
 
     # Paquetes de Emacs
     programs.emacs = {
@@ -30,12 +28,11 @@
     };
 
     # Configuración de Nix para Emacs
-    home.file.".emacs.d/config/18-nix.el".text = ''
-      ;; Nix mode with tree-sitter
+    home.file.".emacs.d/config/65-nix.el".text = ''
+      ;; Nix mode with tree-sitter (:mode alone claims .nix; treesit-auto in
+      ;; 30-devel.el already covers the grammar side)
       (use-package nix-ts-mode
         :mode ("\\.nix\\'" . nix-ts-mode)
-        :config
-          (treesit-auto-add-to-auto-mode-alist 'nix)
         :hook
           (nix-ts-mode . (lambda ()
             (setq-local indent-tabs-mode nil
@@ -48,7 +45,7 @@
 
       ;; LSP configuration for Nix
       (with-eval-after-load 'eglot
-        (add-to-list 'eglot-server-programs'(nix-ts-mode . ("nil"))))
+        (add-to-list 'eglot-server-programs '(nix-ts-mode . ("nil"))))
     '';
   };
 }

@@ -44,7 +44,7 @@
   :custom
   (dashboard-startup-banner "~/.emacs.d/share/logo.svg")
   (dashboard-center-content t)
-  (dashboard-verticallly-center-content t)
+  (dashboard-vertically-center-content t)
   (dashboard-display-icons-p t)
   (dashboard-icon-type 'nerd-icons)
   (dashboard-set-heading-icons t)

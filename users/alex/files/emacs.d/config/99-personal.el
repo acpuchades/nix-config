@@ -1,19 +1,7 @@
 ;; Alex's personal Emacs configuration
-;; This file contains user-specific settings that override or extend the core configuration
-
-;; Personal language and locale settings
-(set-language-environment "Spanish")
-
-;; Personal calendar settings (Spanish)
-(with-eval-after-load 'calendar
-  (setq calendar-day-header-array   ["Do" "Lu" "Ma" "Mi" "Ju" "Vi" "Sa"]
-        calendar-day-name-array     ["domingo" "lunes" "martes" "miércoles"
-                                     "jueves" "viernes" "sábado"]
-        calendar-month-abbrev-array ["Ene" "Feb" "Mar" "Abr" "May" "Jun"
-                                     "Jul" "Ago" "Sep" "Oct" "Nov" "Dic"]
-        calendar-month-name-array   ["enero" "febrero" "marzo" "abril" "mayo"
-                                     "junio" "julio" "agosto" "septiembre"
-                                     "octubre" "noviembre" "diciembre"]))
+;; This file contains user-specific settings that override or extend the core
+;; configuration. (Language environment and the Spanish calendar live in
+;; emacs-core's 02-defaults.el and 03-calendar.el — one owner each.)
 
 ;; Personal org-mode settings (Spanish GTD)
 (with-eval-after-load 'org

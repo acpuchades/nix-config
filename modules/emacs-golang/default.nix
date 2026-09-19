@@ -10,21 +10,15 @@
   };
 
   config = {
-    # Herramientas del sistema necesarias para Emacs
-    home.packages = with pkgs; [
-      gopls     # Go LSP server
-      gotools   # goimports
-    ];
-
-    # Paquetes de Emacs
+    # The toolchain (gopls, gotools) comes from modules/golang-dev — the
+    # *-dev modules own binaries, the emacs-* modules own elisp. The config
+    # uses only the built-in go-ts-mode, so no external Emacs packages either.
     programs.emacs = {
       enable = lib.mkDefault true;
-      extraPackages = epkgs: with epkgs; [
-        go-mode
-      ] ++ config.my.emacs-golang.extraPackages;
+      extraPackages = epkgs: config.my.emacs-golang.extraPackages;
     };
 
     # Configuración de Go para Emacs
-    home.file.".emacs.d/config/21-go.el".source = ./config/21-golang.el;
+    home.file.".emacs.d/config/75-go.el".source = ./config/75-go.el;
   };
 }

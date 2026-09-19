@@ -10,11 +10,8 @@
   };
 
   config = {
-    # Herramientas del sistema necesarias para Emacs
-    home.packages = with pkgs; [
-      rust-analyzer  # Rust LSP server
-      rustfmt
-    ];
+    # rust-analyzer and rustfmt come from modules/rust-dev — the *-dev
+    # modules own toolchains, the emacs-* modules own elisp.
 
     # Paquetes de Emacs
     programs.emacs = {
@@ -25,6 +22,6 @@
     };
 
     # Configuración de Rust para Emacs
-    home.file.".emacs.d/config/19-rust.el".source = ./config/19-rust.el;
+    home.file.".emacs.d/config/70-rust.el".source = ./config/70-rust.el;
   };
 }

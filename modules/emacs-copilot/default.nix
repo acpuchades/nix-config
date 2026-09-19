@@ -19,6 +19,6 @@
     };
 
     # Configuración de GitHub Copilot para Emacs
-    home.file.".emacs.d/config/26-copilot.el".source = ./config/26-copilot.el;
+    home.file.".emacs.d/config/50-copilot.el".source = ./config/50-copilot.el;
   };
 }

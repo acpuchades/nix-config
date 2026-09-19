@@ -28,6 +28,6 @@
     };
 
     # Completion configuration that will be loaded by init.el
-    home.file.".emacs.d/config/05-completion.el".source = ./config/05-completion.el;
+    home.file.".emacs.d/config/10-completion.el".source = ./config/10-completion.el;
   };
 }

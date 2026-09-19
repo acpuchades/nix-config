@@ -7,10 +7,13 @@
    ("C-<"     . mc/mark-previous-like-this)
    ("C-c C-<" . mc/mark-all-like-this)))
 
-;; Project management
+;; Project management (built-in). ~/GitHub only exists on the MacBook (on the
+;; homeserver it is an unreadable symlink target), so guard the scan.
 (use-package project
   :ensure nil
-  :config (project-remember-projects-under "~/GitHub"))
+  :config
+  (when (file-directory-p "~/GitHub")
+    (project-remember-projects-under "~/GitHub")))
 
 ;; Rainbow delimiters
 (use-package rainbow-delimiters

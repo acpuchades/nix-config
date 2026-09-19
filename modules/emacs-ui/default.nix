@@ -30,6 +30,6 @@
     };
 
     # UI configuration that will be loaded by init.el
-    home.file.".emacs.d/config/10-ui.el".source = ./config/10-ui.el;
+    home.file.".emacs.d/config/20-ui.el".source = ./config/20-ui.el;
   };
 }

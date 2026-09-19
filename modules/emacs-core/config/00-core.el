@@ -33,17 +33,13 @@
 
 ;; PACKAGE CONFIG
 
-(require 'package)
-(package-initialize)
-
-;; Bootstrap use-package if missing
-(unless (package-installed-p 'use-package)
-  (package-refresh-contents)
-  (package-install 'use-package))
-
-;; Global defaults for use-package
+;; Every package comes from Nix (each module's programs.emacs.extraPackages),
+;; so use-package must never install anything at runtime: a missing package is
+;; a Nix omission to fix in the module, not something to fetch from MELPA at
+;; startup (which breaks offline and drifts from the pinned set).
 (eval-and-compile
-  (setq use-package-always-ensure    t
+  (setq use-package-always-ensure    nil
+        use-package-ensure-function  #'ignore
         use-package-expand-minimally t))
 
 ;; Keep Emacs directories clean
@@ -80,17 +76,13 @@
   (global-auto-revert-mode 1)
   (setq auto-revert-verbose nil))
 
-;; Direnv
-(use-package direnv
-  :config
-  (direnv-mode 1)
-  (setq direnv-always-show-summary t))
-
 ;; EditorConfig support
 (use-package editorconfig
   :config (editorconfig-mode 1))
 
-;; Envrc support
+;; Envrc support — the ONE direnv integration (buffer-local environment).
+;; Don't add the `direnv' package beside it: the two hook the same lifecycle
+;; and fight over exec-path.
 (use-package envrc
   :config
   (setq envrc-remote t)
@@ -123,7 +115,7 @@
 (use-package exec-path-from-shell
   :if (memq window-system '(mac ns x))
   :init
-  (setq exec-path-from-shell-variables '("ANTHROPIC_API_KEY" "MANPATH" "PATH"))
+  (setq exec-path-from-shell-variables '("MANPATH" "PATH"))
   :config (exec-path-from-shell-initialize))
 
 ;; Smarter GC management
@@ -142,9 +134,8 @@
   (gcmh-idle-delay 2)
   (gcmh-high-cons-threshold (* 64 1024 1024))
   :hook
-  (focus-out . #'garbage-collect)
-  (minibuffer-setup . my/gc-minibuffer-setup)
-  (minibuffer-exit  . my/gc-minibuffer-exit))
+  ((minibuffer-setup . my/gc-minibuffer-setup)
+   (minibuffer-exit  . my/gc-minibuffer-exit)))
 
 
 
@@ -161,11 +152,9 @@
   (add-to-list 'tramp-remote-path 'tramp-own-remote-path))
 
 
-;; Indentation & whitespace
-(use-package whitespace
-  :ensure nil
-  :custom
-  (require-final-newline t))
+;; A core editing variable, not a whitespace-mode one (whitespace-mode itself
+;; is configured in emacs-dev's 31-prog-mode.el).
+(setq-default require-final-newline t)
 
 (use-package yasnippet
   :preface

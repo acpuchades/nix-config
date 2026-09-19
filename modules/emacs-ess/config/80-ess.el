@@ -1,4 +1,14 @@
 ;; Emacs Speaks Statistics
+;; R itself comes from modules/r-dev (rWrapper); the `air` language server
+;; below from this module's home.packages (air-formatter).
+
+;; LSP for R — hooks OUTSIDE with-eval-after-load (eglot is deferred; see
+;; 30-devel.el), only the server entry inside it.
+(add-hook 'ess-r-mode-hook #'eglot-ensure)
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs
+               '(ess-r-mode . ("air" "language-server"))))
+
 (use-package ess
   :mode
   (("\\.[Rr]\\'"     . ess-r-mode)
@@ -71,13 +81,16 @@
     (just-one-space 1)
     (insert "|>")
     (newline-and-indent))
+  ;; C-S-m, RStudio's pipe chord — NOT under C-c p: a local binding there
+  ;; would shadow the global cape-prefix-map (local prefixes don't merge with
+  ;; global ones), killing every C-c p completion command in R buffers.
   :bind
   (:map ess-r-mode-map
-        ("C-c p SPC"      . my/ess-r-insert-pipe)
-        ("C-c p <return>" . my/ess-r-insert-pipe-and-newline))
+        ("C-S-m"        . my/ess-r-insert-pipe)
+        ("C-S-<return>" . my/ess-r-insert-pipe-and-newline))
   (:map inferior-ess-r-mode-map
-        ("C-c p SPC"      . my/ess-r-insert-pipe)
-        ("C-c p <return>" . my/ess-r-insert-pipe-and-newline))
+        ("C-S-m"        . my/ess-r-insert-pipe)
+        ("C-S-<return>" . my/ess-r-insert-pipe-and-newline))
   :custom
   (inferior-R-args "--no-save --no-restore-data --quiet"))
 
@@ -91,12 +104,15 @@
   (:map ess-r-mode-map
         ("C-c v" . ess-view-data-print)))
 
-;; R-Markdown support
+;; R-Markdown support. Only .Rmd goes to polymode — claiming plain .md from
+;; here would drag every markdown file in every repo into polymode just
+;; because the statistics module is installed.
 (use-package polymode)
 (use-package poly-R)
 (use-package poly-markdown
-  :mode (("\\.md\\'"  . poly-markdown-mode)
-         ("\\.Rmd\\'" . poly-markdown+r-mode)))
+  :mode ("\\.Rmd\\'" . poly-markdown+r-mode))
+(use-package markdown-mode
+  :mode "\\.md\\'")
 
 ;; Quarto support
 (use-package quarto-mode
