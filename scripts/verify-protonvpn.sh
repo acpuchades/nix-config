@@ -71,6 +71,25 @@ TUNNELED_PEER="${TUNNELED_SRC%.*}.2"  # a PEER address in it, for input-route si
 CLIENT_ENDPOINT=$(cfgs "$T.peer.endpoint" | cut -d: -f1)
 P2P_ENDPOINT=$(cfgs "p2pTunnel.peer.endpoint" | cut -d: -f1)
 
+# EVERY client tunnel's interface, not just the one under test. The checks that
+# assert the main table is untouched have to see all of them: a default route
+# installed by proton-us is just as wrong when the run happens to be testing
+# proton-es, and keying those on $CLIENT_IF quietly narrowed them to a third of
+# what they used to cover.
+ALL_CLIENT_IFS=$(nix eval --raw --apply \
+  'x: builtins.concatStringsSep " " (map (t: t.interface) (builtins.attrValues x))' \
+  "$CFG.clientTunnels" 2>/dev/null)
+PROTON_IF_RE=$(printf '%s %s' "$ALL_CLIENT_IFS" "$P2P_IF" | tr -s ' ' '|')
+
+# The resolver uses ONE tunnel regardless of which one is under test — it is a
+# single host-wide service, so `resolver.viaTunnel` names it and nothing about
+# --tunnel changes that.
+RESOLVER_TUNNEL=$(nix eval --json "$CFG.resolver.viaTunnel" 2>/dev/null | tr -d '"')
+[[ "$RESOLVER_TUNNEL" == "null" ]] && RESOLVER_TUNNEL=""
+RESOLVER_IF=""
+[[ -n "$RESOLVER_TUNNEL" ]] && \
+  RESOLVER_IF=$(cfgs "clientTunnels.\"$RESOLVER_TUNNEL\".interface")
+
 printf '\033[1mTesting client tunnel: %s (%s, table %s, prefix via %s)\033[0m\n' \
   "$CLIENT_TUNNEL" "$CLIENT_IF" "$CLIENT_TABLE" "$TUNNELED_SRC"
 
@@ -137,16 +156,19 @@ hdr "1. Host egress is unchanged (still the ISP address)"
 HOST_IP=$(egress)
 if [[ -n "$HOST_IP" ]]; then
   note "host egress: $HOST_IP"
-  if ip route get 1.1.1.1 2>/dev/null | grep -qv "$CLIENT_IF"; then
-    ok "host default route does not use $CLIENT_IF"
+  # Negate the grep rather than grepping for a non-matching LINE: `ip route get`
+  # prints a "cache" line after the route, so `grep -v` found it and passed even
+  # when the route itself named a tunnel.
+  if ip route get 1.1.1.1 2>/dev/null | grep -qE "dev ($PROTON_IF_RE)"; then
+    no "host default route goes through a Proton tunnel — main table was modified"
   else
-    no "host default route goes through the tunnel — main table was modified"
+    ok "host default route uses none of: $ALL_CLIENT_IFS $P2P_IF"
   fi
 else
   no "host has no egress at all"
 fi
 
-if ip route show table main | grep -qE "^default .* dev ($CLIENT_IF|$P2P_IF)"; then
+if ip route show table main | grep -qE "^default .* dev ($PROTON_IF_RE)"; then
   no "a Proton interface owns the default route in the MAIN table"
 else
   ok "main table's default route is untouched"
@@ -383,12 +405,22 @@ fi
 # The resolver table must NOT carry a blackhole. That is what makes upstream DNS
 # degrade to the ISP when the tunnel dies instead of taking the whole LAN's name
 # resolution down with it — which is exactly what a shared table once did.
-if ip route show table "$DNS_TABLE" | grep -q blackhole; then
+#
+# Keyed on the RESOLVER's tunnel, not on the one under test. These are different
+# whenever --tunnel names anything but resolver.viaTunnel, and comparing against
+# $CLIENT_IF made this report an empty table on a run against `in` or `us` while
+# table $DNS_TABLE was in fact routing perfectly well via the resolver's own.
+if [[ -z "$RESOLVER_TUNNEL" ]]; then
+  sk "resolver.viaTunnel is unset — upstream DNS is on the ISP path by configuration"
+elif ip route show table "$DNS_TABLE" | grep -q blackhole; then
   no "table $DNS_TABLE has a blackhole — a dead tunnel will kill DNS host-wide"
-elif ip route show table "$DNS_TABLE" | grep -q "dev $CLIENT_IF"; then
-  ok "table $DNS_TABLE routes via $CLIENT_IF with no blackhole (degrades to ISP)"
+elif ip route show table "$DNS_TABLE" | grep -q "dev $RESOLVER_IF"; then
+  ok "table $DNS_TABLE routes via $RESOLVER_IF ($RESOLVER_TUNNEL), no blackhole (degrades to ISP)"
+elif [[ -z "$(ip route show table "$DNS_TABLE")" ]]; then
+  sk "table $DNS_TABLE is empty — $RESOLVER_IF is down, so upstream DNS has degraded to the ISP"
 else
-  sk "table $DNS_TABLE is empty — upstream DNS is currently on the ISP path"
+  no "table $DNS_TABLE does not route via $RESOLVER_IF ($RESOLVER_TUNNEL)"
+  note "$(ip route show table "$DNS_TABLE")"
 fi
 
 # End-to-end proof, run AS THE RESOLVER'S OWN UID. This is the real path now,
@@ -438,8 +470,8 @@ hdr "10. LAN and inter-client traffic is not tunneled"
 # these into SKIPs, so the check was never actually running.
 for dst in 192.168.2.1 192.168.2.2 10.0.0.2; do
   DEV=$(ip route get "$dst" from "$TUNNELED_PEER" iif wg0 2>/dev/null | grep -o 'dev [^ ]*' | head -1 | cut -d' ' -f2)
-  if [[ "$DEV" == "$CLIENT_IF" ]]; then
-    no "traffic from a tunneled source to $dst would go through the tunnel"
+  if [[ " $ALL_CLIENT_IFS " == *" $DEV "* ]]; then
+    no "traffic from a tunneled source to $dst would go through $DEV"
   elif [[ -n "$DEV" ]]; then
     ok "$dst is reached via $DEV (main table), not the tunnel"
   else
