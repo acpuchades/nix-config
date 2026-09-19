@@ -1,20 +1,23 @@
-{ pkgs, ... }:
-
+{ lib, pkgs, ... }:
 {
-  agents = {
-    ntfy = {
-      enable = true;
-      config = {
-        ProgramArguments = [
-          "${pkgs.ntfy-sh}/bin/ntfy"
-          "subscribe"
-          "--from-config"
-        ];
-        KeepAlive = true;
-        RunAtLoad = true;
-        StandardOutPath = "/tmp/ntfy.log";
-        StandardErrorPath = "/tmp/ntfy.err";
+  launchd = lib.mkIf pkgs.stdenv.isDarwin (
+    {
+      agents = {
+        ntfy = {
+          enable = true;
+          config = {
+            ProgramArguments = [
+              "${pkgs.ntfy-sh}/bin/ntfy"
+              "subscribe"
+              "--from-config"
+            ];
+            KeepAlive = true;
+            RunAtLoad = true;
+            StandardOutPath = "/tmp/ntfy.log";
+            StandardErrorPath = "/tmp/ntfy.err";
+          };
+        };
       };
-    };
-  };
+    }
+  );
 }

@@ -1,25 +1,33 @@
-inputs: {
+# Aggregator for the per-program modules in this directory. Each file is a
+# real home-manager module owning its programs.<name> subtree (it can read
+# config/pkgs/host itself), so adding a program is one file plus one line
+# here — no argument threading.
+{ ... }:
+{
+  imports = [
+    ./atuin.nix
+    ./claude-code.nix
+    ./eza.nix
+    ./fzf.nix
+    ./ghostty.nix
+    ./gpg.nix
+    ./git.nix
+    ./ssh.nix
+    ./tmux.nix
+    ./zoxide.nix
+    ./zsh.nix
+  ];
+
   # Let home Manager install and manage itself.
-  home-manager.enable = true;
+  programs.home-manager.enable = true;
 
-  atuin = import ./atuin.nix inputs;
-  claude-code = import ./claude-code.nix inputs;
-  eza = import ./eza.nix inputs;
-  fzf = import ./fzf.nix inputs;
-  ghostty = import ./ghostty.nix inputs;
-  gpg = import ./gpg.nix inputs;
-  git = import ./git.nix inputs;
-  ssh = import ./ssh.nix inputs;
-  tmux = import ./tmux.nix inputs;
-  zoxide = import ./zoxide.nix inputs;
-  zsh = import ./zsh.nix inputs;
-
-  bat.enable = true;
-  btop.enable = true;
-  codex.enable = true;
-  direnv.enable = true;
-  direnv.nix-direnv.enable = true;
-  gh.enable = true;
-  lazygit.enable = true;
-  starship.enable = true;
+  # Bare enables with no config of their own.
+  programs.bat.enable = true;
+  programs.btop.enable = true;
+  programs.codex.enable = true;
+  programs.direnv.enable = true;
+  programs.direnv.nix-direnv.enable = true;
+  programs.gh.enable = true;
+  programs.lazygit.enable = true;
+  programs.starship.enable = true;
 }

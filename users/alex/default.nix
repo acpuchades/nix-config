@@ -1,7 +1,14 @@
-inputs@{ config, lib, pkgs, host, ... }:
+{ config, lib, pkgs, host, ... }:
 
 {
   imports = [
+    # This user's own config, split by concern. Every file is a module (it
+    # takes config/pkgs/host itself); presence here is the toggle.
+    ./programs
+    ./services.nix
+    ./sops.nix
+    ./launchd.nix
+
     ../../modules/r-dev
     ../../modules/python-dev
     ../../modules/rust-dev
@@ -34,26 +41,6 @@ inputs@{ config, lib, pkgs, host, ... }:
   # the home Manager release notes for a list of state version
   # changes in each release.
   home.stateVersion = "24.11";
-
-  programs = import ./programs inputs;
-  services = import ./services.nix inputs;
-  sops = import ./sops.nix inputs;
-  launchd = lib.mkIf pkgs.stdenv.isDarwin (import ./launchd.nix inputs);
-
-  # link the configuration file in current directory to the specified location in home directory
-  # home.file.".config/i3/wallpaper.jpg".source = ./wallpaper.jpg;
-
-  # link all files in `./scripts` to `~/.config/i3/scripts`
-  # home.file.".config/i3/scripts" = {
-  #   source = ./scripts;
-  #   recursive = true;   # link recursively
-  #   executable = true;  # make all files executable
-  # };
-
-  # encode the file content in nix configuration file directly
-  # home.file.".xxx".text = ''
-  #     xxx
-  # '';
 
   home.file.".emacs.d/config/99-personal.el".source = ./files/emacs.d/config/99-personal.el;
 
@@ -95,12 +82,6 @@ inputs@{ config, lib, pkgs, host, ... }:
         "${config.sops.templates."prefect/profiles.toml".path}" \
         "$HOME/.prefect/profiles.toml"
   '';
-
-  # set cursor size and dpi for 4k monitor
-  # xresources.properties = {
-  #  "Xcursor.size" = 16;
-  #  "Xft.dpi" = 172;
-  # };
 
   fonts.fontconfig.enable = true;
 
