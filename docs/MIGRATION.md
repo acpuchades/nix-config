@@ -190,7 +190,7 @@ for off-site storage. Recreating it is post-migration work, not a blocker.
 | Nominatim DB + `/home/alex/nominatim` | re-import from the Geofabrik extract |
 | `/srv/shared/{Media,Downloads}` | re-acquirable, or already copied at the source |
 | `/srv/shared/NGS` (1.2 T) | **keep your own copy** — this is bulk source data and it is not in any snapshot |
-| `/var/lib/immich` thumbnails | Immich regenerates them from the originals in `/srv/encrypted/immich` |
+| Immich derivatives (`thumbs/`, `encoded-video/` under `/srv/encrypted/immich`) and the ML cache (`/var/cache/immich`) | Immich regenerates thumbnails/transcodes from the originals; models re-download on demand |
 | Jellyfin metadata/transcodes | re-scraped; users and watch state *are* backed up |
 | Prometheus / netdata history | metrics history, not state |
 | Ollama models | re-downloaded on demand |
@@ -205,8 +205,9 @@ for off-site storage. Recreating it is post-migration work, not a blocker.
 Things no amount of Nix will do for you:
 
 - **Router:** forward TCP 22 (if exposed), 25, 80, 443, 9001 + 9002 (Tor
-  ORPort/obfs4), 51413, and UDP 51820 to `192.168.2.2`. Update the DHCP
-  reservation to the new NIC's MAC.
+  ORPort/obfs4), and UDP 51820 to `192.168.2.2`. Update the DHCP reservation
+  to the new NIC's MAC. (51413 no longer needs forwarding: Transmission's peer
+  port rides the ProtonVPN P2P tunnel via NAT-PMP, not the ISP line.)
 - **Mail:** inbound port 25 must be unblocked by the ISP, and the rDNS/PTR for
   the public IP has to match. Outbound DKIM is Mailjet's, so nothing to move.
 - **DNS:** ddclient refreshes the Cloudflare A records once it is up; confirm
@@ -222,9 +223,18 @@ Things no amount of Nix will do for you:
 
 ---
 
-## 8. Not done yet
+## 8. Disk provisioning (disko)
 
-There is no `disko` configuration, so the disk layout — partitioning, the btrfs
-filesystems, the LUKS container — is manual and lives only in this document.
-Adding one would make provisioning reproducible; retrofitting it against live
-disks needs care (`disko --mode mount` only, never `destroy`).
+The layout — partitioning, the btrfs filesystems, the LUKS container — is
+declared in `machines/homeserver/disko.nix` as provisioning metadata
+(`disko.enableConfig = false`, so it generates nothing at runtime;
+`hardware-configuration.nix` stays authoritative for the live system). On new
+hardware, update the `device` by-id paths there, then:
+
+```sh
+disko --mode format --flake .#homeserver   # NEW blank disks only — destructive
+disko --mode mount  --flake .#homeserver   # attach an existing layout
+```
+
+Against disks that carry data, `mount` is the only safe mode. After a real
+format, regenerate `hardware-configuration.nix` as in §2.

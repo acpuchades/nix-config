@@ -30,8 +30,8 @@ missed while the box was off happens at the next boot. One run is four phases:
    never left stuck on, and plaintext dumps never linger on disk.
 
 Failures push to ntfy: the unit is listed in `my.ntfy-alert.failureUnits`, so a
-failed run posts to the `alerts-system` topic. Silence is the success signal;
-if you have never seen an alert, verify the path works rather than assuming it.
+failed run posts to the `alerts-system` topic (§8 covers verifying that path
+actually works).
 
 ## 2. What is in a snapshot
 
@@ -55,11 +55,18 @@ if you have never seen an alert, verify the path works rather than assuming it.
 
 Deliberately absent, because all of it is re-acquirable and none of it should
 be paying for off-site storage: Bitcoin's chainstate, the Nominatim database and
-its import data, `/srv/shared/{Media,Downloads}`, **`/srv/shared/NGS`** (1.2 T
-of bulk source data — keep your own copy, it is in no snapshot), Immich's
-thumbnails, Jellyfin's scraped metadata and transcodes, Prometheus/netdata
-history, Ollama models, per-home caches (`.cache`, `.cargo`, `.npm`, uv), and
-`/home/alex/nix-config` (version-controlled and pushed).
+its import data, `/srv/shared/{Media,Downloads}`, **`/srv/shared/NGS`** (bulk
+source data — keep your own copy, it is in no snapshot), Jellyfin's scraped
+metadata, Prometheus/netdata history, Ollama models, per-home caches (`.cache`,
+`.cargo`, `.npm`, uv, Claude shell snapshots), Home Assistant logs, and
+`/home/alex/nix-config` (version-controlled and pushed). The full list, with
+how each item comes back, is [MIGRATION.md](MIGRATION.md) §6.
+
+Two notes on that boundary. Immich's derivatives (`thumbs/`,
+`encoded-video/`) live *inside* `/srv/encrypted/immich` and are explicitly
+excluded — Immich regenerates both from the originals; `profile/` (avatars,
+not regenerable) stays in. Jellyfin transcodes need no exclude: they live
+under `/var/cache/jellyfin`, which is not a backup path at all.
 
 Two things are re-derived rather than restored: Samba's passdb is provisioned
 from sops at boot by `samba-provision-users`, and the GitHub Actions runner
@@ -78,7 +85,8 @@ half-written, WAL mid-flight — that can restore to a corrupt cluster. So
 - writes one `pg_dump --format=custom` per live database to
   `/var/backup/dumps/postgres/<db>.dump`. The database list is enumerated at
   runtime, so a new database is picked up with no config change. `nominatim` is
-  excluded — it is large and re-importable from Geofabrik;
+  excluded (large and re-importable from Geofabrik), as are the template DBs
+  and the `postgres` maintenance DB — so do not expect a `postgres.dump`;
 - snapshots each SQLite database with `sqlite3 .backup`, which is consistent
   even under concurrent writes: `grafana.sqlite` (dashboards, users) and
   `ntfy.sqlite` (the ntfy user/ACL database, which is imperative and exists
@@ -88,9 +96,8 @@ half-written, WAL mid-flight — that can restore to a corrupt cluster. So
 
 ## 4. Encryption, and the one thing it cannot do
 
-restic encrypts everything client-side with AES-256 before a byte leaves the
-host. B2 holds an opaque, deduplicated, content-addressed blob store and never
-sees the repository password. That is why it is safe for the snapshot to
+restic encrypts everything client-side before a byte leaves the host; B2 never
+sees the repository password, which is why it is safe for the snapshot to
 contain private host keys and Vaultwarden's data directory.
 
 Four sops secrets make it work, in `machines/homeserver/secrets/default.yml`:
@@ -125,8 +132,7 @@ sudo restic-homeserver prune
 ```
 
 And prune repacks partially-used pack files, which means downloading them from
-B2. Packs belonging wholly to the removed data are simply deleted, but a large
-prune can still move real traffic; `prune --max-repack-size 5G` bounds it.
+B2; `prune --max-repack-size 5G` bounds that traffic.
 
 ---
 

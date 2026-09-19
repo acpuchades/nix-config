@@ -20,89 +20,163 @@ sops machines/homeserver/secrets/default.yml
 sops users/alex/secrets/default.yml
 ```
 
+For package changes, verify with `nix build`, not just `nix eval` — eval passes
+even when a package fails to compile.
+
 ## Architecture Overview
 
-This is a Nix flakes-based personal system configuration managing two machines:
+A Nix flakes-based personal system configuration managing two machines:
 
-- **MacBook-Pro-de-Alejandro** (`machines/macbookpro/`) — aarch64-darwin, managed by nix-darwin + home-manager
-- **homeserver** (`machines/homeserver/`) — x86_64-linux, managed by NixOS + home-manager
+- **MacBook-Pro-de-Alejandro** (`machines/macbookpro/`) — aarch64-darwin, nix-darwin + home-manager
+- **homeserver** (`machines/homeserver/`) — x86_64-linux, NixOS + home-manager
 
-### Key Flake Inputs
+`machines/common.nix` holds the wiring both share: the `modules/*/system.nix`
+fragments and the home-manager glue for user alex (curried over flake inputs —
+arguments used in `imports` cannot come from `_module.args`).
 
-- `nixpkgs` (nixpkgs-25.11-darwin) — all package sets follow this
-- `nix-darwin` — macOS system configuration
-- `home-manager` — user environment for both machines
-- `sops-nix` — age-encrypted secrets, integrated as `darwinModules` (mac) or `nixosModules` (linux)
+### Flake Inputs
+
+`nixpkgs` is `nixpkgs-26.05-darwin`; most inputs follow it. The exceptions and
+the reasoning for every input live as comments in `flake.nix` — read them there.
+The ones that shape the architecture:
+
+- `nixpkgs-unstable` — escape hatch for openclaw and immich on the homeserver only
+- `fugazi-web` / `fugazi-web-testing` — the same PRIVATE repo on two branches
+  (tarball URLs + netrc, since `github:` ignores netrc); ONE nixosModule imported,
+  the testing instance gets only the second input's packages
+- `nix-caddy-withplugins` — deliberately does NOT follow nixpkgs (its pinned base
+  FOD hash depends on its own toolchain)
+- `emacs-overlay`, `sops-nix`, `better-zen`
+- `disko` — provisioning metadata only (`disko.enableConfig = false`); the
+  runtime filesystem config stays in `hardware-configuration.nix`
 
 ### Module System (`modules/`)
 
-Modules use a consistent pattern:
-```nix
-options.my.<module>.enable = lib.mkEnableOption "...";
-config = lib.mkIf config.my.<module>.enable { ... };
-```
+Two conventions, split by half:
 
-**Emacs modules** (11 modules): `emacs-core`, `emacs-completion`, `emacs-ui`, `emacs-org`, `emacs-mu4e`, `emacs-dev`, `emacs-ess`, `emacs-python`, `emacs-nix`. Each has a `config/` subdirectory with ELisp files deployed via home-manager `home.file` symlinks.
+- **Server modules** (NixOS, homeserver only) are enable-gated:
+  `options.my.<module>.enable = lib.mkEnableOption "...";`
+  `config = lib.mkIf config.my.<module>.enable { ... };`
+- **Dev and Emacs modules** (home-manager, both hosts) have no enable option —
+  presence in the `imports` list in `users/alex/default.nix` is the toggle.
 
-**Development modules**: `python-dev` (Python 3, Jupyter, ruff, uv, pyright, conda/mamba), `r-dev` (R + devtools/renv/rix, uses rstats-on-nix cachix cache).
+Some modules pair `default.nix` (home-manager) with a `system.nix` (system
+layer) because home-manager refuses `nixpkgs.overlays` under `useGlobalPkgs`:
+`emacs-core` (emacs-overlay + nix-community cachix), `r-dev` (rstats-on-nix
+cachix), `prefect-server`. The `system.nix` trio is imported once, in
+`machines/common.nix`.
 
-**Server modules** (homeserver only): `cloud-suite` (NextCloud, Collabora, Vaultwarden), `dns-filtering` (AdGuard Home + DNSCrypt), `web-server` (Caddy + ACME — Caddy is the public entry point and terminates TLS for every host. One exception, and it is deliberate: `cloud-suite` enables `services.nginx` on 127.0.0.1 to serve NextCloud's PHP-FPM, so that vhost is Caddy → nginx → php-fpm. Don't add `services.nginx` anywhere else.), `vpn-server` (WireGuard + hostapd WiFi hotspot), `protonvpn` (ProtonVPN egress: N prefix-steered client tunnels, one per exit country, keyed by name in `my.protonvpn.clientTunnels` — each owns a `sourcePrefixes` range of wg0, its own routing table, kill-switch chain and watchdog, so a peer's exit follows from which prefix its address came out of and tunnels fail independently; peers on 10.0.0.0/24 stay untunneled on the ISP. Plus a netns-isolated P2P tunnel for Transmission with NAT-PMP port renewal, deliberately on a different server. See `scripts/verify-protonvpn.sh --tunnel <name>`), `mail-server` (Postfix inbound receive → eva's Maildir + Mailjet relay for outbound, rspamd, ACME STARTTLS).
+**Emacs modules** (11): `emacs-core`, `emacs-completion`, `emacs-ui`,
+`emacs-dev`, `emacs-org`, `emacs-ess`, `emacs-python`, `emacs-nix`,
+`emacs-rust`, `emacs-golang`, `emacs-copilot`. ELisp lives in each module's
+`config/` (or is generated inline) and lands in `~/.emacs.d/config/`, where
+init.el (a bare loader) loads files in FILENAME order — the NN prefix is the
+only cross-module ordering there is. Each module owns a reserved prefix band
+(new files go inside the owner's band): 00-09 core, 10-19 completion,
+20-29 ui, 30-39 dev, 40-49 org, 50-59 copilot, 60+ one language apiece
+(60 python, 65 nix, 70 rust, 75 go, 80 ess), 99 personal (users/alex, never
+a module). Conventions: the `*-dev` modules own
+toolchain binaries (LSP servers, formatters), the `emacs-*` modules own elisp;
+eglot-ensure hooks go directly on mode hooks (never inside
+`with-eval-after-load 'eglot` — eglot is deferred); packages come only from
+Nix (`use-package-always-ensure` is nil, no package-archives).
+
+**Development modules**: `python-dev`, `r-dev`, `rust-dev`, `golang-dev`,
+`js-dev`, `c-dev`, `nix-dev`, and `android-dev` (macbookpro only).
+
+**Server modules** (homeserver only), the load-bearing ones:
+
+- `web-server` — Caddy + ACME; Caddy is the public entry point and terminates
+  TLS for every host. One deliberate exception: `cloud-suite` enables
+  `services.nginx` on 127.0.0.1 to serve NextCloud's PHP-FPM, so that vhost is
+  Caddy → nginx → php-fpm. Don't add `services.nginx` anywhere else.
+- `cloud-suite` — NextCloud, Collabora, Vaultwarden, Immich
+- `protonvpn` — ProtonVPN egress: N prefix-steered client tunnels, one per exit
+  country (`my.protonvpn.clientTunnels`) — each owns a `sourcePrefixes` range of
+  wg0, its own routing table, kill-switch chain and watchdog, so a peer's exit
+  follows from which prefix its address came out of; peers on 10.0.0.0/24 stay
+  untunneled on the ISP. Plus a netns-isolated P2P tunnel for Transmission with
+  NAT-PMP port renewal. Verify with `scripts/verify-protonvpn.sh --tunnel <name>`.
+- `mail-server` — Postfix inbound → eva's Maildir, Mailjet relay outbound,
+  rspamd, ACME STARTTLS
+- `dns-filtering` — AdGuard Home + DNSCrypt
+- `vpn-server` — WireGuard server (peers declared under `my.vpn-server.peers`
+  in `machines/homeserver/default.nix`)
+- `openclaw` — multi-agent module (`my.openclaw.instances.<name>`), runs eva
+- `fugazi-web` — host topology around the upstream flake's module (public
+  backtest service, www.fugazitrade.com)
+
+Plus: `backup` (restic → B2), `ntfy-alert`, `transmission-server`,
+`media-server`, `postgresql-server`, `prefect-server`, `samba-server`,
+`print-server`, `geocoding`, `home-assistant`, `server-stats`, `web-analytics`,
+`service-dashboard`, `acme-cloudflare`, `caddy-plugins`, `host-security`
+(fail2ban), `ups-monitor`, `tor-bridge`, `push-notifications`,
+`wireguard-client` (library module driven by protonvpn).
 
 ### User Configuration (`users/alex/`)
 
-Home-manager config shared across both machines, with `host` arg for per-host conditionals:
-```nix
-home-manager.extraSpecialArgs = { host = "macbookpro"; }; # or "homeserver"
-```
-
-Programs configured: ghostty, git (with delta), gpg, ssh, tmux, zsh (oh-my-zsh + plugins), starship, gh.
+Home-manager config shared by both machines; `host` arg ("macbookpro" /
+"homeserver") for per-host conditionals, passed via `extraSpecialArgs` so it is
+usable in `imports` (where `pkgs` is not). Programs under `programs/`: ghostty,
+git (delta), gpg, ssh, tmux, zsh (oh-my-zsh), starship, gh, atuin, eza, fzf,
+zoxide, claude-code. Also `agents/eva.nix` (eva's openclaw instance config),
+`services.nix`, `sops.nix`, `files/`, `launchd.nix` (darwin).
 
 ### Secrets Management
 
-`.sops.yaml` defines age key recipients by file path regex. Secrets are age-encrypted YAML files:
-- `machines/homeserver/secrets/default.yml` — WireGuard keys, WiFi passwords, nginx auth, DB credentials
-- `users/alex/secrets/default.yml` — GitHub/Anthropic/Prefect tokens, SSH keys
-- Per-host user overrides: `users/alex/secrets/homeserver.yml`, `users/alex/secrets/macbookpro.yml`
+`.sops.yaml` defines age-key recipients by file-path regex. Age-encrypted YAML:
 
-Secrets are referenced in Nix as `config.sops.secrets.<name>.path` or via SOPS template rendering for config files.
+- `machines/homeserver/secrets/default.yml` — WireGuard/Proton keys, WiFi,
+  Caddy basic-auth, DB credentials, Cloudflare/Mailjet/ntfy/restic-B2 tokens,
+  the openclaw/eva credential block
+- `machines/macbookpro/secrets/default.yml`
+- `users/alex/secrets/default.yml` — service tokens (GitHub, Anthropic, PyPI,
+  crates.io, Prefect, ntfy, iCloud), plus per-host overrides
+  `users/alex/secrets/{homeserver,macbookpro}.yml`
+
+Referenced as `config.sops.secrets.<name>.path` or via sops templates.
+
+### Homeserver
+
+`machines/homeserver/default.nix` is the host configuration; one service is
+split out: `fugazi.nix` (everything fugazi-web: policy helpers, the `testing`
+instance, overlay, assertions). It is curried over the flake inputs because its
+`imports` needs them. Its sops secrets stay in `sops.nix` and its ntfy-alert
+units in `default.nix`, so those lists each read as one thing.
+
+`services.nix` holds the small standalone services: bitcoind (full node, tx
+indexing), PostgreSQL, ddclient, openssh, pipewire, avahi. `networking.nix` is
+hostname/WiFi/firewall; `settings.nix` kernel/boot/nix tuning; `users.nix`
+accounts; `networks.nix` the shared LAN/WireGuard prefix constants;
+`disko.nix` the disk layout (provisioning-only).
+
+Firewall convention: there is NO blanket LAN accept and wg0 is NOT a trusted
+interface. A service that LAN/VPN clients reach directly gets its own
+source-restricted `-I nixos-fw` accepts driven by an allowed-networks option
+(samba, print, dns-filtering, ups-monitor, media-server all follow this
+pattern); everything else is reachable only through Caddy.
 
 ### MacBook-specific
 
-- Homebrew managed declaratively in `machines/macbookpro/homebrew.nix` (casks, taps, mas apps)
-- macOS system preferences (dock, Finder, trackpad, Touch ID sudo) in `machines/macbookpro/settings.nix`
+- Declarative Homebrew in `machines/macbookpro/homebrew.nix`
+- macOS preferences and nix policy (GC, store optimise) in `settings.nix`
+- Zen browser via `browser.nix` (better-zen input)
 - User launchd agents in `users/alex/launchd.nix`
-
-### Homeserver Services
-
-Host configuration lives in `machines/homeserver/default.nix`, with one service
-split out: `machines/homeserver/fugazi.nix` holds everything for fugazi-web
-(policy helpers, the `testing` instance, its overlay and assertions), which had
-grown to roughly half of `default.nix`. It is curried over the flake inputs —
-`(import ./fugazi.nix { inherit fugazi-web fugazi-web-testing; })` — because its
-own `imports` needs them, and a `_module.args` argument used in `imports` is an
-infinite recursion. Its sops secrets stay in `sops.nix` and its `ntfy-alert`
-units stay in `default.nix`, so those two lists each read as one thing.
-
-Defined in `machines/homeserver/services.nix` and modules:
-- Bitcoin (full node with tx indexing)
-- Prefect (workflow engine + PostgreSQL)
-- DDClient (dynamic DNS)
-- Fail2ban
-- WireGuard server with 5 peers (`machines/homeserver/networking.nix`)
 
 ## Upstream-Tracked Workarounds (check periodically; drop when possible)
 
-These carry ongoing bookkeeping tied to external state. On each `nix flake update` (or every few months), re-check each one and remove it once its drop condition is met. Last reviewed: 2026-09-18.
+Each row carries bookkeeping tied to external state. On each `nix flake update`
+(or every few months), re-check and remove once the drop condition is met.
+Locations are given as greppable identifiers, not line numbers. Last reviewed:
+2026-09-19.
 
-| Workaround | Location | Drop condition | Status (2026-07-26) |
-|---|---|---|---|
-| Caddy plugin-set hash pin (`caddy.withPlugins`) | `machines/homeserver/default.nix` (~L418 `my.caddy-plugins.hash`, ~L650 overlay) + `flake.nix` (`nix-caddy-withplugins`) | Drop the input when nixpkgs' own `withPlugins` stops hashing Caddy's deps together with the plugins'. Not on the cards: plugins are compiled-in Go modules, not runtime artifacts, so a per-plugin nixpkgs package is impossible and a pre-pinned hash would be needed per (caddy version × combination) — which is why nixpkgs#450289 was closed. Re-pin `hash` only when the plugin LIST changes. If a rebuild fails on the *base* FOD (`caddy-base-proxy`) instead, our nixpkgs' caddy has moved ahead of the input's `version.json` — `nix flake update nix-caddy-withplugins`, and if that has not caught up yet, wait for its update bot rather than hand-patching. | **Migrated 2026-08-22** — was nixpkgs' `withPlugins`, whose single FOD (caddy × plugins × all transitive deps) churned ~5× in 4 months. Now `MichailiK/nix-caddy-withplugins` (branch `nixos-26.05`, no `follows` — its base hash is computed against its own nixpkgs), whose dual-FOD GOPROXY diff leaves our hash covering only plugin modules. `vincentbernat/caddy-nix` was rejected: same single-FOD design, same churn. Verified: caddy 2.11.4 builds, `list-modules` shows `dns.providers.cloudflare` + `http.handlers.rate_limit`. Caveat (upstream README): Go MVS can still move the plugin hash if caddy later absorbs a dep the plugins currently pin higher. |
-| OpenClaw hardlink-guard patch (`openclawPatched`) | `modules/openclaw/default.nix` | Structural on 2026.5.x: fought `auto-optimise-store` dedup vs upstream's `rejectHardlinks` boundary check. | **DROPPED 2026-07-27** — fixed upstream in 2026.6.x (plugin loaders pass `rejectHardlinks: false`). `openclawPatched = cfg.package` (unmodified). PENDING live confirmation that bundled surfaces load under our store settings; restore the `overrideAttrs` patch from git if "Unable to open bundled plugin public surface …" recurs on dispatch. |
-| OpenClaw skills hardlink staging (`skillsStageSeed`) | `modules/openclaw/default.nix` (~L652, `skillsStageDir`/`skillsStageSeed`) | Drop when the *skills* loader stops enforcing `rejectHardlinks` (as the plugin loader already did in 2026.6.x). Re-check on each openclaw bump: point `extraDirs` back at the store dirs and confirm `openclaw skills check` still shows Total = N (not 0). | **Keep (added 2026-07-31)** — the skills loader silently drops any SKILL.md with nlink>=2, and `auto-optimise-store = true` hardlinks every store file, so store-path `extraDirs` loaded ZERO skills (incl. the always-on `policy`). ExecStartPre `cp`s each skill tree into `${stateDir}/nix-skills` (fresh inodes, nlink=1) and `extraDirs` points there. Verified via `openclaw skills check` → Total 5; now 11 (4 generated + eva's 7 static ones under `my.openclaw.instances.eva.extraSkillDirs` — `gtd`, `projects`, `calendar`, `references`, `research-projects`, `seo-marketing`, `social` — which stage the same way). The number to check is "not 0"; the exact total moves whenever a skill is added. Same root cause as the (dropped) plugin hardlink-guard row above. |
-| OpenClaw source = nixpkgs-unstable | `flake.nix` (`nixpkgs-unstable` input) + `machines/homeserver/default.nix` (`my.openclaw.package`) | 26.05 freezes openclaw at 2026.5.7 (claude-cli exec approvals hang — no permission responder). | **Keep** — pinned to unstable's 2026.6.33 for the claude-cli permission responder + hardlink fix. Re-check when 26.05 catches up or unstable churns; `nix flake update nixpkgs-unstable` to bump. |
-| OpenClaw `permittedInsecurePackages` pin | `modules/openclaw/default.nix` | Upstream's deliberate `knownVulnerabilities` (LLM prompt-injection). Won't be lifted. | **Keep** — now version-derived (`"openclaw-${cfg.package.version}"`), and the unstable pkgs instance uses an openclaw-only `allowInsecurePredicate`, so no version string to hand-bump. |
-| rPackages.V8 icu78 force-link | `modules/r-dev/system.nix` (`nixpkgs.overlays`) | Drop when [nixpkgs#547532](https://github.com/NixOS/nixpkgs/issues/547532) is fixed (nixpkgs realigns ICU — nodejs-libv8 on ICU 78 vs system ICU 76 — or ships a working `r-V8`). Re-check on each `nix flake update`: `git revert` the overlay and confirm `gt`/`gtsummary` still build. | **Keep (added 2026-07-30)** — `gt`→`juicyjuice`→`V8` failed with undefined `icu_78::*` symbols; overlay links `icu78` (icu4c-78.3) into V8 via the r-modules `overrides` hook so `gt`/`gtsummary` build. Reported upstream: nixpkgs#547532. |
-| ~~fugazi-web sub-hourly tick sizing~~ | `modules/fugazi-web/default.nix` (removed) | — | **DROPPED 2026-08-28** — the imported `main` input now carries the sizing itself (`cadenceSeconds`/`tickTimeout` in its `flake.nix`), with the same arithmetic our shim copied: `TimeoutStartSec` = min(15m, 90% of cadence), budget = 85% of that. Verified byte-identical after removal — `5m` 270s/229, `15m` 810s/688, `30m` 765 budget, hourly and coarser still flat 900s. Upstream also adds what we never had: `AccuracySec` scaled to 2% of the period (18s at `15m`, 6s at `5m`) instead of systemd's flat 60s, and `RandomizedDelaySec` at min(30s, period/10). Helper defs and the `mkForce` branch are both gone. |
-| prefect fastapi lower-bound relax | `modules/prefect-server/system.nix` (imported by BOTH machines) | Drop when nixpkgs-26.05 ships a fastapi satisfying prefect's own bound — `nix eval nixpkgs#python3Packages.fastapi.version` >= 0.139.0 — or a later prefect relaxes it. Re-check on each `nix flake update`: delete the overlay and confirm `nix build .#nixosConfigurations.homeserver.pkgs.prefect` still succeeds. | **Keep (added 2026-08-28)** — the 2026-08-27 nixpkgs bump moved prefect 3.7.0 → 3.8.3 without the fastapi bump it wants. 3.8.3 declares `fastapi>=0.139.0,<1.0.0`, the branch still ships 0.136.3, and `pythonRuntimeDepsCheckHook` fails the build outright — taking down `system-path`, `home-manager-path` and `prefect-server.service`, i.e. every rebuild on both hosts. A stable-branch bump that landed half-done (unstable has the consistent pair: prefect 3.8.3 + fastapi 0.141.1). We relax the bound rather than bump fastapi, because the check is metadata-only and moving fastapi on the stable branch rebuilds every dependent against an untested version. Confirmed the pin is conservative, not load-bearing: under 0.136.3 `prefect.server.api.server.create_app(ephemeral=True)` returns a populated FastAPI app. |
-| immich source = nixpkgs-unstable | `machines/homeserver/default.nix` (`pkgsUnstable` in the top `let`, `my.cloud-suite.immich.package`) + `modules/cloud-suite/default.nix` (the `package` option) + `flake.nix` (`nixpkgs-unstable` input) | Drop when nixpkgs-26.05 carries Immich 3.x — `nix eval nixpkgs#immich.version` — or on the next NixOS release: delete the `package = pkgsUnstable.immich;` line and rebuild. The module option stays either way; it costs nothing and is the hatch for the next time this happens. | **Keep (added 2026-09-11)** — 26.05 ships 2.7.5, which upstream ended support for and nixpkgs then marked insecure (CVE-2026-59258, CVE-2026-82272). That is an eval failure of `system.build.toplevel`, so it takes down every rebuild of this host, not just Immich. Permitting it would leave an unpatched end-of-line release serving `photos.acpuchades.com` publicly, so we take 3.1.0 from unstable instead. Cross-channel is safe here because the NixOS module is the same module: 26.05's `services.immich` and unstable's differ only in a `host` docstring and a dropped `MPLCONFIGDIR`, nothing in it branches on the Immich version, and both channels ship VectorChord 1.1.1 (3.0 only requires having left pgvecto.rs, which we did long ago). ML follows the server automatically — the module reads `cfg.package.machine-learning`, a passthru, so the halves cannot drift. Both packages substitute from cache.nixos.org; nothing builds locally. Same `pkgsUnstable` instance as openclaw, which is now shared rather than imported twice. Note 2.x → 3.x migrates the database on first start and does not roll back. |
-| linux-firmware `yellow_carp_dmcub.bin` pin | `machines/homeserver/settings.nix` (`nixpkgs.overlays`, below `hardware.graphics.enable`) | Drop when linux-firmware ships a yellow_carp DMCUB at 0x0400004C or later — `xxd -s 16 -l 4` on `…/amdgpu/yellow_carp_dmcub.bin`, little-endian. Re-check on each `nix flake update`: delete the overlay, rebuild, **reboot** (firmware loads at amdgpu probe, so a `switch` proves nothing), and confirm `journalctl -b -k \| grep -c 'Error queueing DMUB'` reads 0. | **Keep (added 2026-09-15)** — linux-firmware 20260910 (in the 2026-09-11 lock bump) ships an *older* yellow_carp DMCUB than 20260810 did: 0x0400004A vs 0x0400004C. It is the only amdgpu blob this host loads that changed; toc/ta/asd are byte-identical. This board's PSP rejects it (`LOAD_IP_FW(0x6) … (0xFFFF0008)`, `failed to load ucode DMCUB(0x3D)`), so DMUB never starts and every display-core command then fails and logs itself ~5×/s forever — 1,237,377 in the 09-11→09-15 boot, zero in every boot before it. That retry loop pinned an `events` kworker at ~98% of a core continuously, holding Tctl at 91 °C with the fan at full; the noise was the reported symptom. Patch the single blob, not the package: the rest of 20260910 is wanted and there is nowhere to pin to anyway (nixpkgs-unstable carries the same 20260910). The blob is fetched from the upstream 20260810 tag and verified byte-identical (sha256 4bcb91d5…) to the one generation 569 ran for months. `amdgpu.dc=0` rejected: the iGPU also serves `/dev/dri/renderD128` to Jellyfin and Immich, and dropping DC on a DCN-only ASIC risks losing the render node and the local console on the one host we would then recover blind. |
+| Workaround | Location | Drop condition / re-check |
+|---|---|---|
+| Caddy plugin-set hash pin (`caddy.withPlugins` from `nix-caddy-withplugins`) | `my.caddy-plugins.hash` in `machines/homeserver/default.nix`; overlay nearby; input in `flake.nix` | Effectively permanent (nixpkgs#450289 closed: nixpkgs' own withPlugins hashes caddy+plugins together). Re-pin `hash` only when the plugin LIST changes. If the *base* FOD (`caddy-base-proxy`) fails instead, `nix flake update nix-caddy-withplugins` — and if its bot hasn't caught up, wait rather than hand-patch. |
+| OpenClaw skills hardlink staging | `skillsStageSeed` in `modules/openclaw/default.nix` | The skills loader silently drops any SKILL.md with nlink>=2, and `auto-optimise-store` hardlinks every store file — so store-path `extraDirs` load ZERO skills. ExecStartPre copies skills to `${stateDir}/nix-skills` (fresh inodes). Drop when the skills loader stops enforcing `rejectHardlinks` (the plugin loader already did in 2026.6.x). Re-check on each openclaw bump: `openclaw skills check` must show Total ≠ 0. |
+| OpenClaw source = nixpkgs-unstable | `pkgsUnstable` in `machines/homeserver/default.nix`; input in `flake.nix` | 26.05 freezes openclaw at 2026.5.7 (claude-cli exec approvals hang — no permission responder). Drop when 26.05 catches up; `nix flake update nixpkgs-unstable` to bump. |
+| OpenClaw insecure-package allowance | `allowInsecurePredicate` on `pkgsUnstable` in `machines/homeserver/default.nix` | Upstream's deliberate `knownVulnerabilities` (LLM prompt-injection). Won't be lifted; predicate is version-independent, nothing to hand-bump. |
+| rPackages.V8 icu78 force-link | overlay in `modules/r-dev/system.nix` | Drop when [nixpkgs#547532](https://github.com/NixOS/nixpkgs/issues/547532) is fixed. Re-check on each `nix flake update`: revert the overlay and confirm `gt`/`gtsummary` still **build** (not just eval). |
+| prefect fastapi lower-bound relax | overlay in `modules/prefect-server/system.nix` (imported by BOTH machines) | prefect 3.8.3 declares `fastapi>=0.139.0` but 26.05 ships 0.136.3; the runtime-deps check would fail every rebuild on both hosts. The pin is metadata-only (verified: the API app starts under 0.136.3). Drop when `nixpkgs#python3Packages.fastapi.version` >= 0.139.0 or prefect relaxes; re-check by deleting the overlay and building `.#nixosConfigurations.homeserver.pkgs.prefect`. |
+| immich source = nixpkgs-unstable | `pkgsUnstable.immich` in `machines/homeserver/default.nix`; `package` option in `modules/cloud-suite` | 26.05's 2.7.5 is EOL + marked insecure (an eval failure for the whole host, and it serves photos.acpuchades.com publicly). Cross-channel is safe: same NixOS module either side, ML follows via passthru, both substitute from cache. Note 2.x→3.x migrates the DB irreversibly on first start. Drop on the next NixOS release: delete the `package =` line. |
+| linux-firmware `yellow_carp_dmcub.bin` pin | overlay in `machines/homeserver/settings.nix` | linux-firmware 20260910 ships an *older* DMCUB (0x0400004A) that this board's PSP rejects — DMUB never starts, display-core errors log ~5×/s, a kworker pins a core and the fan runs full. Overlay swaps in the 20260810 blob (0x0400004C). Drop when upstream ships >= 0x0400004C (`xxd -s 16 -l 4`, little-endian). Re-check requires a **reboot** (firmware loads at amdgpu probe) + `journalctl -b -k | grep -c 'Error queueing DMUB'` = 0. Don't use `amdgpu.dc=0`: the iGPU serves Jellyfin/Immich transcoding and the local console. |
