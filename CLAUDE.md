@@ -74,6 +74,15 @@ Secrets are referenced in Nix as `config.sops.secrets.<name>.path` or via SOPS t
 
 ### Homeserver Services
 
+Host configuration lives in `machines/homeserver/default.nix`, with one service
+split out: `machines/homeserver/fugazi.nix` holds everything for fugazi-web
+(policy helpers, the `testing` instance, its overlay and assertions), which had
+grown to roughly half of `default.nix`. It is curried over the flake inputs —
+`(import ./fugazi.nix { inherit fugazi-web fugazi-web-testing; })` — because its
+own `imports` needs them, and a `_module.args` argument used in `imports` is an
+infinite recursion. Its sops secrets stay in `sops.nix` and its `ntfy-alert`
+units stay in `default.nix`, so those two lists each read as one thing.
+
 Defined in `machines/homeserver/services.nix` and modules:
 - Bitcoin (full node with tx indexing)
 - Prefect (workflow engine + PostgreSQL)
