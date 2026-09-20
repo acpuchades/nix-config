@@ -16,8 +16,14 @@
 ;; Avoid resizing flicker
 (setq frame-inhibit-implied-resize t)
 
-;; Prevent package.el from loading packages before init.el
-(setq package-enable-at-startup nil)
+;; package.el MUST activate at startup: nix's site-start.el only puts the
+;; store's elpa dirs on `load-path', it never loads their *-autoloads.el, and
+;; without those every autoloaded entry point (`gcmh-mode', the :hook/:commands
+;; deferral in every use-package form) is a void-function at startup.
+;; What has to stay out is ~/.emacs.d/elpa, where runtime installs once
+;; accumulated copies that shadowed the pinned Nix set — so point
+;; `package-user-dir' at an unused path instead of disabling activation.
+(setq package-user-dir (expand-file-name "elpa-unused" user-emacs-directory))
 
 ;; Disable package-quickstart: with Nix-managed packages the store paths
 ;; change on each rebuild, leaving the cache pointing at deleted paths.
