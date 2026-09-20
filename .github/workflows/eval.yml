@@ -3,13 +3,24 @@
 # this needs no builders, no aarch64-darwin runner (pure evaluation is
 # platform-independent), and no binary cache.
 #
-# One repository secret is required: NIX_GITHUB_PAT, a fine-grained PAT with
-# read access to acpuchades/fugazi-web — the two fugazi tarball inputs are a
-# PRIVATE repo fetched via netrc during evaluation (see flake.nix). Without
-# it the homeserver eval 404s on input fetch, so the job skips with a notice
-# rather than failing (fork PRs never receive secrets). Note the two inputs
-# track branch HEADS unpinned by flake.lock, so CI evaluates against the
-# branches' current tips — the same thing a rebuild on the box would fetch.
+# One repository secret is required: NIX_GITHUB_PAT, a CLASSIC PAT with the
+# `repo` scope — the two fugazi tarball inputs are a PRIVATE repo fetched via
+# netrc during evaluation (see flake.nix). It must be classic: github.com's
+# `/archive/refs/heads/*.tar.gz` endpoint does not accept fine-grained tokens
+# and answers 404 no matter how the token is scoped (NixOS/nixpkgs#321481).
+# That is the same 404 GitHub returns for a repo the token cannot see, so the
+# failure reads as a permissions problem and is not one — hence the preflight
+# below, which probes api.github.com to tell the two apart. Same token as the
+# homeserver's github/token (machines/homeserver/sops.nix).
+#
+# When the secret is absent the job skips with a notice rather than failing,
+# because fork PRs never receive secrets. When it is present but cannot read
+# the repo the job fails at the preflight below — deliberately, since on this
+# repo's own pushes a dud token means the evals are silently not running.
+#
+# Note the two inputs track branch HEADS unpinned by flake.lock, so CI
+# evaluates against the branches' current tips — the same thing a rebuild on
+# the box would fetch.
 name: eval
 
 on:
@@ -29,14 +40,57 @@ jobs:
         env:
           NIX_GITHUB_PAT: ${{ secrets.NIX_GITHUB_PAT }}
         run: |
-          if [ -z "$NIX_GITHUB_PAT" ]; then
+          set -euo pipefail
+
+          # Trim whitespace: a PAT pasted into the secrets UI with a trailing
+          # newline yields a netrc whose password line nix cannot use.
+          pat=$(printf '%s' "${NIX_GITHUB_PAT:-}" | tr -d '[:space:]')
+
+          if [ -z "$pat" ]; then
             echo "skip=true" >> "$GITHUB_ENV"
             echo "::notice::NIX_GITHUB_PAT not available (fork PR?) — skipping evals"
             exit 0
           fi
+
           umask 077
           printf 'machine github.com\n  login x-access-token\n  password %s\n' \
-            "$NIX_GITHUB_PAT" > "$RUNNER_TEMP/netrc"
+            "$pat" > "$RUNNER_TEMP/netrc"
+
+          # Preflight the credential with the exact request nix's tarball
+          # fetcher makes, against every fugazi input URL in flake.nix. Without
+          # this a token that cannot read the repo surfaces as a 300-line nix
+          # eval trace ending in a bare `HTTP error 404`, which reads like a
+          # broken flake rather than a broken secret. Authenticated, github.com
+          # 302s to codeload with a signed token in the URL; unauthenticated it
+          # 404s (GitHub does not reveal private repos with a 403).
+          urls=$(grep -oE 'https://github\.com/acpuchades/fugazi-web/archive/[^"]+\.tar\.gz' flake.nix | sort -u) || true
+          if [ -z "$urls" ]; then
+            echo "::error::no fugazi-web tarball inputs found in flake.nix — this preflight needs updating"
+            exit 1
+          fi
+          for url in $urls; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' \
+              --netrc-file "$RUNNER_TEMP/netrc" "$url")
+            case "$code" in
+              200|302) echo "ok ($code): $url" ; continue ;;
+            esac
+
+            # Failed. Ask api.github.com the same question with a Bearer
+            # header: it DOES accept fine-grained tokens, so a 200 here next to
+            # a 404 above means the token's permissions are fine and its TYPE
+            # is not.
+            api=$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $pat" \
+              -H "Accept: application/vnd.github+json" \
+              https://api.github.com/repos/acpuchades/fugazi-web)
+            if [ "$api" = 200 ]; then
+              echo "::error::NIX_GITHUB_PAT can read acpuchades/fugazi-web through api.github.com (HTTP 200) but not $url (HTTP $code) — that is the signature of a FINE-GRAINED token. github.com's archive endpoint only accepts classic tokens. Re-issue as a classic PAT with the 'repo' scope and re-set the secret; no amount of re-scoping a fine-grained one will fix it."
+            else
+              echo "::error::NIX_GITHUB_PAT cannot read acpuchades/fugazi-web (archive HTTP $code, api.github.com HTTP $api). The token is expired, revoked, or lacks the 'repo' scope. Re-issue a classic PAT with 'repo' and re-set the secret."
+            fi
+            exit 1
+          done
+
           echo "NIX_CONFIG=netrc-file = $RUNNER_TEMP/netrc" >> "$GITHUB_ENV"
 
       - name: Evaluate homeserver

@@ -208,8 +208,16 @@ in
       # BUILT-IN fetchers (fetchTarball/fetchGit, flake inputs) consult netrc-file /
       # access-tokens. NOT your shell's $GITHUB_TOKEN (the fetch has no login
       # environment). Root-owned 0400 so it never lands in world-readable
-      # /etc/nix/nix.conf (the reason for netrc over access-tokens). A fine-grained
-      # token needs Contents:read on the repo; a classic token needs `repo`.
+      # /etc/nix/nix.conf (the reason for netrc over access-tokens).
+      #
+      # It must be a CLASSIC token with the `repo` scope. A fine-grained token
+      # does NOT work here however it is scoped: github.com's
+      # `/archive/refs/heads/*.tar.gz` endpoint does not accept fine-grained
+      # tokens and answers 404 — the same 404 GitHub gives for a repo you
+      # cannot see, so it reads as a permissions problem and is not one
+      # (NixOS/nixpkgs#321481, the same reason fetchFromGitHub needs
+      # forceFetchGit). Only api.github.com and git-over-HTTPS take them, and
+      # neither is what the tarball fetcher hits.
       "github/token" = { mode = "0400"; };
 
       # Agent-IDENTITY secrets (the Telegram bot token + allowlisted ID) go under
