@@ -64,7 +64,7 @@
     '';
     home.file.".emacs.d/config/03-calendar.el".source = ./config/03-calendar.el;
 
-    # A real daemon on Linux (systemd user unit), so `emacsclient -a ""`
+    # A real daemon on Linux (systemd user unit), so `emacsclient -t -a ""`
     # (EDITOR/VISUAL) attaches instantly instead of cold-starting a private
     # daemon per invocation. Darwin has no HM unit for this; there init.el's
     # own server-start covers the interactive session.
