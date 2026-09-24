@@ -5,6 +5,17 @@
     enable = lib.mkEnableOption "Personal cloud suite (NextCloud + Collabora + Bitwarden + Immich)";
 
     nextcloud = {
+      # The NextCloud build. Exposed as an option because major upgrades are
+      # SEQUENTIAL — Nextcloud refuses to skip a major, so the host has to be
+      # able to say which major it is currently on and step it one at a time
+      # (33 -> 34 -> ...) as its data directory migrates.
+      package = lib.mkOption {
+        type = lib.types.package;
+        default = pkgs.nextcloud33;
+        defaultText = lib.literalExpression "pkgs.nextcloud33";
+        description = "NextCloud package (also the source of extraApps)";
+      };
+
       hostName = lib.mkOption {
         type = lib.types.str;
         description = "NextCloud hostname";
@@ -293,7 +304,7 @@
       enable = true;
       hostName = config.my.cloud-suite.nextcloud.hostName;
       datadir = config.my.cloud-suite.nextcloud.dataDir;
-      package = pkgs.nextcloud33;
+      package = config.my.cloud-suite.nextcloud.package;
       database.createLocally = true;
       configureRedis = true;
       maxUploadSize = config.my.cloud-suite.nextcloud.maxUploadSize;
