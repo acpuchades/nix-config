@@ -524,7 +524,7 @@ let
           # anything still living only there silently disappears.
           extraApps = [
             "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
-            "guests" "news" "nextpod" "notes" "richdocuments" "tables" "tasks"
+            "guests" "news" "nextpod" "notes" "richdocuments" "tasks"
             "twofactor_webauthn"
           ];
           # Probes status.php every 15 min; nextcloud-health is wired into
