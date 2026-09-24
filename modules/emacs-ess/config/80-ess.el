@@ -5,6 +5,7 @@
 ;; LSP for R — hooks OUTSIDE with-eval-after-load (eglot is deferred; see
 ;; 30-devel.el), only the server entry inside it.
 (add-hook 'ess-r-mode-hook #'eglot-ensure)
+(add-hook 'ess-r-mode-hook #'my/eglot-format-on-save) ; air formatting
 (with-eval-after-load 'eglot
   (add-to-list 'eglot-server-programs
                '(ess-r-mode . ("air" "language-server"))))
