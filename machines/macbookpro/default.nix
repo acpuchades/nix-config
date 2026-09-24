@@ -1,6 +1,7 @@
 {
   self,
   nix-darwin,
+  nixpkgs-unstable,
   home-manager,
   sops-nix,
   better-zen,
@@ -9,6 +10,24 @@
 }:
 
 let
+
+  # nixpkgs-unstable, for the packages this machine deliberately runs ahead of
+  # nixpkgs-26.05. One consumer today — claude-code, via
+  # ../../modules/claude-code/system.nix, which both machines import and which
+  # takes this set rather than importing unstable itself (the homeserver has one
+  # of these for openclaw and immich, and the module reusing it saves that host a
+  # second nixpkgs evaluation).
+  #
+  # claude-code is unfree, and this instance does NOT inherit the
+  # `nixpkgs.config.allowUnfree` in ./settings.nix: that option configures the
+  # module system's own pkgs, and this is a separate evaluation. The permit is a
+  # predicate on the package NAME rather than a blanket flag, so it stays scoped
+  # to the one package taken from here. `lib` comes from the unstable input
+  # because the plain `nixpkgs` one is not an argument of this file.
+  pkgsUnstable = import nixpkgs-unstable {
+    system = "aarch64-darwin";
+    config.allowUnfreePredicate = p: nixpkgs-unstable.lib.getName p == "claude-code";
+  };
 
   configuration = inputs@{ config, pkgs, ... }: {
 
@@ -41,7 +60,7 @@ in
     modules = import ../common.nix {
       host = "macbookpro";
       homeDirectory = "/Users/alex";
-      inherit sops-nix emacs-overlay;
+      inherit sops-nix emacs-overlay pkgsUnstable;
     } ++ [
       ./settings.nix
 

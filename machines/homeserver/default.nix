@@ -42,20 +42,33 @@ let
   inherit (import ./networks.nix) lanNetwork wgNetworks privateNetworks;
 
   # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
-  # deliberately runs ahead of nixpkgs-26.05. Two consumers today — openclaw and
-  # immich — each with its reason written at its use site below. Shared rather
-  # than imported per consumer because `import <nixpkgs>` is a full evaluation of
-  # the package set: doing it twice doubles that cost to produce two package sets
-  # that differ only in a config flag neither of them changes a derivation with.
+  # deliberately runs ahead of nixpkgs-26.05. Three consumers today: openclaw and
+  # immich, each with its reason written at its use site below, plus claude-code —
+  # that one via ../../modules/claude-code/system.nix, which both machines import
+  # and which takes this set as an argument rather than importing unstable again.
+  # Shared rather than imported per consumer because `import <nixpkgs>` is a full
+  # evaluation of the package set: doing it twice doubles that cost to produce two
+  # package sets that differ only in a config flag neither of them changes a
+  # derivation with.
+  #
+  # Both permits below are predicates on the package NAME rather than blanket
+  # flags, so each stays scoped to the one package that needs it and does not
+  # quietly bless anything else pulled from here — immich included, which is the
+  # whole point of taking it from unstable rather than permitting 26.05's.
   #
   # The insecure permit is openclaw's (upstream marks every release
-  # knownVulnerabilities for LLM prompt injection) and is written as a predicate
-  # on the package NAME, so it stays openclaw-only and does not quietly bless
-  # anything else that gets pulled from here — immich included, which is the
-  # whole point of taking it from unstable rather than permitting 26.05's.
+  # knownVulnerabilities for LLM prompt injection).
+  #
+  # The unfree permit is claude-code's. Note this instance does NOT inherit the
+  # host's `nixpkgs.config.allowUnfree` (settings.nix): that option configures the
+  # module system's own `pkgs`, and this is a separate nixpkgs evaluation, so an
+  # unfree package taken from here is refused unless permitted right here.
   pkgsUnstable = import nixpkgs-unstable {
     system = "x86_64-linux";
-    config.allowInsecurePredicate = p: lib.getName p == "openclaw";
+    config = {
+      allowInsecurePredicate = p: lib.getName p == "openclaw";
+      allowUnfreePredicate = p: lib.getName p == "claude-code";
+    };
   };
 
   configuration =
@@ -460,13 +473,7 @@ let
       # sources are fetched changes. Nothing but my.caddy-plugins consumes it.
       #
       # ./fugazi.nix contributes fugazi-web's overlay to this same list.
-      nixpkgs.overlays = [
-        nix-caddy-withplugins.overlays.default
-        # claude-code from unstable: 26.05 freezes at 2.1.148, too old for
-        # Claude 5-family models (sonnet-5/fable-5-1 need ≥2.1.251,
-        # opus-5-5 needs ≥2.1.280). Remove when 26.05 ships a current version.
-        (final: prev: { claude-code = pkgsUnstable.claude-code; })
-      ];
+      nixpkgs.overlays = [ nix-caddy-withplugins.overlays.default ];
 
       my.postgresql-server = {
         enable = true;
@@ -1049,7 +1056,7 @@ nixpkgs.lib.nixosSystem {
   modules = import ../common.nix {
     host = "homeserver";
     homeDirectory = "/home/alex";
-    inherit sops-nix emacs-overlay;
+    inherit sops-nix emacs-overlay pkgsUnstable;
   } ++ [
     configuration
     sops-nix.nixosModules.sops

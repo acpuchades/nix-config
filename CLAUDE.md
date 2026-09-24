@@ -63,7 +63,9 @@ Two conventions, split by half:
 Some modules pair `default.nix` (home-manager) with a `system.nix` (system
 layer) because home-manager refuses `nixpkgs.overlays` under `useGlobalPkgs`:
 `emacs-core` (emacs-overlay + nix-community cachix), `r-dev` (rstats-on-nix
-cachix), `prefect-server`. The `system.nix` trio is imported once, in
+cachix), `prefect-server`. `claude-code` is `system.nix` ONLY — its overlay's
+home-manager half is `users/alex/programs/claude-code.nix`, which needs nothing
+system-side beyond the overridden package. All four are imported once, in
 `machines/common.nix`.
 
 **Emacs modules** (11): `emacs-core`, `emacs-completion`, `emacs-ui`,
@@ -168,7 +170,7 @@ pattern); everything else is reachable only through Caddy.
 Each row carries bookkeeping tied to external state. On each `nix flake update`
 (or every few months), re-check and remove once the drop condition is met.
 Locations are given as greppable identifiers, not line numbers. Last reviewed:
-2026-09-19.
+2026-09-24.
 
 | Workaround | Location | Drop condition / re-check |
 |---|---|---|
@@ -179,5 +181,6 @@ Locations are given as greppable identifiers, not line numbers. Last reviewed:
 | rPackages.V8 icu78 force-link | overlay in `modules/r-dev/system.nix` | Drop when [nixpkgs#547532](https://github.com/NixOS/nixpkgs/issues/547532) is fixed. Re-check on each `nix flake update`: revert the overlay and confirm `gt`/`gtsummary` still **build** (not just eval). |
 | prefect fastapi lower-bound relax | overlay in `modules/prefect-server/system.nix` (imported by BOTH machines) | prefect 3.8.3 declares `fastapi>=0.139.0` but 26.05 ships 0.136.3; the runtime-deps check would fail every rebuild on both hosts. The pin is metadata-only (verified: the API app starts under 0.136.3). Drop when `nixpkgs#python3Packages.fastapi.version` >= 0.139.0 or prefect relaxes; re-check by deleting the overlay and building `.#nixosConfigurations.homeserver.pkgs.prefect`. |
 | immich source = nixpkgs-unstable | `pkgsUnstable.immich` in `machines/homeserver/default.nix`; `package` option in `modules/cloud-suite` | 26.05's 2.7.5 is EOL + marked insecure (an eval failure for the whole host, and it serves photos.acpuchades.com publicly). Cross-channel is safe: same NixOS module either side, ML follows via passthru, both substitute from cache. Note 2.x→3.x migrates the DB irreversibly on first start. Drop on the next NixOS release: delete the `package =` line. |
+| claude-code source = nixpkgs-unstable | `modules/claude-code/system.nix` (imported by `machines/common.nix`, so BOTH machines); the `pkgsUnstable` instance it is handed in each of `machines/{homeserver,macbookpro}/default.nix` | 26.05 freezes claude-code at 2.1.148, too old for the Claude 5 family (sonnet-5/fable-5-1 need >= 2.1.251, opus-5-5 needs >= 2.1.280). The overlay replaces `pkgs.claude-code` system-wide, which under `useGlobalPkgs` is also what alex's home-manager `programs.claude-code` gets. Each machine's `allowUnfreePredicate` is load-bearing: `pkgsUnstable` is a separate nixpkgs evaluation and does NOT see `nixpkgs.config.allowUnfree` from that host's `settings.nix`. Drop when 26.05 ships >= 2.1.280: delete the import from common.nix and the module; on the MacBook the whole `pkgsUnstable` binding goes with it, on the homeserver it stays for openclaw/immich (drop only its unfree predicate). |
 | linux-firmware `yellow_carp_dmcub.bin` pin | overlay in `machines/homeserver/settings.nix` | linux-firmware 20260910 ships an *older* DMCUB (0x0400004A) that this board's PSP rejects — DMUB never starts, display-core errors log ~5×/s, a kworker pins a core and the fan runs full. Overlay swaps in the 20260810 blob (0x0400004C). Drop when upstream ships >= 0x0400004C (`xxd -s 16 -l 4`, little-endian). Re-check requires a **reboot** (firmware loads at amdgpu probe) + `journalctl -b -k | grep -c 'Error queueing DMUB'` = 0. Don't use `amdgpu.dc=0`: the iGPU serves Jellyfin/Immich transcoding and the local console. |
 | CI runner image = `ubuntu-latest` | `runs-on` in `.github/workflows/eval.yml` | Not a pin, bookkeeping: GitHub starts migrating the `ubuntu-latest` label to Ubuntu 26 on 2026-10-19 ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)), so the eval's base image changes with no commit here. Nothing in the job is platform-specific — it is pure evaluation, no builds, no aarch64 — so the expected impact is none. Re-check the first run after that date and pin `ubuntu-24.04` ONLY if it actually breaks; pinning pre-emptively just moves the same bump to a date nobody is watching. |

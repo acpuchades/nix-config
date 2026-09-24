@@ -6,17 +6,21 @@
 # `sharedModules` breaks user-level sops with an unrelated-looking error).
 #
 # Returns a LIST of modules to splice into darwinSystem/nixosSystem, curried
-# over the flake inputs it needs: an argument used in `imports` cannot come
-# from `_module.args` (same pattern as machines/homeserver/fugazi.nix).
+# over what it needs: an argument used in `imports` cannot come from
+# `_module.args` (same pattern as machines/homeserver/fugazi.nix). Mostly flake
+# inputs, plus `pkgsUnstable` — each machine instantiates nixpkgs-unstable for
+# its own system and hands the set over, so a host that already has one is not
+# made to evaluate a second.
 #
 # Platform-specific things stay in each machine: the sops and home-manager
 # platform modules (darwinModules vs nixosModules), packages, settings.
-{ host, homeDirectory, sops-nix, emacs-overlay }:
+{ host, homeDirectory, sops-nix, emacs-overlay, pkgsUnstable }:
 
 [
   ../modules/r-dev/system.nix
   ../modules/prefect-server/system.nix
   (import ../modules/emacs-core/system.nix { inherit emacs-overlay; })
+  (import ../modules/claude-code/system.nix { inherit pkgsUnstable; })
 
   {
     home-manager.useGlobalPkgs = true;
