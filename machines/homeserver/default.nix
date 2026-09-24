@@ -512,6 +512,7 @@ let
           package = pkgsUnstable.immich;
         };
         nextcloud = {
+          package = pkgs.nextcloud34;
           hostName = "cloud.acpuchades.com";
           adminPasswordFile = config.sops.secrets."nextcloud/admin".path;
           maxUploadSize = "2G";
