@@ -10,7 +10,9 @@
                             (tool-bar-lines       .   0)
                             (vertical-scroll-bars . nil)))
 
-(when (eq window-system 'ns)
+;; `featurep', not `window-system': the launchd daemon has no NS frame yet at
+;; this point, but its client frames still read default-frame-alist.
+(when (featurep 'ns)
   (add-to-list 'default-frame-alist '(ns-transparent-titlebar . t)))
 
 ;; Avoid resizing flicker

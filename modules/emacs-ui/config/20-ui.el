@@ -19,7 +19,9 @@
 
 ;; Auto switch theme based on system appearance
 (use-package auto-dark
-  :if (display-graphic-p)
+  ;; The daemon has no GUI frame at init, but its clients do; detection
+  ;; is osascript, so it works frameless.
+  :if (or (daemonp) (display-graphic-p))
   :after catppuccin-theme
   :custom
   (auto-dark-allow-osascript t) ;; macOS detection
@@ -29,7 +31,7 @@
   :init
   (auto-dark-mode 1)
   :hook
-  (window-setup . my/apply-system-appearance)
+  (my/first-graphic-frame . my/apply-system-appearance)
   (auto-dark-dark-mode  . my/enable-dark-mode)
   (auto-dark-light-mode . my/enable-light-mode))
 
@@ -57,7 +59,14 @@
                      (recents   . 5)
                      (bookmarks . 5)))
   :config
-  (dashboard-setup-startup-hook))
+  (dashboard-setup-startup-hook)
+  ;; The startup hook never fires for a daemon (its argv isn't empty), so
+  ;; client frames would open on *scratch*; build the dashboard for them.
+  (when (daemonp)
+    (setq initial-buffer-choice
+          (lambda ()
+            (dashboard-open)
+            (get-buffer dashboard-buffer-name)))))
 
 ;; Doom modeline
 (use-package doom-modeline

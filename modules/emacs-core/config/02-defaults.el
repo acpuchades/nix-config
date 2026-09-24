@@ -8,6 +8,30 @@
 (unless (or (daemonp) (server-running-p))
   (server-start))
 
+;; Setup that needs a graphical frame (fonts, appearance) goes on this hook,
+;; not at load time: under the launchd daemon, init runs with no GUI frame, so
+;; `display-graphic-p'/`find-font' checks would silently skip it for every
+;; client. Runs once: after init in a GUI session, or when the daemon makes
+;; its first GUI client frame (a `emacsclient -t' frame does not count).
+(defvar my/first-graphic-frame-hook nil
+  "Hook run once, on the first graphical frame.")
+
+(defun my/run-first-graphic-frame-hook ()
+  (when (display-graphic-p)
+    (remove-hook 'server-after-make-frame-hook #'my/run-first-graphic-frame-hook)
+    (remove-hook 'window-setup-hook #'my/run-first-graphic-frame-hook)
+    (run-hooks 'my/first-graphic-frame-hook)))
+(add-hook 'server-after-make-frame-hook #'my/run-first-graphic-frame-hook)
+(add-hook 'window-setup-hook #'my/run-first-graphic-frame-hook)
+
+;; A daemon's new NS frame opens behind the app that ran emacsclient
+;; (e.g. Emacs Client.app); pull it to the front.
+(when (featurep 'ns)
+  (add-hook 'server-after-make-frame-hook
+            (lambda ()
+              (when (display-graphic-p)
+                (select-frame-set-input-focus (selected-frame))))))
+
 ;; Disable bell sounds
 (setq ring-bell-function 'ignore)
 
@@ -66,24 +90,29 @@
                     :family "FiraCode Nerd Font Mono"
                     :height 130)
 
-;; Proper Unicode symbols first
-(when (find-font (font-spec :family "Noto Sans Symbols2"))
-  (set-fontset-font t 'symbol "Noto Sans Symbols2" nil 'prepend))
-(when (find-font (font-spec :family "Noto Sans Symbols"))
-  (set-fontset-font t 'symbol "Noto Sans Symbols"  nil 'prepend))
+;; Fontset fallbacks. `find-font' needs a graphical frame, which the launchd
+;; daemon lacks at init, so these wait for the first GUI frame.
+(defun my/setup-fontset-fallbacks ()
+  "Prepend symbol/emoji fallback fonts to the default fontset."
+  ;; Proper Unicode symbols first
+  (when (find-font (font-spec :family "Noto Sans Symbols2"))
+    (set-fontset-font t 'symbol "Noto Sans Symbols2" nil 'prepend))
+  (when (find-font (font-spec :family "Noto Sans Symbols"))
+    (set-fontset-font t 'symbol "Noto Sans Symbols"  nil 'prepend))
 
-;; Good idea on macOS: ensure emoji fallback too
-(when (find-font (font-spec :family "Apple Color Emoji"))
-  (set-fontset-font t 'emoji (font-spec :family "Apple Color Emoji") nil 'prepend))
+  ;; Good idea on macOS: ensure emoji fallback too
+  (when (find-font (font-spec :family "Apple Color Emoji"))
+    (set-fontset-font t 'emoji (font-spec :family "Apple Color Emoji") nil 'prepend))
 
-;; Emoji fallback
-(when (find-font (font-spec :family "Noto Color Emoji"))
-  (set-fontset-font t 'emoji "Noto Color Emoji" nil 'prepend))
+  ;; Emoji fallback
+  (when (find-font (font-spec :family "Noto Color Emoji"))
+    (set-fontset-font t 'emoji "Noto Color Emoji" nil 'prepend))
 
-;; Prefer Symbols NF for private-use glyphs (NF v3)
-(when (find-font (font-spec :family "Symbols Nerd Font Mono"))
-  (set-fontset-font t 'symbol  (font-spec :family "Symbols Nerd Font Mono") nil 'prepend)
-  (set-fontset-font t 'unicode (font-spec :family "Symbols Nerd Font Mono") nil 'prepend))
+  ;; Prefer Symbols NF for private-use glyphs (NF v3)
+  (when (find-font (font-spec :family "Symbols Nerd Font Mono"))
+    (set-fontset-font t 'symbol  (font-spec :family "Symbols Nerd Font Mono") nil 'prepend)
+    (set-fontset-font t 'unicode (font-spec :family "Symbols Nerd Font Mono") nil 'prepend))
 
-(when (find-font (font-spec :family "Unifont"))
-  (set-fontset-font t 'unicode "Unifont" nil 'append))
+  (when (find-font (font-spec :family "Unifont"))
+    (set-fontset-font t 'unicode "Unifont" nil 'append)))
+(add-hook 'my/first-graphic-frame-hook #'my/setup-fontset-fallbacks)

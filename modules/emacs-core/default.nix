@@ -61,10 +61,54 @@
   # exec-path-from-shell under (daemonp). A GUI Emacs started later sees this
   # server running and skips its own server-start (02-defaults.el).
   services.emacs.enable = pkgs.stdenv.isLinux;
+
+  # "Emacs Client.app": the GUI entry point to that daemon (Spotlight, Home
+  # Manager Apps). It opens a frame on the running server (--reuse-frame
+  # raises an existing one) instead of paying Emacs.app's cold start. It
+  # falls back to the standalone Emacs.app if the daemon is down, e.g. while
+  # a rebuild restarts it. LSUIElement keeps this launcher's own Dock icon
+  # hidden, so the daemon's Emacs owns the Dock. It is a shell script, not an
+  # AppleScript applet, so Finder's "Open With" hands it no files.
+  home.packages = lib.optional pkgs.stdenv.isDarwin (
+    let emacs = config.programs.emacs.finalPackage; in
+    pkgs.runCommand "emacs-client-app" { } ''
+      contents="$out/Applications/Emacs Client.app/Contents"
+      mkdir -p "$contents/MacOS" "$contents/Resources"
+      cp ${emacs}/Applications/Emacs.app/Contents/Resources/Emacs.icns "$contents/Resources/"
+      cat > "$contents/Info.plist" <<'EOF'
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>CFBundleName</key><string>Emacs Client</string>
+        <key>CFBundleIdentifier</key><string>org.nix-community.home.emacs-client</string>
+        <key>CFBundleExecutable</key><string>emacs-client</string>
+        <key>CFBundleIconFile</key><string>Emacs</string>
+        <key>CFBundlePackageType</key><string>APPL</string>
+        <key>LSUIElement</key><true/>
+      </dict>
+      </plist>
+      EOF
+      cat > "$contents/MacOS/emacs-client" <<'EOF'
+      #!/bin/sh
+      ${emacs}/bin/emacsclient --no-wait --reuse-frame "$@" 2>/dev/null \
+        || exec /usr/bin/open -a ${emacs}/Applications/Emacs.app --args "$@"
+      EOF
+      chmod +x "$contents/MacOS/emacs-client"
+    ''
+  );
   launchd.agents.emacs-daemon = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
       ProgramArguments = [ "${config.programs.emacs.finalPackage}/bin/emacs" "--fg-daemon" ];
+      # Home-manager restarts an agent only when its plist bytes change, so a
+      # rebuild that touched only ~/.emacs.d left the daemon on the old config.
+      # Every file deployed there (across all emacs-* modules and
+      # 99-personal.el), collected into one store path, makes any config edit
+      # change the plist. This restart drops unsaved buffers in the daemon.
+      EnvironmentVariables.EMACS_CONFIG = toString (pkgs.linkFarm "emacs-d-config"
+        (lib.mapAttrsToList (_: f: { name = f.target; path = f.source; })
+          (lib.filterAttrs (_: f: lib.hasPrefix ".emacs.d/" f.target) config.home.file)));
       RunAtLoad = true;
       KeepAlive = true;
       StandardErrorPath = "/tmp/emacs-daemon.err";
