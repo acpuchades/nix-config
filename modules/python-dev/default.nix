@@ -23,6 +23,7 @@
 
     home.packages = with pkgs; [
       (python3.withPackages python-pkgs)
+      black           # formatter (blacken-mode in modules/emacs-python)
       mamba-cpp
       pyright
       ruff

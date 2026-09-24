@@ -21,6 +21,9 @@
 
       (rWrapper.override { packages = r-pkgs; })
       (radianWrapper.override { packages = r-pkgs; })
+      air-formatter   # R formatter + language server (`air format`, `air language-server`)
+      pandoc          # R Markdown / knitr rendering
+      texliveSmall    # PDF output from R Markdown, R CMD check manuals
     ];
   };
 }

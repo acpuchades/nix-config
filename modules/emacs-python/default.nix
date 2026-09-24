@@ -13,11 +13,9 @@
   # option. (An earlier `enable` gate here was never set anywhere, so this
   # module silently produced nothing on both hosts.)
   config = {
-    # blacken shells out to black; pyright itself comes from modules/python-dev
-    # (the *-dev modules own toolchains, the emacs-* modules own elisp).
-    home.packages = with pkgs; [
-      black
-    ];
+    # blacken shells out to black; black and pyright come from
+    # modules/python-dev (the *-dev modules own toolchains, the emacs-*
+    # modules own elisp).
 
     # Paquetes de Emacs
     programs.emacs = {

@@ -1,6 +1,6 @@
 ;; Emacs Speaks Statistics
-;; R itself comes from modules/r-dev (rWrapper); the `air` language server
-;; below from this module's home.packages (air-formatter).
+;; R itself (rWrapper) and the `air` language server below (air-formatter)
+;; both come from modules/r-dev.
 
 ;; LSP for R — hooks OUTSIDE with-eval-after-load (eglot is deferred; see
 ;; 30-devel.el), only the server entry inside it.

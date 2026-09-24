@@ -10,13 +10,9 @@
   };
 
   config = {
-    # System packages needed for ESS. R itself (rWrapper + packages) comes
-    # from modules/r-dev — this module only adds what ESS needs on top.
-    home.packages = with pkgs; [
-      air-formatter    # LSP formatter for R
-      pandoc          # For R Markdown
-      texliveSmall    # For PDF generation from R Markdown
-    ];
+    # R, the air language server and the R Markdown toolchain (pandoc,
+    # texliveSmall) come from modules/r-dev — the *-dev modules own
+    # toolchains, the emacs-* modules own elisp.
 
     # Configure Emacs with ESS packages
     programs.emacs = {
