@@ -460,7 +460,13 @@ let
       # sources are fetched changes. Nothing but my.caddy-plugins consumes it.
       #
       # ./fugazi.nix contributes fugazi-web's overlay to this same list.
-      nixpkgs.overlays = [ nix-caddy-withplugins.overlays.default ];
+      nixpkgs.overlays = [
+        nix-caddy-withplugins.overlays.default
+        # claude-code from unstable: 26.05 freezes at 2.1.148, too old for
+        # Claude 5-family models (sonnet-5/fable-5-1 need ≥2.1.251,
+        # opus-5-5 needs ≥2.1.280). Remove when 26.05 ships a current version.
+        (final: prev: { claude-code = pkgsUnstable.claude-code; })
+      ];
 
       my.postgresql-server = {
         enable = true;
