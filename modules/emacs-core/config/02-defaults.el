@@ -20,10 +20,11 @@
 
 (set-language-environment  "Spanish")
 
+;; UTF-8 as the preferred default, detection left intact. Never setq
+;; coding-system-for-read/-write globally: they are let-binding overrides, and
+;; a global value forces EVERY read/write to UTF-8 (latin-1 files mangled).
 (set-charset-priority     'unicode)
-(setq locale-coding-system  'utf-8
-    coding-system-for-read  'utf-8
-    coding-system-for-write 'utf-8)
+(setq locale-coding-system  'utf-8)
 (set-terminal-coding-system 'utf-8)
 (set-keyboard-coding-system 'utf-8)
 (prefer-coding-system       'utf-8)

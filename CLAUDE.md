@@ -71,17 +71,25 @@ system-side beyond the overridden package. All four are imported once, in
 **Emacs modules** (11): `emacs-core`, `emacs-completion`, `emacs-ui`,
 `emacs-dev`, `emacs-org`, `emacs-ess`, `emacs-python`, `emacs-nix`,
 `emacs-rust`, `emacs-golang`, `emacs-copilot`. ELisp lives in each module's
-`config/` (or is generated inline) and lands in `~/.emacs.d/config/`, where
-init.el (a bare loader) loads files in FILENAME order — the NN prefix is the
-only cross-module ordering there is. Each module owns a reserved prefix band
-(new files go inside the owner's band): 00-09 core, 10-19 completion,
-20-29 ui, 30-39 dev, 40-49 org, 50-59 copilot, 60+ one language apiece
-(60 python, 65 nix, 70 rust, 75 go, 80 ess), 99 personal (users/alex, never
-a module). Conventions: the `*-dev` modules own
+`config/` (only core's `01-nix-integration.el` is generated inline, for store
+paths) and lands in `~/.emacs.d/config/`, where init.el (a bare loader) loads
+files in FILENAME order — the NN prefix is the only cross-module ordering
+there is. Only three positions are load-bearing: 00 first (use-package
+setup), 01 (Nix paths), 99 last; everything between is use-package-deferred,
+so its order is organisational. Each module owns a reserved prefix band (new
+files go inside the owner's band): 00-09 core, 10-19 completion, 20-29 ui,
+30-39 dev, 40-49 org, 50-59 integrations (copilot today; AI/assistant-style
+add-ons), 60-98 one language module apiece at any free number (60 python,
+65 nix, 70 rust, 75 go, 80 ess), 99 personal (users/alex, never a module —
+paths, capture templates, TODO keywords). Conventions: the `*-dev` modules own
 toolchain binaries (LSP servers, formatters), the `emacs-*` modules own elisp;
 eglot-ensure hooks go directly on mode hooks (never inside
-`with-eval-after-load 'eglot` — eglot is deferred); packages come only from
-Nix (`use-package-always-ensure` is nil, no package-archives).
+`with-eval-after-load 'eglot` — eglot is deferred); format-on-save goes
+through `my/eglot-format-on-save` (30-devel.el, guarded so a failing format
+never aborts a save); every package is deferred unless it must act at startup
+(a bare `(use-package foo)` loads it eagerly); packages come only from Nix
+(`use-package-always-ensure` is nil, no package-archives) and are added via
+`programs.emacs.extraPackages` directly (it merges across modules).
 
 **Development modules**: `python-dev`, `r-dev`, `rust-dev`, `golang-dev`,
 `js-dev`, `c-dev`, `nix-dev`, and `android-dev` (macbookpro only).

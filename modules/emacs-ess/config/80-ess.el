@@ -106,13 +106,14 @@
 
 ;; R-Markdown support. Only .Rmd goes to polymode — claiming plain .md from
 ;; here would drag every markdown file in every repo into polymode just
-;; because the statistics module is installed.
-(use-package polymode)
-(use-package poly-R)
-(use-package poly-markdown
+;; because the statistics module is installed (.md is emacs-dev's).
+;; All deferred: a bare (use-package poly-R) requires it at startup, which
+;; drags in all of ESS and TRAMP (~0.8s). poly-markdown+r-mode lives in
+;; poly-R, so the :mode goes there.
+(use-package polymode :defer t)
+(use-package poly-markdown :defer t)
+(use-package poly-R
   :mode ("\\.Rmd\\'" . poly-markdown+r-mode))
-(use-package markdown-mode
-  :mode "\\.md\\'")
 
 ;; Quarto support
 (use-package quarto-mode

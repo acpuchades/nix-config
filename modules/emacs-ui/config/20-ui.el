@@ -23,7 +23,9 @@
   :after catppuccin-theme
   :custom
   (auto-dark-allow-osascript t) ;; macOS detection
-  (auto-dark-polling-interval-seconds 2) ;; Check every 2s
+  ;; Vanilla NS Emacs has no appearance-change hook, so this spawns
+  ;; osascript each poll — 2s meant ~43k processes a day.
+  (auto-dark-polling-interval-seconds 30)
   :init
   (auto-dark-mode 1)
   :hook
@@ -49,10 +51,11 @@
   (dashboard-icon-type 'nerd-icons)
   (dashboard-set-heading-icons t)
   (dashboard-set-file-icons t)
+  ;; No `agenda' item: it loads org + org-agenda (~0.8s) at every startup.
+  ;; The agenda is one `C-c a' away.
   (dashboard-items '((projects  . 5)
                      (recents   . 5)
-                     (bookmarks . 5)
-                     (agenda    . 5)))
+                     (bookmarks . 5)))
   :config
   (dashboard-setup-startup-hook))
 

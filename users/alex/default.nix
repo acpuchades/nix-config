@@ -145,13 +145,17 @@
   ];
 
   home.sessionVariables = {
-    EDITOR = "emacsclient -t -a ''";
+    # The empty fallback goes through ALTERNATE_EDITOR, not `-a ''` inline:
+    # tools that exec $EDITOR without a shell would pass the two quote
+    # characters literally as the fallback editor's name.
+    EDITOR = "emacsclient -t";
+    ALTERNATE_EDITOR = "";
     PAGER = "bat --paging=always";
     # Syntax-highlight plain `less` by piping files through bat, which bundles
     # syntaxes for Rust, Go, Python, Nix, etc. — one preprocessor covers them all.
     LESSOPEN = "|${pkgs.bat}/bin/bat --color=always %s";
     LESS = "-R";
-    VISUAL = "emacsclient -t -a ''";
+    VISUAL = "emacsclient -t";
     LANG = "es_ES.UTF-8";
     LC_ALL = "es_ES.UTF-8";
     LC_TIME = "en_DK.UTF-8";

@@ -76,9 +76,11 @@
   (global-auto-revert-mode 1)
   (setq auto-revert-verbose nil))
 
-;; EditorConfig support
+;; EditorConfig support (built into Emacs 30; with emacs-copilot imported,
+;; copilot's MELPA dependency copy is the one that loads — same API)
 (use-package editorconfig
-  :config (editorconfig-mode 1))
+  :ensure nil
+  :init (editorconfig-mode 1))
 
 ;; Envrc support — the ONE direnv integration (buffer-local environment).
 ;; Don't add the `direnv' package beside it: the two hook the same lifecycle
@@ -111,38 +113,33 @@
   :hook
   (eshell-exit . my/eshell-toggle-close-window-on-exit))
 
-;; Fix PATH in GUI Emacs (macOS)
+;; Fix PATH in GUI Emacs (macOS) and in the daemon, whose launchd/systemd
+;; environment is just as bare. "-l" only: the default adds "-i", which runs
+;; the whole interactive zshrc (oh-my-zsh) — ~0.7s vs ~0.04s here, and a
+;; login shell already yields the same PATH directories.
 (use-package exec-path-from-shell
-  :if (memq window-system '(mac ns x))
+  :if (or (daemonp) (memq window-system '(mac ns x)))
   :init
-  (setq exec-path-from-shell-variables '("MANPATH" "PATH"))
+  (setq exec-path-from-shell-variables '("MANPATH" "PATH")
+        exec-path-from-shell-arguments '("-l"))
   :config (exec-path-from-shell-initialize))
 
-;; Smarter GC management
+;; Smarter GC management. gcmh is the ONE owner of gc-cons-threshold after
+;; startup (early-init.el holds it at max until then): high while you work,
+;; a GC when idle. No minibuffer hooks — they'd just fight it.
 (use-package gcmh
-  :preface
-  ;; Defer GC while the minibuffer is active (snappier M-x etc.)
-  (defun my/gc-minibuffer-setup ()
-    (setq gc-cons-threshold most-positive-fixnum))
-  ;; Restore a sane GC after minibuffer exits
-  (defun my/gc-minibuffer-exit ()
-    (setq gc-cons-threshold (* 128 1024 1024)
-          gc-cons-percentage 0.1))
-  :init
-  (gcmh-mode 1)
+  :hook (emacs-startup . gcmh-mode)
   :custom
   (gcmh-idle-delay 2)
-  (gcmh-high-cons-threshold (* 64 1024 1024))
-  :hook
-  ((minibuffer-setup . my/gc-minibuffer-setup)
-   (minibuffer-exit  . my/gc-minibuffer-exit)))
+  (gcmh-high-cons-threshold (* 64 1024 1024)))
 
-
-
-;; Auto-save files when idle
+;; Save files on buffer/window switch and focus loss. Not on idle: a save
+;; runs before-save-hook (whitespace-cleanup, LSP format-on-save), and doing
+;; that on every typing pause reformats under the cursor and stalls on the
+;; synchronous LSP round-trip.
 (use-package super-save
   :init (super-save-mode 1)
-  :custom (super-save-auto-save-when-idle t))
+  :custom (super-save-auto-save-when-idle nil))
 
 ;; TRAMP
 (use-package tramp

@@ -14,11 +14,32 @@
 ;; eglot-server-programs entry goes inside with-eval-after-load.
 (use-package eglot
   :ensure nil
+  :defer t ; :custom alone doesn't defer — without this eglot loads at startup
   :custom
   (eglot-sync-connect nil)
   (flymake-no-changes-timeout 0.8)
   (flymake-start-on-save-buffer t)
   (flymake-start-on-newline nil))
+
+(defun my/eglot-format-on-save (&optional organize-imports)
+  "Format the buffer through eglot before each save, in this buffer only.
+With ORGANIZE-IMPORTS, run the server's organize-imports action first.
+Meant for a language's mode hook (60+ files). Guarded: an error in
+`before-save-hook' ABORTS the save, so a buffer the server isn't managing
+\(no project, server not up yet under `eglot-sync-connect' nil) must still
+be savable."
+  (add-hook 'before-save-hook
+            (lambda ()
+              (when (and (fboundp 'eglot-managed-p) (eglot-managed-p))
+                (when organize-imports
+                  (ignore-errors
+                    (eglot-code-action-organize-imports (point-min) (point-max))))
+                (ignore-errors (eglot-format-buffer))))
+            nil t))
+
+;; Markdown (plain .md; .Rmd/.qmd belong to polymode in 80-ess.el)
+(use-package markdown-mode
+  :mode "\\.md\\'")
 
 ;; Git interface
 (use-package magit

@@ -40,10 +40,11 @@
       file-name-handler-alist-old file-name-handler-alist
       file-name-handler-alist nil)
 
+;; Only percentage and handlers are restored here: gc-cons-threshold is
+;; handed to gcmh-mode (00-core.el), which starts on this same hook.
 (add-hook 'emacs-startup-hook
   (lambda ()
-    (setq gc-cons-threshold (* 128 1024 1024)
-          gc-cons-percentage 0.1
+    (setq gc-cons-percentage 0.1
           file-name-handler-alist file-name-handler-alist-old)))
 
 ;; No package-archives on purpose: packages come from Nix, and configured

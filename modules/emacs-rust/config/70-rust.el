@@ -8,8 +8,7 @@
   (rust-ts-mode-indent-offset 4)
   :hook
   (rust-ts-mode . eglot-ensure)
-  (rust-ts-mode . (lambda ()
-                    (add-hook 'before-save-hook #'eglot-format-buffer nil t))))
+  (rust-ts-mode . my/eglot-format-on-save)) ; rustfmt via rust-analyzer
 
 ;; Cargo command integration
 (use-package cargo-mode

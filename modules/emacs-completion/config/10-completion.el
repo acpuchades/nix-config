@@ -84,12 +84,14 @@
 (use-package marginalia
   :init (marginalia-mode))
 
-;; Nerd icons for corfu
+;; Nerd icons for corfu. The formatter is autoloaded, so registering it
+;; doesn't load nerd-icons (every icon set) at startup — that waits for the
+;; first popup.
 (use-package nerd-icons-corfu
-  :after corfu
-  :config
-  (add-to-list 'corfu-margin-formatters
-               #'nerd-icons-corfu-formatter))
+  :defer t
+  :init
+  (with-eval-after-load 'corfu
+    (add-to-list 'corfu-margin-formatters #'nerd-icons-corfu-formatter)))
 
 ;; Fuzzy matching
 (use-package orderless

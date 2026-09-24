@@ -19,9 +19,10 @@
 (use-package rainbow-delimiters
   :hook ((prog-mode conf-mode) . rainbow-delimiters-mode))
 
-;; Rainbow mode
+;; Rainbow mode — only where colour literals are the content: scanning every
+;; prog buffer for them is font-lock work nearly all code never needs.
 (use-package rainbow-mode
-  :hook ((css-mode html-mode conf-mode prog-mode) . rainbow-mode)
+  :hook ((css-mode css-ts-mode html-mode conf-mode) . rainbow-mode)
   :custom (rainbow-x-colors nil)) ; avoid huge X11 name list in completions
 
 ;; Which-key help
@@ -39,7 +40,8 @@
   (whitespace-style '(
                       empty
                       face
-                      spaces
+                      ;; no `spaces': a face on every space in every buffer
+                      ;; is pure font-lock cost for an invisible result
                       space-before-tab
                       space-after-tab
                       tabs

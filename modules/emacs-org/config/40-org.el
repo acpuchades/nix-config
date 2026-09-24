@@ -1,4 +1,5 @@
-;; Org mode tweaks
+;; Org mode tweaks. Mechanism only: where the files live, the capture
+;; templates and the TODO keywords they use are personal (99-personal.el).
 (use-package org
   :mode ("\\.org\\'" . org-mode)
   :bind
@@ -7,12 +8,6 @@
   :hook
   (org-mode . org-indent-mode)
   (org-mode . variable-pitch-mode)
-  :init
-  (setq diary-file
-        (expand-file-name "~/Org/diary"))
-  (setq org-agenda-files
-        (directory-files-recursively
-         (expand-file-name "~/Org") "\\.org\\'"))
   :custom
   (org-agenda-include-diary t)
   (org-enforce-todo-dependencies t)
@@ -23,30 +18,6 @@
   (org-use-fast-todo-selection t)
   (org-log-done 'time)
   (org-startup-folded 'showeverything)
-  (org-refile-targets
-   '(("~/Org/tasks.org" :maxlevel . 3)
-     (org-agenda-files  :maxlevel . 2)))
-  (org-refile-target-verify-function
-   (lambda ()
-     (not (and (buffer-file-name)
-               (string-match-p "inbox\\.org" (buffer-file-name))))))
-  (org-default-notes-file "~/Org/inbox.org")
-  (org-capture-templates
-   '(("i" "Entrada" entry
-      (file "~/Org/inbox.org")
-      "* %?\n%U\n")
-     ;; TAREA is the actual TODO keyword (see org-todo-keywords in
-     ;; 99-personal.el) — a non-keyword here captures a plain headline that
-     ;; no agenda or todo list ever shows.
-     ("t" "Tarea" entry
-      (file+headline "~/Org/tasks.org" "Tareas")
-      "* TAREA %?")
-     ("e" "Evento" entry
-      (file+headline "~/Org/events.org" "Eventos")
-      "* %^{Título}\n%^{Fecha}T\n%?")
-     ("n" "Nota" entry
-      (file+headline "~/Org/notes.org" "Notas")
-      "* %?\n%U\n")))
   :config
   (set-face-attribute 'org-ellipsis nil :underline nil))
 
@@ -60,7 +31,6 @@
   (org-pretty-entities t))
 
 (use-package org-roam
-  :custom (org-roam-directory "~/Org/Roam")
   :bind
   (("C-c n l" . org-roam-buffer-toggle)
    ("C-c n f" . org-roam-node-find)
