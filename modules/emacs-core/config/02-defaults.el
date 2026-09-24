@@ -32,6 +32,14 @@
               (when (display-graphic-p)
                 (select-frame-set-input-focus (selected-frame))))))
 
+;; Rebuilds restart the daemon whenever the config changes (its launchd
+;; agent, emacs-core/default.nix), and launchd stops it with SIGTERM, which
+;; runs kill-emacs-hook. Auto-save first: unsaved edits go to their
+;; auto-save files (var/auto-save/), never over the real file, and the next
+;; visit offers `recover-this-file'. Non-file buffers still go.
+(when (daemonp)
+  (add-hook 'kill-emacs-hook (lambda () (do-auto-save t))))
+
 ;; Disable bell sounds
 (setq ring-bell-function 'ignore)
 
