@@ -102,7 +102,7 @@ let
         ../../modules/media-server
         ../../modules/print-server
         ../../modules/geocoding
-        ../../modules/openclaw
+        ../../agents/eva
         ../../modules/tor-bridge
         ../../modules/push-notifications
         ../../modules/mail-server
@@ -686,14 +686,10 @@ let
         # SHARED across all agent instances — the one OpenClaw build they all run.
         package = pkgsUnstable.openclaw;
 
-        # A single agent for now: eva (Telegram bot eva_lebbot), with her own OS
-        # user, home, memory/state dir (/var/lib/openclaw/eva) and gateway service
-        # (openclaw-eva.service). Her full instance config lives in its own file;
-        # additional agents would be added as sibling `instances.<name>` imports,
-        # each its own user, bot token and state (only `package` here is shared).
-        instances.eva = import ../../users/alex/agents/eva.nix {
-          inherit config pkgs;
-        };
+        # Agents deployed on this host: each is its own module under agents/,
+        # imported above (eva: Telegram bot eva_lebbot, own OS user, home,
+        # state dir /var/lib/openclaw/eva and openclaw-eva.service). Only
+        # `package` is shared between them.
       };
 
       # obfs4 Tor bridge. Both ports below still need forwarding on the router,
@@ -740,7 +736,7 @@ let
         # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
         # of these AND passes DMARC (spoof-proof). eva keys "may act on this mail"
         # off that header, not the raw From. Pulled from eva's own unprompted-send
-        # list (defined in agents/eva.nix) so trust stays symmetric in both
+        # list (defined in agents/eva) so trust stays symmetric in both
         # directions without a second copy of the addresses to drift.
         trustedSenders = config.my.openclaw.instances.eva.mail.unpromptedRecipients;
         relayHost = "[in-v3.mailjet.com]:587";

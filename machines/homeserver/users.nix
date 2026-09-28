@@ -63,7 +63,7 @@
     # She is deliberately NOT in systemd-journal any more: the whole-box journal
     # carries auth, mail and web activity, far more than a prompt-injectable
     # agent needs. Unit-failure diagnosis goes through her sudo-granted
-    # eva-journal wrapper instead (users/alex/agents/eva.nix), which reads only
+    # eva-journal wrapper instead (agents/eva), which reads only
     # the managed units' journals, pager-free.
 
     # Service account for the site's GitHub Actions runner. Pinned rather than

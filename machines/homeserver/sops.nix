@@ -235,16 +235,8 @@ in
       #     grants it the same keys with no edit here. (Not the `openclaw` group:
       #     that one reads the state tree, i.e. each agent's memory and sessions.)
 
-      # eva's Telegram identity, consumed as files by
-      # my.openclaw.instances.eva.telegram.{tokenFile,allowedIdFile}. The token is
-      # read by systemd LoadCredential (as root), so default ownership is fine; the
-      # allowed-ID file is read by the ExecStartPre seed (runs AS eva), so it must
-      # be eva-readable.
-      "openclaw/eva/telegram-token" = { mode = "0400"; };
-      "openclaw/eva/telegram-userid" = {
-        owner = "eva";
-        mode = "0400";
-      };
+      # Agent IDENTITY secrets are declared by each agent's own module
+      # (agents/<name>); only their values live in this vault.
 
       # ElevenLabs API key for reply TTS, rendered into openclaw/elevenlabs-env
       # below and read by the openclaw service as ELEVENLABS_API_KEY.
