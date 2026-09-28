@@ -56,10 +56,14 @@ let
   ip = "${pkgs.iproute2}/bin/ip";
   wg = "${pkgs.wireguard-tools}/bin/wg";
 
-  # A tunnel's peer endpoint list always has the configured endpoint first; the
-  # watchdog rotates through the rest. Kept here so the unit and the watchdog
+  # A tunnel's (publicKey, endpoint) candidates always have the configured peer
+  # first; the watchdog rotates through the rest — the primary's alternate
+  # addresses, then the fallback servers. Kept here so the unit and the watchdog
   # agree on the ordering by construction.
-  endpointsOf = t: [ t.peer.endpoint ] ++ t.peer.extraEndpoints;
+  candidatesOf = t:
+    map (e: { inherit (t.peer) publicKey; endpoint = e; })
+      ([ t.peer.endpoint ] ++ t.peer.extraEndpoints)
+    ++ map (f: { inherit (f) publicKey endpoint; }) t.peer.fallbacks;
 
   # A tunnel's address without its mask.
   addrOf = t: lib.head (lib.splitString "/" (lib.head t.address));
@@ -340,8 +344,7 @@ let
 
   mkWatchdog = { t, resetCmd, resetName, probePrefix, curlArgs, wgPrefix }:
     let
-      eps = endpointsOf t;
-      stateFile = "/run/protonvpn-${t.interface}.endpoint";
+      cands = candidatesOf t;
       failFile = "/run/protonvpn-${t.interface}.fails";
     in
     {
@@ -370,7 +373,9 @@ let
           ExecStart = pkgs.writeShellScript "protonvpn-watchdog-${t.interface}" ''
             set -u
 
-            endpoints=(${lib.concatMapStringsSep " " (e: "'${e}'") eps})
+            # Parallel arrays: candidate i is keys[i] reached at endpoints[i].
+            keys=(${lib.concatMapStringsSep " " (c: "'${c.publicKey}'") cands})
+            endpoints=(${lib.concatMapStringsSep " " (c: "'${c.endpoint}'") cands})
             n=''${#endpoints[@]}
 
             probe() {
@@ -398,18 +403,41 @@ let
             # nothing — no interface teardown, no dropped sockets, no restart
             # cascade — and there is no reason to sit on a dead endpoint while a
             # counter fills.
-            if [ "$n" -gt 1 ]; then
-              idx=0
-              [ -r ${stateFile} ] && idx=$(${pkgs.coreutils}/bin/cat ${stateFile} 2>/dev/null || echo 0)
+            #
+            # Where we are is read from the LIVE peer, not remembered: anything
+            # else that resets the interface (a rebuild, a manual reconfigure)
+            # silently puts the primary back, and a stale "I'm on candidate i"
+            # would make the next rotation land on the peer already in place.
+            # Found at index c: cycle the other n-1 starting after it, wrapping
+            # around. Matching none (a hand-set endpoint): try all n from 0.
+            live=$(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} endpoints 2>/dev/null)
+            idx=-1
+            tries=$n
+            for i in "''${!keys[@]}"; do
+              if [ "$live" = "''${keys[$i]}"$'\t'"''${endpoints[$i]}" ]; then
+                idx=$i
+                tries=$((n - 1))
+                break
+              fi
+            done
 
-              # Try each remaining endpoint once.
-              for _ in $(${pkgs.coreutils}/bin/seq 1 "$((n - 1))"); do
+            if [ "$tries" -gt 0 ]; then
+              for _ in $(${pkgs.coreutils}/bin/seq 1 "$tries"); do
                 idx=$(( (idx + 1) % n ))
                 next=''${endpoints[$idx]}
+                key=''${keys[$idx]}
                 echo "watchdog: rotating ${t.interface} to $next"
-                ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} \
-                  peer ${t.peer.publicKey} endpoint "$next" || continue
-                echo "$idx" > ${stateFile}
+
+                # Same server: just move the endpoint. Different server: swap
+                # the peer, removing whatever is there in the SAME `wg set`, so
+                # the interface never sits with zero peers or with two.
+                args=()
+                for cur in $(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} peers); do
+                  [ "$cur" != "$key" ] && args+=(peer "$cur" remove)
+                done
+                args+=(peer "$key" endpoint "$next" allowed-ips 0.0.0.0/0 \
+                  persistent-keepalive ${toString t.peer.persistentKeepalive})
+                ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} "''${args[@]}" || continue
 
                 # Give the new endpoint a handshake window before judging it.
                 ${pkgs.coreutils}/bin/sleep 5
@@ -580,7 +608,38 @@ let
           answering. WireGuard does NOT fail over between peers within one
           interface, so rotation has to be done explicitly — these are alternate
           endpoints for the SAME peer public key (i.e. the same Proton server
-          reached by another address), or servers sharing that key.
+          reached by another address), or servers sharing that key. For a
+          different server, use `fallbacks`.
+        '';
+      };
+
+      fallbacks = lib.mkOption {
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            publicKey = lib.mkOption {
+              type = lib.types.str;
+              description = "Fallback Proton server's WireGuard public key.";
+            };
+            endpoint = lib.mkOption {
+              type = lib.types.str;
+              description = "Fallback Proton endpoint as host:port.";
+            };
+          };
+        });
+        default = [ ];
+        description = ''
+          Other Proton SERVERS the watchdog fails over to, tried in order after
+          the primary's extraEndpoints. The swap replaces the interface's peer
+          in one `wg set` (old peer removed, new one added), so it is as live as
+          an endpoint rotation. The client private key needs no change: Proton
+          registers it account-wide, so it handshakes with any of its servers.
+          Pick servers in a different /24 than the primary — a dead server's
+          neighbours often die with it.
+
+          There is no automatic fail-back: a working fallback is kept until the
+          interface is next reset (reboot, rebuild touching it, or the
+          watchdog's own reset after every candidate failed), which re-applies
+          the primary.
         '';
       };
 
