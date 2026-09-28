@@ -312,15 +312,24 @@ let
 
         clientTunnels = {
           es = {
-            server = "ES#124";
+            # Was ES#124 (130.195.250.98) until it went dark 2026-09-26.
+            server = "ES#95";
             table = 42;
             sourcePrefixes = [ "10.0.1.0/24" ];
             gateway = "10.0.1.1/24";
             privateKeyFile = config.sops.secrets."wireguard-client/wgproton-es".path;
             address = [ "10.2.0.2/32" ];
             peer = {
-              publicKey = "XkiKln3Se1dUvLL9s803TbYkfFNJtb051iGcGs1jgSk=";
-              endpoint = "130.195.250.98:51820";
+              publicKey = "tEz96jcHEtBtZOmwMK7Derw0AOih8usKFM+n4Svhr1E=";
+              endpoint = "130.195.250.66:51820";
+              # A different machine AND network: ES#89/#108 are the same box as
+              # ES#95, and ES#33/#37 are the P2P tunnel's server.
+              fallbacks = [
+                { # ES#161
+                  publicKey = "cFQgn6VKZphGOdOGHux2xUf/QBWSExfg6koDuU68k28=";
+                  endpoint = "79.127.139.129:51820";
+                }
+              ];
             };
           };
 
