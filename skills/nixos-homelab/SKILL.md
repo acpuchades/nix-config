@@ -9,64 +9,62 @@ Check TOOLS.md for the owner's specific server details (hostname, SSH access,
 services deployed, notable configuration paths). This skill covers the general
 operational framework.
 
-## Configuration management
+## Your role: diagnose, report, restart — the owner changes config
 
-NixOS is declared in a git repository. The workflow is always:
+What you may actually run is set by the `policy` skill (the security
+boundary) and the `toolkit` skill (the diagnostic wrappers you have). Read
+those, not this skill, for what is permitted. In a typical setup:
+
+- **Read-only inspection** (`systemctl status/cat/list-units`, `ps`, `ss`,
+  `df`, …) needs no privileges — do it freely.
+- **Restarting a failed service** is granted via `sudo` for a fixed set of
+  units only, as `sudo systemctl restart <unit>.service`. Any other verb or
+  unit is refused by sudo, even after approval.
+- **Logs**: you may not be in the system journal group, so a plain
+  `journalctl` shows only your own logs. Use the journal/health-check wrappers
+  listed in the `toolkit` skill.
+- **Configuration changes and rebuilds are the owner's operation, never
+  yours.** You don't have the config repo or `nixos-rebuild`. When a fix needs
+  a config change, diagnose it, then hand the owner a precise proposal: which
+  option, which file if you know it, the suggested value and why.
+
+## Configuration management (how the owner applies changes)
+
+Background, so your proposals fit the workflow. NixOS is declared in a git
+repository:
 1. Edit `.nix` files in the repo
-2. Commit (or at least stage) the change
+2. Commit the change
 3. Run `nixos-rebuild` on the target host to activate
 
-**Always `git pull` before editing** — the owner may have made changes directly
-on the server or from another machine.
-
-### Applying changes
-
 ```bash
-# On the target host (or via ssh):
 sudo nixos-rebuild switch        # activate immediately
 sudo nixos-rebuild test          # activate but don't set as boot default
 sudo nixos-rebuild boot          # set as boot default, activate on next reboot
 sudo nixos-rebuild dry-activate  # show what would change, don't apply
-```
-
-If the host is remote, build locally and push:
-```bash
-nixos-rebuild switch --target-host user@host --use-remote-sudo
-```
-
-On failure, `nixos-rebuild` prints the failing unit and its log snippet. Read
-it before anything else — it usually contains the root cause.
-
-### Rolling back
-
-```bash
 sudo nixos-rebuild switch --rollback   # revert to previous generation
-sudo nix-env --list-generations -p /nix/var/nix/profiles/system
-sudo nix-env --switch-generation N -p /nix/var/nix/profiles/system
 ```
+
+If the owner pastes a failed rebuild, read the failing unit and its log snippet
+first — it usually contains the root cause.
 
 ## Service management
 
-NixOS services are systemd units. Standard commands:
+NixOS services are systemd units:
 
 ```bash
 systemctl status <unit>          # current state + recent log tail
-systemctl restart <unit>
-systemctl stop / start <unit>
-journalctl -u <unit> -n 100      # last 100 lines
-journalctl -u <unit> -f          # follow live
-journalctl -u <unit> --since "1 hour ago"
-systemctl cat <unit>             # show the generated unit file (no sudo needed)
+systemctl --failed               # every failed unit
+systemctl cat <unit>             # the generated unit file (no sudo needed)
+systemctl list-timers            # scheduled jobs and their last/next run
 ```
 
 `systemctl cat` is useful when you cannot read journal logs due to permission
 constraints — it shows the full unit definition including `Environment=` lines,
 `ExecStart`, and `serviceConfig`, which often reveals misconfiguration.
 
-To list all failed units:
-```bash
-systemctl --failed
-```
+Restart only when the failure looks transient (crash, dependency hiccup,
+network blip). If it fails again right after a restart, stop and report
+instead of retrying in a loop — a repeat failure is a config or data problem.
 
 ## NixOS module system — common patterns
 
@@ -85,7 +83,7 @@ attribute level to prevent this.
 ### Debugging a broken service
 
 1. `systemctl status <unit>` — is it active, failed, activating?
-2. `journalctl -u <unit> -n 50` — what was the last error?
+2. Its recent journal (via the journal wrapper) — what was the last error?
 3. `systemctl cat <unit>` — what does the unit file actually contain?
    Check `Environment=` lines, `ExecStart`, `User`, `WorkingDirectory`.
 4. If a path is missing: `ls -la <path>` — does it exist? Right permissions?
@@ -116,11 +114,19 @@ environment.SOME_VAR = lib.mkForce "my-value";
 
 If the homelab uses Caddy as a reverse proxy:
 - Virtual host configs are typically in `services.caddy.virtualHosts.<domain>.extraConfig`
-- Caddy logs: `journalctl -u caddy`
-- Test config: `sudo caddy validate --config /etc/caddy/caddy.json`
+- Caddy logs: the `caddy` unit's journal (via the journal wrapper)
+- Validating a Caddy config change is part of the owner's rebuild, not yours
 - If a site returns 502, the upstream service is likely down — check it first
 
 ## Monitoring and health
+
+Before querying anything by hand, check the `toolkit` skill's notes for
+server-diagnostics wrappers the owner has granted you (e.g. a health-check
+digest or a per-unit journal reader, run via `sudo` at an exact path). They
+are the sanctioned route: they cover the routine health and security checks
+without whole-journal access or raw network tools. If a plain `journalctl`
+shows nothing, you likely lack journal access — use the wrapper, don't try to
+widen your permissions.
 
 If Prometheus + Grafana are deployed:
 - Check dashboards before digging into logs for broad issues (CPU, RAM, disk)
@@ -131,13 +137,14 @@ If Prometheus + Grafana are deployed:
 ## Nix store maintenance
 
 ```bash
-nix-collect-garbage -d          # remove all unreferenced store paths
-nix-collect-garbage --delete-older-than 30d  # keep last 30 days of generations
-sudo nix-store --verify --check-contents     # verify store integrity (slow)
 df -h /nix/store               # check store size
+du -sh ~/.cache ~/workspace    # your own footprint
 ```
 
-Run garbage collection before complaining about disk space.
+System-wide garbage collection (`sudo nix-collect-garbage -d`) and store
+verification are the owner's operations — the host usually runs GC on a
+timer anyway. If the store is filling the disk, report the numbers and
+suggest GC rather than trying it yourself.
 
 ## What to check in TOOLS.md
 
