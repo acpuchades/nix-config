@@ -325,7 +325,8 @@ let
               # A different machine AND network: ES#89/#108 are the same box as
               # ES#95, and ES#33/#37 are the P2P tunnel's server.
               fallbacks = [
-                { # ES#161
+                {
+                  server = "ES#161";
                   publicKey = "cFQgn6VKZphGOdOGHux2xUf/QBWSExfg6koDuU68k28=";
                   endpoint = "79.127.139.129:51820";
                 }
@@ -367,6 +368,12 @@ let
         # whatever exit that peer uses, so there is no per-query country to
         # honour. Spain is chosen to match where this line actually is.
         resolver.viaTunnel = "es";
+
+        # Failover, outage and recovery alerts from every tunnel's watchdog.
+        watchdog.notify = {
+          command = config.my.ntfy-alert.notifyCommand;
+          environmentFile = config.sops.templates."ntfy/env".path;
+        };
 
         p2pTunnel = {
           server = "ES#33 (P2P-flagged, NAT-PMP enabled)";
@@ -980,6 +987,15 @@ let
       my.ntfy-alert = {
         enable = true;
         environmentFile = config.sops.templates."ntfy/env".path;
+        # ntfy is served from this host: connect straight to Caddy, so alerts
+        # still go out when DNS is what broke (it did on 2026-09-26, when the
+        # resolver's tunnel died).
+        resolveTo = "127.0.0.1";
+        healthCheck = {
+          enable = true;
+          diskPaths = [ "/" "/boot" "/srv" "/srv/encrypted" ];
+        };
+        bootNotice.enable = true;
         # All suitable long-running services whose failure means a real outage.
         # Bare unit names (no .service). Setup/one-shot units are excluded
         # (they fail visibly at deploy time, not in steady state) — with one
@@ -1013,6 +1029,35 @@ let
           "bitcoind-main"
           "upsd"
           "upsmon"
+          # DNS for the LAN and the VPN.
+          "adguardhome"
+          "dnscrypt-proxy"
+          # Nextcloud's vhost is Caddy -> nginx -> php-fpm; Collabora behind it.
+          "nginx"
+          "coolwsd"
+          "immich-machine-learning"
+          "jellyfin"
+          "transmission"
+          "samba-smbd"
+          "cups"
+          "rspamd"
+          "sshd"
+          "fail2ban"
+          "tor"
+          "prefect-worker-default"
+          # Proton egress. policy/p2p/veth are RemainAfterExit oneshots: they
+          # only fail at start, and when they do, routing or the P2P netns is
+          # broken. The tunnels themselves alert through the watchdog.
+          "protonvpn-policy"
+          "protonvpn-proton-p2p"
+          "protonvpn-veth-torrent"
+          "protonvpn-natpmp"
+          # Rare scheduled jobs, excepted from the no-oneshots rule because a
+          # failure is both infrequent and serious: an expiring certificate,
+          # and a scrub that hit errors on the data disks.
+          "acme-order-renew-acpuchades.com"
+          "btrfs-scrub-srv"
+          "btrfs-scrub-srv-encrypted"
         ];
       };
 
