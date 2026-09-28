@@ -135,12 +135,12 @@ let
   # One-shot notice at boot: an unannounced reboot is a crash or a power loss.
   bootNotice = pkgs.writeShellApplication {
     name = "ntfy-boot-notice";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools pkgs.systemd pkgs.procps ];
+    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools pkgs.systemd ];
     text = ''
       last=$(journalctl -b -1 -n 1 -o short-iso --no-pager -q 2>/dev/null \
         | cut -d' ' -f1)
       ntfy-notify "${cfg.systemTopic}" "$(hostname) booted" default "arrows_counterclockwise" \
-        "Up since $(uptime -s). Previous boot's last log entry: ''${last:-unknown}." \
+        "Up since $(${pkgs.procps}/bin/uptime -s). Previous boot's last log entry: ''${last:-unknown}." \
         || true
     '';
   };
