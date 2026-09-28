@@ -1107,6 +1107,13 @@ in
     #     /srv/encrypted/alex/projects/pals-novartis-extant
     #   sudo setfacl -x u:eva /home/alex
     access = {
+      "/srv/encrypted/alex" = { permissions = "X"; };
+      "/srv/encrypted/alex/projects" = { permissions = "X"; };
+      "/srv/encrypted/alex/projects/acpuchades-site" = {
+        permissions = "rwX";
+        recursive = true;
+        defaultAcl = true;
+      };
     };
 
     # Provider API keys reaching the service via my.openclaw.environmentFiles —
