@@ -61,9 +61,16 @@ let
   # addresses, then the fallback servers. Kept here so the unit and the watchdog
   # agree on the ordering by construction.
   candidatesOf = t:
-    map (e: { inherit (t.peer) publicKey; endpoint = e; })
+    map (e: {
+      inherit (t.peer) publicKey;
+      endpoint = e;
+      label = if t.server != "" then t.server else e;
+    })
       ([ t.peer.endpoint ] ++ t.peer.extraEndpoints)
-    ++ map (f: { inherit (f) publicKey endpoint; }) t.peer.fallbacks;
+    ++ map (f: {
+      inherit (f) publicKey endpoint;
+      label = if f.server != null then f.server else f.endpoint;
+    }) t.peer.fallbacks;
 
   # A tunnel's address without its mask.
   addrOf = t: lib.head (lib.splitString "/" (lib.head t.address));
@@ -346,6 +353,10 @@ let
     let
       cands = candidatesOf t;
       failFile = "/run/protonvpn-${t.interface}.fails";
+      # Present while an outage alert is out, so the alert fires once per
+      # outage (not once a minute) and the recovery is announced exactly once.
+      downFile = "/run/protonvpn-${t.interface}.down";
+      notify = cfg.watchdog.notify;
     in
     {
       timer = {
@@ -370,13 +381,42 @@ let
         description = "ProtonVPN watchdog for ${t.interface}";
         serviceConfig = {
           Type = "oneshot";
+          EnvironmentFile = lib.mkIf (notify.environmentFile != null) notify.environmentFile;
           ExecStart = pkgs.writeShellScript "protonvpn-watchdog-${t.interface}" ''
             set -u
 
             # Parallel arrays: candidate i is keys[i] reached at endpoints[i].
             keys=(${lib.concatMapStringsSep " " (c: "'${c.publicKey}'") cands})
             endpoints=(${lib.concatMapStringsSep " " (c: "'${c.endpoint}'") cands})
+            labels=(${lib.concatMapStringsSep " " (c: lib.escapeShellArg c.label) cands})
             n=''${#endpoints[@]}
+
+            # notify <priority> <tags> <title> <message> — best-effort; returns
+            # whether the alert was delivered.
+            notify() {
+              ${if notify.command == null then "return 1" else ''
+                ${notify.command} ${lib.escapeShellArg notify.topic} \
+                  "$3" "$1" "$2" "$4 ($(${pkgs.coreutils}/bin/date -Is))"''}
+            }
+
+            # Index of the candidate the interface is on right now, or -1 for
+            # none (a hand-set endpoint). Read from the LIVE peer, never
+            # remembered: anything else that changes the peer (a reboot, a
+            # hand-run `wg set`) would leave a remembered index stale.
+            live_idx() {
+              local live i
+              live=$(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} endpoints 2>/dev/null)
+              for i in "''${!keys[@]}"; do
+                if [ "$live" = "''${keys[$i]}"$'\t'"''${endpoints[$i]}" ]; then
+                  echo "$i"; return
+                fi
+              done
+              echo -1
+            }
+
+            label_of() {
+              if [ "$1" -ge 0 ]; then echo "''${labels[$1]}"; else echo "an unconfigured endpoint"; fi
+            }
 
             probe() {
               ${probePrefix}${pkgs.curl}/bin/curl -fsS -o /dev/null \
@@ -405,6 +445,11 @@ let
 
             if probe; then
               ${pkgs.coreutils}/bin/rm -f ${failFile}
+              if [ -e ${downFile} ]; then
+                notify default white_check_mark "✅ ${t.interface} is back up" \
+                  "${t.interface} passes its probe again, on $(label_of "$(live_idx)")." \
+                  && ${pkgs.coreutils}/bin/rm -f ${downFile}
+              fi
               exit 0
             fi
 
@@ -418,22 +463,12 @@ let
             # cascade — and there is no reason to sit on a dead endpoint while a
             # counter fills.
             #
-            # Where we are is read from the LIVE peer, not remembered: anything
-            # else that changes the peer (a reboot, a hand-run `wg set`) would
-            # leave a stale "I'm on candidate i", and the next rotation would
-            # land on the peer already in place.
-            # Found at index c: cycle the other n-1 starting after it, wrapping
-            # around. Matching none (a hand-set endpoint): try all n from 0.
-            live=$(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} endpoints 2>/dev/null)
-            idx=-1
+            # On candidate c: cycle the other n-1 starting after it, wrapping
+            # around. On none (a hand-set endpoint): try all n from 0.
+            idx=$(live_idx)
+            from=$idx
             tries=$n
-            for i in "''${!keys[@]}"; do
-              if [ "$live" = "''${keys[$i]}"$'\t'"''${endpoints[$i]}" ]; then
-                idx=$i
-                tries=$((n - 1))
-                break
-              fi
-            done
+            [ "$idx" -ge 0 ] && tries=$((n - 1))
 
             if [ "$tries" -gt 0 ]; then
               for _ in $(${pkgs.coreutils}/bin/seq 1 "$tries"); do
@@ -447,6 +482,15 @@ let
                 if probe; then
                   echo "watchdog: ${t.interface} recovered on $next"
                   ${pkgs.coreutils}/bin/rm -f ${failFile}
+                  if [ -e ${downFile} ]; then
+                    notify default white_check_mark "✅ ${t.interface} is back up" \
+                      "${t.interface} recovered on $(label_of "$idx") ($next)." \
+                      && ${pkgs.coreutils}/bin/rm -f ${downFile}
+                  else
+                    notify high twisted_rightwards_arrows "🔀 ${t.interface} failed over" \
+                      "$(label_of "$from") stopped answering; ${t.interface} now exits via $(label_of "$idx") ($next)." \
+                      || true
+                  fi
                   exit 0
                 fi
               done
@@ -465,6 +509,12 @@ let
 
             echo "watchdog: resetting ${resetName} after $fails consecutive failures"
             ${pkgs.coreutils}/bin/rm -f ${failFile}
+            # Gated like the reset, so one bad minute is not an outage alert.
+            if [ ! -e ${downFile} ]; then
+              notify urgent rotating_light "🚨 ${t.interface} is DOWN" \
+                "None of its $n configured endpoints answered for $fails consecutive probes. Resetting ${resetName} and retrying every ${toString cfg.watchdog.interval}s." \
+                && ${pkgs.coreutils}/bin/touch ${downFile}
+            fi
             # The reset alone does NOT restore the primary: `networkctl
             # reconfigure` re-applies only the .network (addresses, routes) and
             # leaves an existing WireGuard device's peers as they are. So the
@@ -593,9 +643,9 @@ let
       default = "";
       description = ''
         Human-readable note recording WHICH Proton server this profile is for
-        (e.g. "ES#124, P2P-flagged, NAT-PMP enabled"). Documentation only —
-        nothing reads it — but a tunnel whose server nobody can identify is one
-        nobody can re-generate.
+        (e.g. "ES#124, P2P-flagged, NAT-PMP enabled"). Names the server in
+        watchdog alerts, and otherwise documentation — but a tunnel whose server
+        nobody can identify is one nobody can re-generate.
       '';
     };
 
@@ -634,6 +684,12 @@ let
             endpoint = lib.mkOption {
               type = lib.types.str;
               description = "Fallback Proton endpoint as host:port.";
+            };
+            server = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              example = "ES#161";
+              description = "Human-readable server name, used in alerts.";
             };
           };
         });
@@ -782,6 +838,29 @@ in
           Per-probe timeout in seconds. Kept well under `interval` so a hung
           probe cannot overlap the next one.
         '';
+      };
+
+      notify = {
+        command = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = ''
+            Alert sender, called as `<cmd> <topic> <title> <priority> <tags>
+            <message>`, on a failover, an outage (every candidate failed for
+            failuresBeforeRestart probes) and the recovery from one. Null (the
+            default) sends nothing. Typically config.my.ntfy-alert.notifyCommand.
+          '';
+        };
+        topic = lib.mkOption {
+          type = lib.types.str;
+          default = "alerts-system";
+          description = "Topic passed to the alert sender.";
+        };
+        environmentFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.path;
+          default = null;
+          description = "EnvironmentFile for the watchdog units (e.g. NTFY_TOKEN).";
+        };
       };
 
       failuresBeforeRestart = lib.mkOption {
