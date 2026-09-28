@@ -384,6 +384,20 @@ let
                 ${cfg.watchdog.probeUrl}
             }
 
+            # Point the interface at candidate $1. Same server: just move the
+            # endpoint. Different server: swap the peer, removing whatever is
+            # there in the SAME `wg set`, so the interface never sits with zero
+            # peers or with two.
+            set_peer() {
+              local key=''${keys[$1]} args=() cur
+              for cur in $(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} peers); do
+                [ "$cur" != "$key" ] && args+=(peer "$cur" remove)
+              done
+              args+=(peer "$key" endpoint "''${endpoints[$1]}" allowed-ips 0.0.0.0/0 \
+                persistent-keepalive ${toString t.peer.persistentKeepalive})
+              ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} "''${args[@]}"
+            }
+
             # Consecutive failures, carried across invocations: this unit is a
             # oneshot, so the count cannot live in memory.
             fails=0
@@ -405,9 +419,9 @@ let
             # counter fills.
             #
             # Where we are is read from the LIVE peer, not remembered: anything
-            # else that resets the interface (a rebuild, a manual reconfigure)
-            # silently puts the primary back, and a stale "I'm on candidate i"
-            # would make the next rotation land on the peer already in place.
+            # else that changes the peer (a reboot, a hand-run `wg set`) would
+            # leave a stale "I'm on candidate i", and the next rotation would
+            # land on the peer already in place.
             # Found at index c: cycle the other n-1 starting after it, wrapping
             # around. Matching none (a hand-set endpoint): try all n from 0.
             live=$(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} endpoints 2>/dev/null)
@@ -425,19 +439,8 @@ let
               for _ in $(${pkgs.coreutils}/bin/seq 1 "$tries"); do
                 idx=$(( (idx + 1) % n ))
                 next=''${endpoints[$idx]}
-                key=''${keys[$idx]}
                 echo "watchdog: rotating ${t.interface} to $next"
-
-                # Same server: just move the endpoint. Different server: swap
-                # the peer, removing whatever is there in the SAME `wg set`, so
-                # the interface never sits with zero peers or with two.
-                args=()
-                for cur in $(${wgPrefix}${pkgs.wireguard-tools}/bin/wg show ${t.interface} peers); do
-                  [ "$cur" != "$key" ] && args+=(peer "$cur" remove)
-                done
-                args+=(peer "$key" endpoint "$next" allowed-ips 0.0.0.0/0 \
-                  persistent-keepalive ${toString t.peer.persistentKeepalive})
-                ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} "''${args[@]}" || continue
+                set_peer "$idx" || continue
 
                 # Give the new endpoint a handshake window before judging it.
                 ${pkgs.coreutils}/bin/sleep 5
@@ -462,6 +465,13 @@ let
 
             echo "watchdog: resetting ${resetName} after $fails consecutive failures"
             ${pkgs.coreutils}/bin/rm -f ${failFile}
+            # The reset alone does NOT restore the primary: `networkctl
+            # reconfigure` re-applies only the .network (addresses, routes) and
+            # leaves an existing WireGuard device's peers as they are. So the
+            # primary goes back by hand first, making a reset a real return to
+            # the configured state (for the P2P tunnel the restart rebuilds the
+            # interface anyway, and this is a harmless no-op before it).
+            set_peer 0 || true
             exec ${resetCmd}
           '';
         };
@@ -483,10 +493,11 @@ let
     units = mkWatchdog {
       t = c.t;
       # There is no wireguard-<iface>.service to restart under networkd.
-      # `networkctl reconfigure` re-applies the .netdev/.network pair, which is
-      # the same reset: the interface is torn back to its configured state and
-      # the peer re-resolved. The table route survives it — we own that route,
-      # and ManageForeignRoutes=false keeps networkd's hands off it.
+      # `networkctl reconfigure` re-applies the .network (addresses, routes)
+      # but NOT the .netdev: an existing WireGuard device keeps its peers, so
+      # the watchdog restores the primary peer itself before calling this. The
+      # table route survives it — we own that route, and ManageForeignRoutes=
+      # false keeps networkd's hands off it.
       resetCmd = "${pkgs.systemd}/bin/networkctl reconfigure ${c.t.interface}";
       resetName = "${c.t.interface} (networkctl reconfigure)";
       # Bound to the DEVICE, not to the address: every Proton profile carries
@@ -636,10 +647,10 @@ let
           Pick servers in a different /24 than the primary — a dead server's
           neighbours often die with it.
 
-          There is no automatic fail-back: a working fallback is kept until the
-          interface is next reset (reboot, rebuild touching it, or the
-          watchdog's own reset after every candidate failed), which re-applies
-          the primary.
+          There is no automatic fail-back: a working fallback is kept until a
+          reboot or the watchdog's own reset (after every candidate failed)
+          puts the primary back. A rebuild or a manual `networkctl reconfigure`
+          does NOT — networkd leaves an existing WireGuard device's peers alone.
         '';
       };
 
