@@ -1277,7 +1277,13 @@ let
         # Host-supplied tools the agent may invoke by name (still gated by the
         # exec allowlist for whether a run needs approval — see icfg.exec). Also in
         # environment.systemPackages above so the safe-bin trust check honors them.
-        ++ icfg.extraPackages;
+        ++ icfg.extraPackages
+        # The setuid `sudo` lives in /run/wrappers/bin, which a unit's PATH does
+        # NOT include — without this, every icfg.sudoCommands grant is dead
+        # ("sudo: command not found"; eva never ran one from 2026-08 until
+        # this fix). Grants no new privilege: the absolute wrapper paths were
+        # always reachable, and sudoers still decides what runs.
+        ++ lib.optional (icfg.sudoCommands != [ ]) "/run/wrappers";
 
         environment = {
           HOME = homeDir;
