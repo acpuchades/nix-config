@@ -446,7 +446,7 @@ let
             if probe; then
               ${pkgs.coreutils}/bin/rm -f ${failFile}
               if [ -e ${downFile} ]; then
-                notify default white_check_mark "✅ ${t.interface} is back up" \
+                notify default white_check_mark "${t.interface} is back up" \
                   "${t.interface} passes its probe again, on $(label_of "$(live_idx)")." \
                   && ${pkgs.coreutils}/bin/rm -f ${downFile}
               fi
@@ -483,11 +483,11 @@ let
                   echo "watchdog: ${t.interface} recovered on $next"
                   ${pkgs.coreutils}/bin/rm -f ${failFile}
                   if [ -e ${downFile} ]; then
-                    notify default white_check_mark "✅ ${t.interface} is back up" \
+                    notify default white_check_mark "${t.interface} is back up" \
                       "${t.interface} recovered on $(label_of "$idx") ($next)." \
                       && ${pkgs.coreutils}/bin/rm -f ${downFile}
                   else
-                    notify high twisted_rightwards_arrows "🔀 ${t.interface} failed over" \
+                    notify high twisted_rightwards_arrows "${t.interface} failed over" \
                       "$(label_of "$from") stopped answering; ${t.interface} now exits via $(label_of "$idx") ($next)." \
                       || true
                   fi
@@ -511,7 +511,7 @@ let
             ${pkgs.coreutils}/bin/rm -f ${failFile}
             # Gated like the reset, so one bad minute is not an outage alert.
             if [ ! -e ${downFile} ]; then
-              notify urgent rotating_light "🚨 ${t.interface} is DOWN" \
+              notify urgent rotating_light "${t.interface} is DOWN" \
                 "None of its $n configured endpoints answered for $fails consecutive probes. Resetting ${resetName} and retrying every ${toString cfg.watchdog.interval}s." \
                 && ${pkgs.coreutils}/bin/touch ${downFile}
             fi

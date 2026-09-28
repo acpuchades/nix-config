@@ -61,8 +61,8 @@ let
       unit="''${1:-unknown unit}"
       host="$(hostname)"
       ntfy-notify "${cfg.systemTopic}" \
-        "❌ $unit failed on $host" \
-        high "rotating_light,x" \
+        "$unit failed on $host" \
+        high "x" \
         "Unit $unit entered failed state at $(date -Is). Inspect with: journalctl -u $unit -n 50" \
         || true
     '';
@@ -85,10 +85,10 @@ let
       transition() {
         local marker="$state/$1.bad"
         if [ "$2" = 1 ] && [ ! -e "$marker" ]; then
-          ntfy-notify "${cfg.systemTopic}" "⚠️ $3 on $host" high "warning" "$4" \
+          ntfy-notify "${cfg.systemTopic}" "$3 on $host" high "warning" "$4" \
             && touch "$marker"
         elif [ "$2" = 0 ] && [ -e "$marker" ]; then
-          ntfy-notify "${cfg.systemTopic}" "✅ Resolved: $3 on $host" default \
+          ntfy-notify "${cfg.systemTopic}" "Resolved: $3 on $host" default \
             "white_check_mark" "$5" && rm -f "$marker"
         fi
         return 0
@@ -139,7 +139,7 @@ let
     text = ''
       last=$(journalctl -b -1 -n 1 -o short-iso --no-pager -q 2>/dev/null \
         | cut -d' ' -f1)
-      ntfy-notify "${cfg.systemTopic}" "🔄 $(hostname) booted" default "arrows_counterclockwise" \
+      ntfy-notify "${cfg.systemTopic}" "$(hostname) booted" default "arrows_counterclockwise" \
         "Up since $(uptime -s). Previous boot's last log entry: ''${last:-unknown}." \
         || true
     '';
