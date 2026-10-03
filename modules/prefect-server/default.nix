@@ -54,6 +54,16 @@ in
       description = "Basic auth file for web interface";
     };
 
+    allowedNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Restrict the vhost to these CIDR ranges (empty = unrestricted). Behind
+        it is an unauthenticated API that runs code, so basic auth alone makes
+        that one password the whole boundary, guessable from anywhere.
+      '';
+    };
+
     workerPools = lib.mkOption {
       type = lib.types.attrs;
       default = {};
@@ -119,6 +129,8 @@ in
 
     services.caddy.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
       ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
+        (lib.optionalString (cfg.allowedNetworks != [])
+          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
         (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
         "reverse_proxy http://127.0.0.1:${toString cfg.port}"
         "encode gzip"

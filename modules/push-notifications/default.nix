@@ -88,6 +88,18 @@ in
       '';
     };
 
+    trustedProxies = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        CIDRs of CDN edges in front of Caddy. ntfy takes the rightmost
+        X-Forwarded-For entry not listed here, so without them a proxied
+        vhost sees the edge as the visitor, and its built-in auth-failure
+        lockout is shared by everyone behind that edge instead of applying
+        to the client guessing.
+      '';
+    };
+
     upstreamBaseUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = "https://ntfy.sh";
@@ -122,6 +134,8 @@ in
         listen-http = "127.0.0.1:${toString cfg.port}";
 
         behind-proxy = cfg.behindProxy;
+        proxy-trusted-hosts = lib.mkIf (cfg.trustedProxies != [])
+          (lib.concatStringsSep "," cfg.trustedProxies);
         auth-default-access = cfg.defaultAccess;
 
         cache-duration = cfg.messageRetention;

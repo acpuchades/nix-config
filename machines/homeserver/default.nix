@@ -661,6 +661,9 @@ let
       my.push-notifications = {
         enable = true;
         hostName = "ntfy.acpuchades.com";
+        # The name is Cloudflare-proxied; ntfy locks out repeated auth
+        # failures per visitor on its own, given the real one.
+        trustedProxies = config.my.web-server.trustedProxies;
       };
 
       # OpenClaw agent — Telegram-only, loopback gateway, but NOT confined on
@@ -906,6 +909,15 @@ let
         appSecretFile = config.sops.secrets."umami/app-secret".path;
       };
 
+      # Public logins with no lockout of their own (ntfy has one; Prefect is
+      # LAN/VPN-only). Immich's mobile app logs in once per device, Umami's
+      # admin rarely — 10/min per client never touches a real user.
+      my.web-server.loginRateLimits = {
+        ${config.my.cloud-suite.immich.hostName}.paths =
+          [ "/api/auth/login" "/api/auth/change-password" ];
+        ${config.my.web-analytics.hostName}.paths = [ "/api/auth/login" ];
+      };
+
       my.service-dashboard = {
         enable = true;
         hostName = "dashboard.acpuchades.com";
@@ -1070,6 +1082,9 @@ let
         baseUrl = "https://prefect.acpuchades.com";
         virtualHost = "prefect.acpuchades.com";
         basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
+        # Not in public DNS, but the name is in CT logs and the vhost answered
+        # from the internet; every client reaches it over LAN or VPN anyway.
+        allowedNetworks = privateNetworks;
         workerPools.default.installPolicy = "if-not-present";
       };
 

@@ -1,5 +1,8 @@
 { config, lib, ... }:
 
+let
+  cfg = config.my.web-server;
+in
 {
   options.my.web-server = {
     enable = lib.mkEnableOption "Web server with SSL and reverse proxy";
@@ -22,6 +25,35 @@
         CIDR ranges of reverse proxies (e.g. Cloudflare edges) whose
         X-Forwarded-For is trusted, making {client_ip} the real visitor
         for logging and rate limiting on proxied vhosts.
+      '';
+    };
+
+    loginRateLimits = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.submodule {
+        options = {
+          paths = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            example = [ "/api/auth/login" ];
+            description = "Login endpoints (POST only) that share the budget.";
+          };
+          events = lib.mkOption {
+            type = lib.types.int;
+            default = 10;
+            description = "Attempts allowed per client per window.";
+          };
+          window = lib.mkOption {
+            type = lib.types.str;
+            default = "1m";
+            description = "Sliding window the budget refills over.";
+          };
+        };
+      });
+      default = {};
+      description = ''
+        Per-vhost brute-force budget on login endpoints, keyed on {client_ip}
+        (see trustedProxies), for apps with no lockout of their own. Applied
+        in Caddy rather than fail2ban because a firewall ban cannot reach the
+        visitor behind a CDN — the packets come from the edge.
       '';
     };
 
@@ -70,12 +102,12 @@
     };
   };
 
-  config = lib.mkIf config.my.web-server.enable {
+  config = lib.mkIf cfg.enable {
     networking.firewall.allowedTCPPorts = [ 80 443 ];
 
     services.caddy = {
       enable = true;
-      email = config.my.web-server.adminEmail;
+      email = cfg.adminEmail;
 
       # The admin API can read the full config (including basic-auth password
       # hashes) and POST a replacement — on the default 127.0.0.1:2019 that is
@@ -83,18 +115,47 @@
       # `caddy reload` working while shutting everyone else out. NOTE: on the
       # deploy that first applies this, the running caddy still listens on
       # 2019, so the reload cannot reach it — `systemctl restart caddy` once.
+      # trusted_proxies_strict: by default Caddy takes the LEFTMOST
+      # X-Forwarded-For entry, which is whatever the client sent — the CDN
+      # appends to it, it does not replace it — so {client_ip} would be
+      # attacker-chosen and every rate limit keyed on it bypassable. Strict
+      # walks right-to-left past the trusted edges to the address the edge
+      # itself saw.
+      #
+      # rate_limit is a plugin directive with no standard position; it must
+      # run before basic_auth and the proxy, or a refused attempt would still
+      # have been checked.
       globalConfig = ''
         admin unix//var/lib/caddy/admin.sock|0600
+        ${lib.optionalString (cfg.loginRateLimits != {}) "order rate_limit before basic_auth"}
         ${lib.optionalString
-          (config.my.web-server.serverMetrics || config.my.web-server.trustedProxies != []) ''
+          (cfg.serverMetrics || cfg.trustedProxies != []) ''
         servers {
-          ${lib.optionalString config.my.web-server.serverMetrics "metrics"}
-          ${lib.optionalString (config.my.web-server.trustedProxies != [])
-            "trusted_proxies static ${lib.concatStringsSep " " config.my.web-server.trustedProxies}"}
+          ${lib.optionalString cfg.serverMetrics "metrics"}
+          ${lib.optionalString (cfg.trustedProxies != []) ''
+            trusted_proxies static ${lib.concatStringsSep " " cfg.trustedProxies}
+            trusted_proxies_strict''}
         }''}
       '';
 
-      virtualHosts = lib.mapAttrs (_name: hostConfig: {
+      virtualHosts = lib.mkMerge [
+        (lib.mapAttrs (_name: rl: {
+          extraConfig = ''
+            rate_limit {
+              zone login {
+                match {
+                  method POST
+                  path ${lib.concatStringsSep " " rl.paths}
+                }
+                key {client_ip}
+                events ${toString rl.events}
+                window ${rl.window}
+              }
+            }
+          '';
+        }) cfg.loginRateLimits)
+
+        (lib.mapAttrs (_name: hostConfig: {
         extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
           (lib.optionalString (hostConfig.allowedNetworks != [])
             "@denied not remote_ip ${lib.concatStringsSep " " hostConfig.allowedNetworks}\nabort @denied")
@@ -111,7 +172,11 @@
             "redir ${hostConfig.redirect}{uri} permanent")
           "encode gzip"
         ]);
-      }) config.my.web-server.virtualHosts;
+      }) cfg.virtualHosts)
+      ];
     };
+
+    my.caddy-plugins.plugins = lib.mkIf (cfg.loginRateLimits != {})
+      [ "github.com/mholt/caddy-ratelimit@v0.1.0" ];
   };
 }
