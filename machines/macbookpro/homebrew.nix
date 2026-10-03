@@ -55,7 +55,6 @@
     "obsidian"
     "pdf-expert"
     "proton-mail"
-    "raycast"
     "signal"
     "spotify"
     "syntax-highlight"
