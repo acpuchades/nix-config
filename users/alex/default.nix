@@ -42,6 +42,13 @@
   # changes in each release.
   home.stateVersion = "24.11";
 
+  # Spotlight doesn't index symlinked .app bundles, and stateVersion 24.11
+  # defaults to linkApps (symlinks into the store). Copy them instead.
+  targets.darwin = lib.mkIf pkgs.stdenv.isDarwin {
+    linkApps.enable = false;
+    copyApps.enable = true;
+  };
+
   home.file.".emacs.d/config/99-personal.el".source = ./files/emacs.d/config/99-personal.el;
 
   home.file.".config/starship.toml" = {
