@@ -22,6 +22,8 @@
 
   # Enable the touch ID authentication for sudo.
   security.pam.services.sudo_local.touchIdAuth = true;
+  # pam_reattach, so Touch ID also works inside tmux sessions.
+  security.pam.services.sudo_local.reattach = true;
 
   system.activationScripts.postActivation.text = ''
     # Use the global NTP pool instead of Apple's time server. nix-darwin has no
@@ -116,6 +118,11 @@
   system.defaults.trackpad = {
     Clicking = true;
     TrackpadRightClick = true;
+    # Secondary click is ONE exclusive mode in macOS: any corner value
+    # (1 = bottom-left, 2 = bottom-right) replaces two-finger click/tap even
+    # with TrackpadRightClick on. Pinned to 0 so a corner value left behind by
+    # System Settings or an OS update can't silently disable two-finger.
+    TrackpadCornerSecondaryClick = 0;
   };
 
   system.defaults.loginwindow = {
