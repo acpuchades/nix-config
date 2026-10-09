@@ -116,8 +116,13 @@
           use_x_forwarded_for = true;
           trusted_proxies = [ "127.0.0.1" "::1" ];
         };
-        recorder.db_url =
-          "postgresql://${config.my.home-assistant.database.user}@/${config.my.home-assistant.database.name}?host=/var/run/postgresql";
+        recorder = {
+          db_url =
+            "postgresql://${config.my.home-assistant.database.user}@/${config.my.home-assistant.database.name}?host=/var/run/postgresql";
+          # Default 5s keeps the HDD under PGDATA seeking nonstop; batch commits
+          # instead (history lags by up to this much, lost on a crash).
+          commit_interval = 30;
+        };
         notify = [
           {
             platform = "smtp";
