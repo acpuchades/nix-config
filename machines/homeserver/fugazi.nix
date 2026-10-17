@@ -24,24 +24,8 @@
 { config, lib, pkgs, ... }:
 
 let
-  # LAN + WireGuard prefixes, shared with default.nix.
-  inherit (import ./networks.nix) privateNetworks;
-
-  # Cloudflare's published edge ranges (cloudflare.com/ips-v4 + ips-v6, fetched
-  # 2026-08-18). fugazitrade.com is proxied through Cloudflare — its public A
-  # records are CF anycast addresses — so these, not the visitor, are the peers
-  # Caddy sees, and they are the hops the backend has to skip to find the real
-  # caller. Used only by my.fugazi-web.trustedProxies below; nothing else on this
-  # host is fronted by a CDN. Cloudflare changes the list rarely and announces it;
-  # re-fetch if public callers start sharing a rate-limit bucket.
-  cloudflareNetworks = [
-    "173.245.48.0/20" "103.21.244.0/22" "103.22.200.0/22" "103.31.4.0/22"
-    "141.101.64.0/18" "108.162.192.0/18" "190.93.240.0/20" "188.114.96.0/20"
-    "197.234.240.0/22" "198.41.128.0/17" "162.158.0.0/15" "104.16.0.0/13"
-    "104.24.0.0/14" "172.64.0.0/13" "131.0.72.0/22"
-    "2400:cb00::/32" "2606:4700::/32" "2803:f800::/32" "2405:b500::/32"
-    "2405:8100::/32" "2a06:98c0::/29" "2c0f:f248::/32"
-  ];
+  # LAN + WireGuard prefixes and the Cloudflare edges, shared with default.nix.
+  inherit (import ./networks.nix) privateNetworks cloudflareNetworks;
 
   # Every cadence a venue this service fetches from actually publishes — the union
   # of Binance's, OKX's and Coinbase's candle intervals, which is the same closed

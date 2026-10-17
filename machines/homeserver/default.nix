@@ -39,7 +39,7 @@ let
   uplinkInterface = "wlp3s0";
   adminEmailAddress = "admin@acpuchades.com";
   # Shared with fugazi.nix — the whys live in networks.nix.
-  inherit (import ./networks.nix) lanNetwork wgNetworks privateNetworks;
+  inherit (import ./networks.nix) lanNetwork wgNetworks privateNetworks cloudflareNetworks;
 
   # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
   # deliberately runs ahead of nixpkgs-26.05. Three consumers today: openclaw and
@@ -468,6 +468,13 @@ let
       my.web-server = {
         enable = true;
         adminEmail = adminEmailAddress;
+        # Origin cloaking: every public name is orange-clouded, so the only
+        # strangers with a reason to reach 80/443 are Cloudflare's edges; LAN
+        # and VPN clients reach the private vhosts directly via AdGuard's
+        # rewrites. Anyone else (Censys, Shodan) gets no TLS handshake, so the
+        # certs can't tie acpuchades.com / fugazitrade.com to this IP. Certs
+        # are DNS-01, so nothing needs inbound 80 from the ACME CA.
+        allowedNetworks = cloudflareNetworks ++ privateNetworks;
         virtualHosts = {
           "acpuchades.com" = {
             redirect = "https://www.acpuchades.com";

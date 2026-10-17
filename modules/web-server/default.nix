@@ -18,6 +18,17 @@ in
     # emitting `servers { }` is an adapter error, not a merge).
     serverMetrics = lib.mkEnableOption "per-server Caddy metrics collection";
 
+    allowedNetworks = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [];
+      description = ''
+        Source CIDRs (IPv4 and IPv6) the firewall accepts on 80/443; empty
+        opens both ports to everyone. Unlike a vhost's allowedNetworks (a
+        Caddy-level 403), this drops the connection before TLS, so a source
+        outside it never sees which certificates this host serves.
+      '';
+    };
+
     trustedProxies = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [];
@@ -103,7 +114,18 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    networking.firewall.allowedTCPPorts = [ 80 443 ];
+    networking.firewall.allowedTCPPorts = lib.mkIf (cfg.allowedNetworks == []) [ 80 443 ];
+
+    # Source-restricted accepts, inserted at the head of nixos-fw like the
+    # other per-service rules on this host. IPv6 ranges go to ip6tables —
+    # iptables rejects them, and the v6 chain is otherwise closed.
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
+      (net: "${if lib.hasInfix ":" net then "ip6tables" else "iptables"} -I nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept")
+      cfg.allowedNetworks;
+
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
+      (net: "${if lib.hasInfix ":" net then "ip6tables" else "iptables"} -D nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept || true")
+      cfg.allowedNetworks;
 
     services.caddy = {
       enable = true;
