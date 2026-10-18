@@ -1191,6 +1191,11 @@ let
         ${ipt} -A ${egressChain} -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
         ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString cfg.egressProxy.port} -j RETURN
         ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${gatewayPorts} -j RETURN
+        # The gateway's MCP loopback server, which the Claude CLI reaches for
+        # every tool: 2026.10.x binds it to a random port (always port 0, not
+        # configurable), so allow the ephemeral range. Fixed-port local
+        # services all sit below it.
+        ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport 32768:60999 -j RETURN
         ${lib.optionalString (icfg.memorySearch.enable && icfg.memorySearch.provider == "local") ''
           # The llama-server openclaw spawns (as the agent) for local embeddings.
           ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString icfg.memorySearch.llamaServerPort} -j RETURN
@@ -1507,6 +1512,11 @@ let
           HOME = homeDir;
           OPENCLAW_STATE_DIR = stateDir;
           OPENCLAW_CONFIG_PATH = configFile;
+          # Nix pins the version, so the update check (which doubles as the
+          # telemetry ping to telemetry.openclaw.ai) is pointless; DO_NOT_TRACK
+          # also keeps the feature stats off.
+          OPENCLAW_NO_AUTO_UPDATE = "1";
+          DO_NOT_TRACK = "1";
         }
         # Every HTTP client the agent runs (the gateway's undici, Claude Code,
         # chromium, curl, git, gh, python) reads these; the firewall rejects

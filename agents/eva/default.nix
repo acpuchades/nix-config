@@ -166,7 +166,7 @@ let
     # ever fetch its login page. That is why it is here and deliberately NOT in
     # actions.requestUrl.trustedSites — putting it there would advertise a read path
     # that returns nothing but a paywall stub. Credentials are handed to the agent
-    # directly (she keeps them under ~/.credentials), not pinned in this repo.
+    # directly (she keeps them under ~/.config/eva), not pinned in this repo.
     #
     # `*.` is subdomains-only, so www.uptodate.com is covered and the bare apex is
     # not — navigate to https://www.uptodate.com/… . If the login bounces through an

@@ -261,9 +261,12 @@ pkgs.writeTextDir "policy/SKILL.md" ''
 
         When the owner hands you a credential for a service you are to use — an API
         key, a bearer token, an app password, a cookie — store the SECRET VALUE in a
-        file of its own, `${homeDir}/.credentials/<service>` (create the directory
-        with mode 0700 and the file with 0600, e.g. `install -m 600 /dev/null <file>`
-        before writing it), and when a token is rotated overwrite that file.
+        file of its own, `${homeDir}/.config/${icfg.user}/<service>` (keep that
+        directory at mode 0700 — `chmod 700` it if it is not — and create the file
+        with 0600, e.g. `install -m 600 /dev/null <file>` before writing it), and
+        when a token is rotated overwrite that file.
+        That directory holds credentials ONLY: scripts and drafts belong in your
+        workspace, where the owner can see them.
 
         Then record the service in `${homeDir}/workspace/TOOLS.md`, in a section of
         its OWN (`## <service>`): what it is for, the endpoint, whether the token
@@ -280,5 +283,8 @@ pkgs.writeTextDir "policy/SKILL.md" ''
 
         Never commit a credential file or a token to a git repository, never mail it,
         never paste it into a reply, a page or a form, and never send a token
-        anywhere except the service it belongs to.
+        anywhere except the service it belongs to. Never put one in a git remote URL
+        (`https://<token>@github.com/…`) either: it lands in `.git/config` in clear.
+        GitHub credentials come from `gh` (already logged in through GH_TOKEN), so
+        remotes stay plain `https://github.com/<owner>/<repo>`.
       ''
