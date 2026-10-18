@@ -54,4 +54,22 @@ in
     ports = [ 5353 ];
     protocols = [ "udp" ];
   };
+
+  systemd.network.networks = {
+    "10-${uplinkInterface}" = {
+      matchConfig.Name = uplinkInterface;
+      # Static LAN IP. The server's identity (192.168.2.2) is hardcoded
+      # across AdGuard rewrites, the *.acpuchades.com vhosts,
+      # homeServerLocalAddress and the router's 51820 port-forward, so it
+      # must not float on DHCP (a lease change took the server down once).
+      # Make sure 192.168.2.2 is outside the router's DHCP pool to avoid a
+      # collision with a dynamically-assigned client.
+      address = [ "192.168.2.2/24" ];
+      gateway = [ "192.168.2.1" ];
+      networkConfig = {
+        DHCP = "no";
+        DNS = [ "127.0.0.1" ];
+      };
+    };
+  };
 }

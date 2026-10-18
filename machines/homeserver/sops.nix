@@ -111,7 +111,7 @@ in
 
       # One Proton profile per client tunnel, named for the exit country, plus
       # the P2P tunnel's. These track my.protonvpn.clientTunnels.<name> in
-      # ./default.nix — a name here that the vault does not carry evaluates fine
+      # ./vpn.nix — a name here that the vault does not carry evaluates fine
       # and then fails at ACTIVATION, which is a worse place to find out.
       "wireguard-client/wgproton-es" = {
         key = "wireguard-client/wgproton-es";
@@ -255,7 +255,7 @@ in
 
       # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
       # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
-      # (machines/homeserver/default.nix) points nix at it. The module fetches the
+      # (machines/homeserver/fugazi.nix) points nix at it. The module fetches the
       # source with builtins.fetchTarball, and that choice is deliberate: only nix's
       # BUILT-IN fetchers (fetchTarball/fetchGit, flake inputs) consult netrc-file /
       # access-tokens. NOT your shell's $GITHUB_TOKEN (the fetch has no login

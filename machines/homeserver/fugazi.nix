@@ -1,23 +1,19 @@
 # fugazi-web — the homeserver's backtest service (testing.fugazitrade.com).
 #
-# Split out of ./default.nix, which it had grown to roughly half of: ~470 lines
-# of policy helpers in the `let` block plus ~280 of instance configuration, for
-# ONE service among thirty. Everything here is fugazi-specific and nothing else
-# on this host reads any of it, so the split costs no cross-references —
-# `cloudflareNetworks` came along because fugazitrade.com is the only name here
-# behind a CDN.
+# Everything fugazi-specific; nothing else on this host reads any of it.
 #
 # Curried over the flake inputs rather than taking them from `_module.args`,
 # because `imports` below needs `fugazi-web` and a module argument used in
-# `imports` is an infinite recursion. Same pattern as
-# modules/emacs-core/system.nix at the bottom of ./default.nix.
+# `imports` is an infinite recursion. Same pattern as ./web.nix and
+# modules/emacs-core/system.nix.
 #
-# STAYS IN default.nix, deliberately:
-#   * the sops secrets and templates (machines/homeserver/sops.nix) — one place
-#     to answer "what secrets does this host hold" beats proximity
-#   * the `my.ntfy-alert.failureUnits` entries naming the fugazi units — that list is a
-#     host-level statement of what gets alerted on, and reads as one thing
-#   * nixpkgs.overlays keeps the caddy entry; this file contributes its own
+# Deliberately NOT here:
+#   * the sops secrets and templates (./sops.nix) — one place to answer "what
+#     secrets does this host hold" beats proximity
+#   * the `my.ntfy-alert.failureUnits` entries naming the fugazi units
+#     (./monitoring.nix) — that list is a host-level statement of what gets
+#     alerted on, and reads as one thing
+#   * the caddy overlay (./web.nix); this file contributes its own
 #
 { fugazi-web, fugazi-web-testing }:
 
@@ -29,7 +25,7 @@
 }:
 
 let
-  # LAN + WireGuard prefixes and the Cloudflare edges, shared with default.nix.
+  # LAN + WireGuard prefixes and the Cloudflare edges (./networks.nix).
   inherit (import ./networks.nix) privateNetworks cloudflareNetworks;
 
   # Every cadence a venue this service fetches from actually publishes — the union
@@ -704,7 +700,7 @@ in
   # a resident process is worst.
   #
   # The failure mode differs from a timer's, and it is why these three units are
-  # in my.ntfy-alert.failureUnits below while the twelve timed ones are not. A
+  # in my.ntfy-alert.failureUnits (./monitoring.nix) while the twelve timed ones are not. A
   # oneshot that dies misses one bar and the next firing is a fresh process; a
   # resident unit that dies stops advancing its cadence until something restarts
   # it, with no timer behind it to paper over the gap. Restart=always covers the

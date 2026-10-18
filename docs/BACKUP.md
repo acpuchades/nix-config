@@ -5,7 +5,7 @@ Off-site, client-side-encrypted backups of `homeserver`, using
 
 - Module: `modules/backup/default.nix` (`my.backup`), a wrapper over the
   upstream `services.restic.backups.<name>` module.
-- Configured in: `machines/homeserver/default.nix`, the `my.backup` block.
+- Configured in: `machines/homeserver/backup.nix`, the `my.backup` block.
 - Repository: `b2:acpuchades-homeserver-restic:restic`
 - Runs as: `restic-backups-homeserver.service`, driven by a daily timer.
 
@@ -177,7 +177,7 @@ sudo restic-homeserver check --read-data-subset=5%    # actually re-reads data
 ```
 
 Changing what is backed up means editing the `my.backup` block in
-`machines/homeserver/default.nix` and rebuilding; nothing here is configured
+`machines/homeserver/backup.nix` and rebuilding; nothing here is configured
 imperatively.
 
 ---

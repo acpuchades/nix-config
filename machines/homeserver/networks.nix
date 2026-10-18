@@ -1,6 +1,5 @@
-# Network constants shared by default.nix and fugazi.nix (both curried files
-# of this same host — a plain attrset import, not a module, so either can use
-# these in any position).
+# Network constants shared by this host's files. A plain attrset import, not a
+# module, so any file can use these in any position (including curried ones).
 rec {
   lanNetwork = "192.168.2.0/24";
 

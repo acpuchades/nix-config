@@ -24,7 +24,7 @@
 #     pkgs.fugazi-service      — the backend buildPythonPackage (built against our
 #                                nixpkgs), incl. the fugazi PyPI wheel pin
 #     pkgs.fugazi-web-frontend — the built Vite SPA (buildNpmPackage + npmDepsHash)
-# Both are wired in machines/homeserver/default.nix. The wheel pin, the
+# Both are wired in machines/homeserver/fugazi.nix. The wheel pin, the
 # npmDepsHash and the unit definitions are therefore maintained upstream, not
 # here; bump them all by rolling the input: `nix flake update fugazi-web`.
 #

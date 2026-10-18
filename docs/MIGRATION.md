@@ -65,7 +65,7 @@ line. Start the restore the day *before* you need the box.
 | Value | Where | Note |
 |---|---|---|
 | root / boot / swap / `/srv` / `/srv/encrypted` UUIDs | `machines/homeserver/hardware-configuration.nix` | regenerate with `nixos-generate-config --show-hardware-config`, then re-apply the `options` we set by hand (`noatime`, `compress=zstd`, `nofail`) — the generator will not produce them |
-| LUKS container UUID | `machines/homeserver/default.nix`, `environment.etc."crypttab"` | unchanged if the disk moves; new if you re-create the container |
+| LUKS container UUID | `machines/homeserver/settings.nix`, `environment.etc."crypttab"` | unchanged if the disk moves; new if you re-create the container |
 | `uplinkInterface` | `machines/homeserver/default.nix` (one `let` binding) | NIC names follow the PCI path, so new hardware renames it. Changing this one string covers the static address, the WiFi association and the WireGuard NAT. If the new box has ethernet, the `networking.wireless` block in `networking.nix` goes away and the networkd `10-*` network attaches to the wired NIC instead |
 | CPU / platform bits | `hardware-configuration.nix` | `kvm-amd` and `hardware.cpu.amd.updateMicrocode` are AMD-specific; swap for the Intel equivalents on Intel |
 | `system.stateVersion = "25.05"` | `machines/homeserver/default.nix` | **do not bump.** It describes the state you are restoring, not the release you are installing |

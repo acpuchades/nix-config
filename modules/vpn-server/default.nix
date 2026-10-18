@@ -88,7 +88,7 @@ let
          and declare it in machines/homeserver/sops.nix (secrets):
            "wireguard/psk/$PEER_SLUG" = { mode = "0400"; };
 
-      2) Add the peer under my.vpn-server.peers in machines/homeserver/default.nix:
+      2) Add the peer under my.vpn-server.peers in machines/homeserver/vpn.nix:
            $PEER_SLUG = {
              publicKey = "$PUBLIC_KEY";
              allowedIPs = [ "$PEER_IP/32" ];
