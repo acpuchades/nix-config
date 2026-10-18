@@ -36,9 +36,11 @@ let
     text = ''
       topic="''${1:?topic required}"; title="''${2:-Alert}"
       priority="''${3:-default}"; tags="''${4:-}"; message="''${5:-}"
+      # The token goes to curl as a header FILE on stdin: as an -H argument it
+      # would sit in the world-readable process table for the whole request.
       auth=()
       if [ -n "''${NTFY_TOKEN:-}" ]; then
-        auth=(-H "Authorization: Bearer $NTFY_TOKEN")
+        auth=(-H @-)
       fi
       # Best-effort and time-bounded: an alert must never hang a shutdown path
       # or wedge the triggering context.
@@ -49,7 +51,8 @@ let
         -H "Priority: $priority" \
         ''${tags:+-H "Tags: $tags"} \
         -d "$message" \
-        "${cfg.baseUrl}/$topic"
+        "${cfg.baseUrl}/$topic" \
+        <<<"''${NTFY_TOKEN:+Authorization: Bearer $NTFY_TOKEN}"
     '';
   };
 

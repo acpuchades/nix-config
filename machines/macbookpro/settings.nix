@@ -50,7 +50,19 @@
     defaults write "$analytics_plist" AutoSubmit -bool false
     defaults write "$analytics_plist" ThirdPartyDataSubmit -bool false
     chmod 644 "$analytics_plist"
+
+    # Start the screensaver (and so, with askForPassword below, lock) after
+    # 3 min idle. A per-host (ByHost) preference, which CustomUserPreferences
+    # cannot write: it targets the plain domain, not the UUID-suffixed file.
+    sudo -u ${config.system.primaryUser} defaults -currentHost write com.apple.screensaver idleTime -int 180
   '';
+
+  # Application firewall on, and stealth mode so the machine ignores pings and
+  # probes to closed ports on untrusted networks.
+  networking.applicationFirewall = {
+    enable = true;
+    enableStealthMode = true;
+  };
 
   system.defaults.dock = {
     orientation = "bottom";

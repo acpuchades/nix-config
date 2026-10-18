@@ -209,13 +209,27 @@ let
         credentialsFile = config.sops.templates."caddy/cloudflare-env".path;
       };
 
-      my.vpn-server = {
+      my.vpn-server = let
+        # alex's own peers (named alex-*): the ones trusted past the internet
+        # and this host — into the LAN and to each other.
+        alexPeerAddresses = lib.concatLists (lib.mapAttrsToList
+          (name: peer: lib.optionals (lib.hasPrefix "alex-" name) peer.allowedIPs)
+          config.my.vpn-server.peers);
+      in {
         enable = true;
         privateKeyFile = config.sops.secrets."wireguard/private-key".path;
         serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
         serverEndpoint = "vpn.acpuchades.com:51820";
         clientDns = "10.0.0.1";
         upstreamInterface = uplinkInterface;
+        # Every peer's IPv6 goes into the tunnel (and is refused there) instead
+        # of around it.
+        ula6Prefix = "fd7a:9c0e:2b1d";
+        # Peers reach the internet and this host's services; only alex's own
+        # devices reach the LAN (router, printer, IoT) and each other.
+        lanNetworks = [ lanNetwork ];
+        lanAccessFrom = alexPeerAddresses;
+        peerToPeerFrom = alexPeerAddresses;
         peers = {
           alex-laptop = {
             publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
@@ -416,9 +430,8 @@ let
         virtualHost = "adguard.acpuchades.com";
         allowedNetworks = privateNetworks;
         # Plain DNS is for the LAN and the VPN only, never the public internet.
-        # 10.0.0.0/24 (the wg subnet) is listed for defence in depth rather than
-        # necessity: wg0 is a trustedInterface, so peer traffic to 10.0.0.1:53
-        # bypasses the firewall chain entirely.
+        # The wg prefixes must be listed: wg0 is not a trusted interface, so
+        # peers reach :53 only through these source rules.
         allowedClientNetworks = privateNetworks;
         dnsRewrites = [
           # vpn.acpuchades.com is intentionally NOT rewritten here: it must
@@ -746,11 +759,18 @@ let
         # local) delivers straight to the eva system user's ~/Maildir.
         mailDomain = "mail.acpuchades.com";
         # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
-        # of these AND passes DMARC (spoof-proof). eva keys "may act on this mail"
-        # off that header, not the raw From. Pulled from eva's own unprompted-send
-        # list (defined in agents/eva) so trust stays symmetric in both
-        # directions without a second copy of the addresses to drift.
-        trustedSenders = config.my.openclaw.instances.eva.mail.unpromptedRecipients;
+        # of these AND carries an aligned DKIM signature (spoof-proof). eva keys
+        # "may act on this mail" off that header, not the raw From. The SAME sops
+        # value as eva's trusted-recipient list (agents/eva), so trust stays
+        # symmetric in both directions without a second copy to drift.
+        trustedSendersFile = config.sops.secrets."rspamd/trusted-senders".path;
+        # eva is the only mailbox; everything else at mailDomain is refused at
+        # SMTP time. She cannot submit mail herself — only through her send
+        # wrappers, which run as eva-mail (pinned to her address) and hold mail
+        # for anyone but the owner.
+        localRecipients = [ "eva" ];
+        deniedSubmitUsers = [ "eva" ];
+        pinnedSenders.eva-mail = [ config.my.openclaw.instances.eva.mail.fromAddress ];
         relayHost = "[in-v3.mailjet.com]:587";
         saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
         # Use the shared wildcard cert instead of managing a per-hostname cert.
@@ -770,6 +790,11 @@ let
       my.backup = {
         enable = true;
         repository = "b2:acpuchades-homeserver-restic:restic";
+        # Nightly plaintext DB dumps (Vaultwarden's TOTP seeds among them) go on
+        # the LUKS volume, not the unencrypted root NVMe where deleted blocks
+        # linger. The live databases are there too, so a dead /srv/encrypted
+        # leaves nothing to dump anyway.
+        stagingDir = "/srv/encrypted/backup-staging";
         passwordFile = config.sops.secrets."backup/restic-password".path;
         environmentFile = config.sops.templates."backup/b2-env".path;
 
@@ -985,6 +1010,31 @@ let
         fail2ban = {
           enable = true;
           ignoreIP = privateNetworks;
+        };
+        # Unauthenticated control APIs: Caddy (which adds basic-auth and the
+        # LAN gate) and their own clients only.
+        localPortGuards = {
+          # DNS rewrites for every LAN/VPN client.
+          adguard = {
+            port = config.my.dns-filtering.adguardPort;
+            users = [ "caddy" ];
+          };
+          # Runs arbitrary code as prefect. alex uses the CLI against it.
+          prefect = {
+            port = config.my.prefect-server.port;
+            users = [ "caddy" "prefect" "alex" ];
+          };
+          # Spam thresholds, maps and learning.
+          rspamd = {
+            port = 11334;
+            users = [ config.services.rspamd.user ];
+          };
+          # Download dir and torrent-done script (code exec as transmission).
+          transmission = {
+            address = config.my.protonvpn.transmission.veth.namespaceAddress;
+            port = config.my.transmission-server.rpcPort;
+            users = [ "caddy" ];
+          };
         };
       };
 

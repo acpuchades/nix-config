@@ -57,9 +57,9 @@ any calendar operation:
 
     | Name | What belongs on it | Invitations to | .ics URL |
     |---|---|---|---|
-    | bellvitge | clinical work, hospital meetings | acaravaca@bellvitgehospital.cat | https://outlook.office365.com/owa/calendar/…/calendar.ics |
-    | idibell   | research: ALS project, lab meetings | acaravaca@idibell.cat | … |
-    | personal  | everything else | acp1337@proton.me | … |
+    | hospital  | clinical work, hospital meetings | <his hospital address> | https://outlook.office365.com/owa/calendar/…/calendar.ics |
+    | research  | research projects, lab meetings | <his institute address> | … |
+    | personal  | everything else | <his personal address> | … |
 
 A secret `.ics` link is a CREDENTIAL — anyone holding it reads the whole
 calendar. It lives in `TOOLS.md` and nowhere else: never in a repository, never
@@ -130,7 +130,7 @@ all. A real invitation needs a `text/calendar; method=REQUEST` part carrying an
 ORGANIZER and an ATTENDEE that is the recipient, and getting any of it wrong
 fails silently. `make-invite` fixes those details; you never re-derive them.
 
-    make-invite --to acaravaca@idibell.cat --summary "Reunión proyecto ELA" \
+    make-invite --to <his research address> --summary "Reunión proyecto ELA" \
       --start "2026-08-05 10:00" --duration 30 --location "IDIBELL, sala 2" \
       > invite.eml
 
@@ -153,7 +153,7 @@ The invitation lands in the calendar of the address you send it TO. Take that
 address from the registry row you chose in step 0 — not from the reply-to of
 whatever mail started this.
 
-    send-trusted-mail acaravaca@idibell.cat < invite.eml
+    send-trusted-mail <his research address> < invite.eml
 
 For the owner's own addresses this sends unprompted. For **anyone else** the
 recipient gate applies, and so does a rule this skill does not soften: proposing a
@@ -188,9 +188,9 @@ what is left against the real calendars.
 
 Resend with the **same `--uid`** and a **higher `--sequence`**:
 
-    make-invite --to acaravaca@idibell.cat --summary "Reunión proyecto ELA" \
+    make-invite --to <his research address> --summary "Reunión proyecto ELA" \
       --start "2026-08-06 12:00" --duration 30 --uid "<id>" --sequence 1 > update.eml
-    make-invite --to acaravaca@idibell.cat --summary "Reunión proyecto ELA" \
+    make-invite --to <his research address> --summary "Reunión proyecto ELA" \
       --start "2026-08-06 12:00" --uid "<id>" --sequence 2 --cancel > cancel.eml
 
 A new invitation for an event that already exists creates a SECOND event and

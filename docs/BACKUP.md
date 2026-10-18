@@ -20,12 +20,12 @@ The timer is `daily` with a 30-minute jitter and `Persistent = true`, so a run
 missed while the box was off happens at the next boot. One run is four phases:
 
 1. **Prepare** (`backupPrepareCommand`). Puts NextCloud into maintenance mode,
-   then writes database dumps into `/var/backup/dumps`.
+   then writes database dumps into `/srv/encrypted/backup-staging`.
 2. **Backup.** restic snapshots the configured paths *plus* that staging
    directory, encrypting everything locally before upload.
 3. **Prune.** `restic forget --prune` applies the retention policy.
 4. **Cleanup** (`backupCleanupCommand`, wired as `ExecStopPost`). Takes
-   NextCloud out of maintenance mode and wipes `/var/backup/dumps`. Because it
+   NextCloud out of maintenance mode and wipes `/srv/encrypted/backup-staging`. Because it
    is `ExecStopPost` it runs even when the backup *fails* — maintenance mode is
    never left stuck on, and plaintext dumps never linger on disk.
 
@@ -51,7 +51,7 @@ actually works).
 | `/srv/encrypted/vaultwarden` | Vaultwarden data directory |
 | `/srv/encrypted/immich` | Immich originals |
 | `/srv/shared` | the Samba share, minus the big trees below |
-| `/var/backup/dumps` | the database dumps produced in phase 1 |
+| `/srv/encrypted/backup-staging` | the database dumps produced in phase 1 |
 
 Deliberately absent, because all of it is re-acquirable and none of it should
 be paying for off-site storage: Bitcoin's chainstate, the Nominatim database and
@@ -79,11 +79,11 @@ Copying a live PostgreSQL data directory produces a torn image — pages
 half-written, WAL mid-flight — that can restore to a corrupt cluster. So
 `/srv/encrypted/postgresql` is **not** in the path list. Instead, each run:
 
-- writes `pg_dumpall --globals-only` to `/var/backup/dumps/postgres/globals.sql`
+- writes `pg_dumpall --globals-only` to `/srv/encrypted/backup-staging/postgres/globals.sql`
   (roles, grants and tablespaces are cluster-wide and appear in no per-database
   dump);
 - writes one `pg_dump --format=custom` per live database to
-  `/var/backup/dumps/postgres/<db>.dump`. The database list is enumerated at
+  `/srv/encrypted/backup-staging/postgres/<db>.dump`. The database list is enumerated at
   runtime, so a new database is picked up with no config change. `nominatim` is
   excluded (large and re-importable from Geofabrik), as are the template DBs
   and the `postgres` maintenance DB — so do not expect a `postgres.dump`;
@@ -133,6 +133,20 @@ sudo restic-homeserver prune
 
 And prune repacks partially-used pack files, which means downloading them from
 B2; `prune --max-repack-size 5G` bounds that traffic.
+
+**Deletion is the weak point.** The prune runs on the host, so the host's B2
+key can delete objects — and so can anyone who takes the host. To make the
+off-site copy survive that:
+
+1. In B2, set the bucket's lifecycle to keep prior versions for 30 days (or
+   enable Object Lock), so a deletion only hides a file.
+2. Give the host an application key WITHOUT `deleteFiles`, and set
+   `my.backup.pruneOpts = [ ]` so it no longer forgets/prunes.
+3. Run `restic forget --prune` with the retention above from another machine
+   holding a full key, monthly.
+
+Snapshots taken before 2026-10 staged their dumps under `/var/backup/dumps`;
+use that path in `--include` when restoring one of those.
 
 ---
 
@@ -201,14 +215,14 @@ sudo restic-homeserver restore latest \
 ### PostgreSQL
 
 The data directory is not in the backup — the dumps under
-`/var/backup/dumps/postgres/` are. Restore the globals first (only needed if
+`/srv/encrypted/backup-staging/postgres/` are. Restore the globals first (only needed if
 roles are missing, e.g. a fresh cluster), then the database:
 
 ```sh
-sudo restic-homeserver restore latest --target /restore --include /var/backup/dumps
-sudo -u postgres psql -f /restore/var/backup/dumps/postgres/globals.sql
+sudo restic-homeserver restore latest --target /restore --include /srv/encrypted/backup-staging
+sudo -u postgres psql -f /restore/srv/encrypted/backup-staging/postgres/globals.sql
 sudo -u postgres pg_restore --clean --create -d postgres \
-  /restore/var/backup/dumps/postgres/<db>.dump
+  /restore/srv/encrypted/backup-staging/postgres/<db>.dump
 ```
 
 Stop the service that owns the database first (`systemctl stop immich-server`,
@@ -220,9 +234,9 @@ under a running client.
 ```sh
 sudo systemctl stop grafana
 sudo restic-homeserver restore latest --target /restore \
-  --include /var/backup/dumps/grafana.sqlite
+  --include /srv/encrypted/backup-staging/grafana.sqlite
 sudo install -o grafana -g grafana -m600 \
-  /restore/var/backup/dumps/grafana.sqlite /var/lib/grafana/grafana.db
+  /restore/srv/encrypted/backup-staging/grafana.sqlite /var/lib/grafana/grafana.db
 sudo systemctl start grafana
 ```
 
@@ -238,7 +252,7 @@ maintenance-mode quiesce is what makes them agree:
 ```sh
 sudo nextcloud-occ maintenance:mode --on
 sudo restic-homeserver restore <snap> --target /restore \
-  --include /srv/encrypted/nextcloud --include /var/backup/dumps/postgres/nextcloud.dump
+  --include /srv/encrypted/nextcloud --include /srv/encrypted/backup-staging/postgres/nextcloud.dump
 # move the data tree into place, restore the dump as above, then:
 sudo nextcloud-occ maintenance:mode --off
 sudo nextcloud-occ files:scan --all

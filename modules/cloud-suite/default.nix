@@ -454,7 +454,10 @@
       lib.concatStringsSep "\n" (lib.filter (s: s != "") [
         (lib.optionalString (config.my.cloud-suite.bitwarden.allowedNetworks != [])
           "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.bitwarden.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:8000"
+        # Vaultwarden takes the client IP (login rate limit, failed-login log)
+        # from X-Real-IP, which Caddy would otherwise pass through as the
+        # client sent it.
+        "reverse_proxy http://127.0.0.1:8000 {\n  header_up X-Real-IP {client_ip}\n}"
         "encode gzip"
       ]);
 
@@ -528,6 +531,10 @@
       dbBackend = "postgresql";
       config = {
         DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
+        # Setting `config` replaces the module's loopback default; pin it so
+        # the port Caddy proxies to never ends up on every interface.
+        ROCKET_ADDRESS = "127.0.0.1";
+        ROCKET_PORT = 8000;
         DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
         SIGNUPS_ALLOWED = config.my.cloud-suite.bitwarden.signupsAllowed;
         DATA_FOLDER = config.my.cloud-suite.bitwarden.dataDir;

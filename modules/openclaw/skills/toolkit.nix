@@ -32,10 +32,10 @@ pkgs.writeTextDir "toolkit/SKILL.md" ''
         approval (see the `policy` skill).
 
         It also covers only what Nix installs for you. Access to an external service
-        the owner has given you a token for is NOT listed here: those live in
-        `${homeDir}/workspace/TOOLS.md`, one section per service, which is where you
-        record every credential you are handed (see the `policy` skill). Check that
-        file before concluding you cannot reach a service.
+        the owner has given you a token for is NOT listed here: those are recorded in
+        `${homeDir}/workspace/TOOLS.md`, one section per service (the secret itself
+        sits in `~/.credentials/` — see the `policy` skill). Check that file before
+        concluding you cannot reach a service.
         ${lib.optionalString (icfg.toolkit.python != [ ]) ''
 
           ## Python libraries

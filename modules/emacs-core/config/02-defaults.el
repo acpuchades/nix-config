@@ -39,6 +39,18 @@
 ;; visit offers `recover-this-file'. Non-file buffers still go.
 (when (daemonp)
   (add-hook 'kill-emacs-hook (lambda () (do-auto-save t))))
+;; Files under temporary-file-directory are often decrypted secrets (sops
+;; opens its plaintext temp file via EDITOR=emacsclient): never auto-save
+;; them, or the plaintext outlives the temp file in var/auto-save/. Backups
+;; already skip them (`normal-backup-enable-predicate').
+(defun my/file-in-temp-dir-p (file)
+  "Non-nil if FILE lies under `temporary-file-directory'."
+  (and file (file-in-directory-p file temporary-file-directory)))
+
+(defun my/no-auto-save-in-temp-dir ()
+  (when (my/file-in-temp-dir-p buffer-file-name)
+    (auto-save-mode -1)))
+(add-hook 'find-file-hook #'my/no-auto-save-in-temp-dir)
 
 ;; Disable bell sounds
 (setq ring-bell-function 'ignore)

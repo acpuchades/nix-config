@@ -8,8 +8,9 @@
 # exactly the (trust-checked) arguments.
 #
 # The trusted addresses are pinned by the nix module as $TRUSTED_ADDRESSES
-# (space-separated), the sender as $MAIL_FROM, and sendmail as $SENDMAIL — all
-# from the immutable wrapper the module builds around this file.
+# (space-separated) and/or $TRUSTED_ADDRESSES_FILE (one per line, a runtime
+# file kept out of the store), the sender as $MAIL_FROM, and sendmail as
+# $SENDMAIL — all from the immutable wrapper the module builds around this file.
 #
 # $ENCRYPT_ONLY_ADDRESSES (space-separated, lowercase, likewise pinned) is the
 # set of recipients the module has declared confidential. Being trusted does not
@@ -22,10 +23,20 @@ if [ "$#" -lt 1 ]; then
   exit 2
 fi
 
+trusted="${TRUSTED_ADDRESSES:-}"
+if [ -n "${TRUSTED_ADDRESSES_FILE:-}" ]; then
+  # Fail closed: an unreadable list trusts no one.
+  if [ ! -r "$TRUSTED_ADDRESSES_FILE" ]; then
+    echo "refused: the trusted address list is unreadable" >&2
+    exit 3
+  fi
+  trusted="$trusted $(grep -v '^[[:space:]]*\(#\|$\)' "$TRUSTED_ADDRESSES_FILE" | tr '\n' ' ' || true)"
+fi
+
 for r in "$@"; do
   rl=$(printf '%s' "$r" | tr 'A-Z' 'a-z')
   ok=0
-  for a in $TRUSTED_ADDRESSES; do
+  for a in $trusted; do
     al=$(printf '%s' "$a" | tr 'A-Z' 'a-z')
     if [ "$rl" = "$al" ]; then ok=1; break; fi
   done

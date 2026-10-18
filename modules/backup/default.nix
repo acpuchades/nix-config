@@ -42,9 +42,8 @@
 let
   cfg = config.my.backup;
 
-  # Staging tree the prepare step fills and the cleanup step wipes. Lives on the
-  # root fs (not the encrypted spinning disk) so a dump can run even if that
-  # disk is the thing being recovered.
+  # Staging tree the prepare step fills and the cleanup step wipes. Put it on an
+  # encrypted filesystem: it holds full plaintext dumps every night.
   staging = cfg.stagingDir;
 
   psql = "${cfg.postgresqlPackage}/bin/psql";

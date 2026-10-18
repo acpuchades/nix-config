@@ -98,17 +98,18 @@
           # is safe to auto-approve (not a fixed allowlist), and gates anything it
           # judges risky. (Shift+Tab cycles modes per-session; this sets the default.)
           defaultMode = "auto";
-          # Auto-allow harmless, read-only inspection so they don't prompt.
+          # Auto-allow harmless, read-only inspection so they don't prompt. A
+          # prefix rule allows EVERY flag, so only commands with no executing or
+          # writing flag qualify: fd (-x), rg (--pre) and tree (-o) are out —
+          # the built-in Glob/Grep tools cover search — and git branch is
+          # narrowed to --list (-D/-f mutate).
           allow = [
             "Bash(git status:*)"
             "Bash(git diff:*)"
             "Bash(git log:*)"
             "Bash(git show:*)"
-            "Bash(git branch:*)"
+            "Bash(git branch --list:*)"
             "Bash(ls:*)"
-            "Bash(tree:*)"
-            "Bash(fd:*)"
-            "Bash(rg:*)"
             "Bash(eza:*)"
           ];
           # Anything that writes, pushes, or deletes still prompts (default behavior).

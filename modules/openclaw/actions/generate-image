@@ -86,8 +86,8 @@ fi
 TOKEN="$(cat "$GENIMG_TOKEN_FILE")"
 API_URL="${API_BASE}/models/${GENIMG_MODEL}:generateContent"
 
-REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"; REF_B64_FILE=""
-cleanup() { rm -f "$REQ_FILE" "$RESP_FILE" "$REF_B64_FILE"; }
+REQ_FILE="$(mktemp)"; RESP_FILE="$(mktemp)"; REF_B64_FILE=""; KEY_HDR_FILE=""
+cleanup() { rm -f "$REQ_FILE" "$RESP_FILE" "$REF_B64_FILE" "$KEY_HDR_FILE"; }
 trap cleanup EXIT
 
 # Build the request body with jq (so the prompt is JSON-escaped — a raw printf
@@ -115,8 +115,13 @@ else
     '{contents:[{parts:[{text:$p}]}]}' > "$REQ_FILE"
 fi
 
+# The key rides a header read from a 0600 file, never argv (the process table
+# is world-readable). printf is a builtin, so it never appears there either.
+KEY_HDR_FILE="$(mktemp)"
+printf 'x-goog-api-key: %s\n' "$TOKEN" > "$KEY_HDR_FILE"
 HTTP_CODE="$(curl -s --max-time 90 \
-  -X POST "${API_URL}?key=${TOKEN}" \
+  -X POST "${API_URL}" \
+  -H @"$KEY_HDR_FILE" \
   -H "Content-Type: application/json" \
   -d "@${REQ_FILE}" \
   -o "$RESP_FILE" \

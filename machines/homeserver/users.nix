@@ -38,9 +38,7 @@
         # memory and sessions without becoming the agent.
         "openclaw"
 
-        # /var/log/nginx (0750 nginx:nginx). Note this also covers the
-        # /var/lib/acme/<domain> dirs that are group-nginx, so it grants read on
-        # those certs' private keys too.
+        # /var/log/nginx (0750 nginx:nginx).
         "nginx"
 
         # The node's .cookie, so bitcoin-cli talks to bitcoind as alex. The

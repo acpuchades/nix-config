@@ -58,9 +58,14 @@ else
   QUERY=(--data-urlencode "q=$loc")
 fi
 
+# The API only takes the key as a query parameter; pass it through a 0600
+# curl config file rather than argv (the process table is world-readable).
+KEY_CFG="$(mktemp)"
+trap 'rm -f "$KEY_CFG"' EXIT
+printf 'data-urlencode = "appid=%s"\n' "$TOKEN" > "$KEY_CFG"
 RESP="$(curl -sS --max-time 30 -G "$API_BASE/weather" \
   "${QUERY[@]}" \
-  --data-urlencode "appid=$TOKEN" \
+  --config "$KEY_CFG" \
   --data-urlencode "units=$UNITS" \
   --data-urlencode "lang=$LANGV")"
 

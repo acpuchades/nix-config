@@ -119,6 +119,11 @@ in
       # entry upstream also sets (StateDirectory = prefect-worker-${name}).
       (lib.mapAttrs'
         (name: _: lib.nameValuePair "prefect-worker-${name}" {
+          # A static account rather than upstream's DynamicUser, so a firewall
+          # owner match (my.host-security.localPortGuards) can name it.
+          serviceConfig.DynamicUser = lib.mkForce false;
+          serviceConfig.User = "prefect";
+          serviceConfig.Group = "prefect";
           serviceConfig.Environment = lib.mkForce [
             "PREFECT_HOME=%S/prefect-worker-${name}"
             "PREFECT_API_URL=http://127.0.0.1:${toString cfg.port}/api"

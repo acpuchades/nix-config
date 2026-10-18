@@ -49,6 +49,23 @@
   boot.kernel.sysctl = {
     "vm.swappiness" = 10;
     "vm.vfs_cache_pressure" = 50;
+
+    # Hardening. This box runs internet-facing services and an LLM agent, so
+    # deny the cheap local escalations: kernel pointers and dmesg to root only,
+    # no ptrace of a process that is not your own child, no following FIFOs or
+    # files planted in world-writable sticky dirs. It forwards for the VPN, so
+    # it must not accept or send ICMP redirects either.
+    "kernel.kptr_restrict" = 2;
+    "kernel.dmesg_restrict" = 1;
+    "kernel.yama.ptrace_scope" = 1;
+    "fs.protected_fifos" = 2;
+    "fs.protected_regular" = 2;
+    "net.ipv4.conf.all.accept_redirects" = 0;
+    "net.ipv4.conf.default.accept_redirects" = 0;
+    "net.ipv6.conf.all.accept_redirects" = 0;
+    "net.ipv6.conf.default.accept_redirects" = 0;
+    "net.ipv4.conf.all.send_redirects" = 0;
+    "net.ipv4.conf.default.send_redirects" = 0;
   };
 
   # RAM-backed /tmp — faster and saves NVMe wear. tmpfs is demand-paged and

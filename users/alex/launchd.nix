@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 {
   launchd = lib.mkIf pkgs.stdenv.isDarwin (
     {
@@ -13,8 +13,10 @@
             ];
             KeepAlive = true;
             RunAtLoad = true;
-            StandardOutPath = "/tmp/ntfy.log";
-            StandardErrorPath = "/tmp/ntfy.err";
+            # Not /tmp: world-writable, so another user could pre-create these
+            # as symlinks; and ntfy logs carry message contents.
+            StandardOutPath = "${config.home.homeDirectory}/Library/Logs/ntfy.log";
+            StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/ntfy.err";
           };
         };
       };

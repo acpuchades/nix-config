@@ -296,16 +296,19 @@ let
         iptables -D FORWARD -s ${src} -j ${ksChainOf g.name} 2>/dev/null || true
         iptables -I FORWARD 1 -s ${src} -j ${ksChainOf g.name}'') g.sources) steeredGroups}
 
-    # IPv6 guard. This host has no IPv6 at all — no global address, no v6
-    # default route — and peer profiles are generated IPv4-only, so tunneled
-    # clients have no routable v6 through us and there is nothing here to leak
-    # today. This rule is what keeps that true if a v6 address is ever added to
-    # the WireGuard interface without revisiting this module: tunneled clients
-    # would otherwise silently acquire dual-stack egress that bypasses the
-    # tunnel entirely. "No routable IPv6" is a supported answer; "IPv6 that
-    # quietly goes around Proton" is not.
+    # IPv6 guard. This host has no IPv6 egress — no global address, no v6
+    # default route — so peers have no routable v6 through us. wg0 may carry a
+    # ULA (my.vpn-server.ula6Prefix) so peers route their v6 INTO the tunnel
+    # rather than around it; this rule is what refuses it there. Without it,
+    # a v6 address on the WireGuard interface would silently give tunneled
+    # clients dual-stack egress that bypasses Proton. "No routable IPv6" is a
+    # supported answer; "IPv6 that quietly goes around Proton" is not.
     ip6tables -D FORWARD -i ${cfg.wgInterface} -j DROP 2>/dev/null || true
-    ip6tables -I FORWARD 1 -i ${cfg.wgInterface} -j DROP
+    ip6tables -D FORWARD -i ${cfg.wgInterface} -j REJECT --reject-with icmp6-adm-prohibited 2>/dev/null || true
+    # REJECT, not DROP: peers route ::/0 into the tunnel (my.vpn-server
+    # .ula6Prefix) so their IPv6 cannot go around it, and an immediate
+    # "prohibited" makes them fall back to IPv4 at once instead of timing out.
+    ip6tables -I FORWARD 1 -i ${cfg.wgInterface} -j REJECT --reject-with icmp6-adm-prohibited
   '';
 
   # Only the chains the CURRENT configuration knows about are removed here. A
@@ -322,6 +325,7 @@ let
       iptables -F ${ksChainOf c.name} 2>/dev/null || true
       iptables -X ${ksChainOf c.name} 2>/dev/null || true'') indexedTunnels}
     ip6tables -D FORWARD -i ${cfg.wgInterface} -j DROP 2>/dev/null || true
+    ip6tables -D FORWARD -i ${cfg.wgInterface} -j REJECT --reject-with icmp6-adm-prohibited 2>/dev/null || true
   '';
 
   # SNAT to the tunnel address, and clamp MSS on the way in. The clamp matters

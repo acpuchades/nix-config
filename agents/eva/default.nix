@@ -15,21 +15,11 @@ let
   # Who eva works for. Owner-specific data lives here so it reads apart from
   # her behaviour: it follows her to any host, it is not host config.
   owner = {
-    # The owner's own addresses eva may email without a per-send approval.
-    # Shared by BOTH outbound mail wrappers so the two lists can never drift
-    # apart: send-trusted-mail (actions.trustedMail.trustedAddresses, which
-    # self-gates and hard-refuses anything else) and send-email
-    # (my.openclaw.mail.unpromptedRecipients, whose exec-allowlist rules let
-    # these send unprompted while any other recipient falls through to the
-    # approval gate).
-    mailAddresses = [
-      "acaravaca@bellvitgehospital.cat"
-      "acaravaca@idibell.cat"
-      "acp1337@proton.me"
-      "acaravacapuchades@gmail.com"
-      "acaravacapuchades@uoc.edu"
-      "acaravpu55@alumnes.ub.edu"
-    ];
+    # The owner's own addresses — the ones eva may email without approval and
+    # whose DKIM-signed mail she may act on — are a sops value, not a Nix one
+    # (this repo is public): openclaw/eva/owner-addresses, one per line, read at
+    # runtime by both send wrappers and by rspamd (see machines/homeserver).
+    mailAddressesFile = config.sops.secrets."openclaw/eva/owner-addresses".path;
     # The owner's domain: eva's own mailbox and the self-hosted services
     # she may browse and fetch from live under it.
     domain = "acpuchades.com";
@@ -176,7 +166,7 @@ let
     # ever fetch its login page. That is why it is here and deliberately NOT in
     # actions.requestUrl.trustedSites — putting it there would advertise a read path
     # that returns nothing but a paywall stub. Credentials are handed to the agent
-    # directly (she records them in her TOOLS.md), not pinned in this repo.
+    # directly (she keeps them under ~/.credentials), not pinned in this repo.
     #
     # `*.` is subdomains-only, so www.uptodate.com is covered and the bare apex is
     # not — navigate to https://www.uptodate.com/… . If the login bounces through an
@@ -239,17 +229,38 @@ in
 {
   imports = [ ../../modules/openclaw ];
 
-  # Her Telegram identity (the openclaw/<agent>/ subtree of the host's vault),
-  # consumed as files by telegram.{tokenFile,allowedIdFile}. The token is read
-  # by systemd LoadCredential (as root), so default ownership is fine; the
-  # allowed-ID file is read by the ExecStartPre seed (runs AS eva), so it must
-  # be eva-readable.
+  # Her identity (the openclaw/<agent>/ subtree of the host's vault). The
+  # Telegram token is read by systemd LoadCredential (as root), so default
+  # ownership is fine. The allowed-ID and owner-address files are read by eva
+  # (the ExecStartPre seed) and her mail account, so they are group-readable —
+  # but owned by root: a file eva OWNS she could chmod and rewrite, adding an
+  # attacker's Telegram ID or address to her own allowlist.
   sops.secrets = {
     "openclaw/eva/telegram-token" = { mode = "0400"; };
     "openclaw/eva/telegram-userid" = {
-      owner = "eva";
-      mode = "0400";
+      group = "eva";
+      mode = "0440";
     };
+    "openclaw/eva/owner-addresses" = {
+      group = "eva-mail";
+      mode = "0440";
+    };
+    # eva-nebot's GitHub token (classic, `repo` scope). That account holds read
+    # access to the owner's site repo and its own fork, so the token reaches
+    # nothing else; changes go in as pull requests (see the `projects` skill).
+    "openclaw/eva/github-token" = { mode = "0400"; };
+  };
+
+  # gh reads GH_TOKEN; git asks gh for HTTPS credentials (the GIT_CONFIG_* env
+  # form of `credential.https://github.com.helper`).
+  sops.templates."openclaw/eva/github-env" = {
+    mode = "0400";
+    content = ''
+      GH_TOKEN=${config.sops.placeholder."openclaw/eva/github-token"}
+      GIT_CONFIG_COUNT=1
+      GIT_CONFIG_KEY_0=credential.https://github.com.helper
+      GIT_CONFIG_VALUE_0=!gh auth git-credential
+    '';
   };
 
   my.openclaw.instances.eva = {
@@ -271,21 +282,14 @@ in
     # OpenClaw delegates command execution to a Claude Code subprocess, so its
     # OWN exec-approval gate (everything under tools.exec + channels.telegram.
     # execApprovals below) is INERT — those keys configure OpenClaw's in-process
-    # exec tool, which this runtime never uses. Net interim behavior with the
-    # current allowlist+on-miss config: allowlisted / read-only commands run
-    # fine, but a NON-allowlisted command has no approval path — Claude Code
-    # waits on a stdio permission prompt OpenClaw can't answer, so the turn
-    # HANGS ~180s then dies ("Something went wrong"). Nothing unsafe RUNS (it's
-    # effectively fail-closed), the UX is just bad. The deliberate posture
-    # (YOLO bypassPermissions = subscription + no gate but unsafe, vs a proper
-    # fail-closed path via the acpx ACP bridge) is STILL TBD — decide later.
+    # exec tool, which this runtime never uses — see the exec block below for
+    # the posture this forces and what contains her instead.
     #
     # REQUIRES a valid Claude login for the eva user, or she can't auth at all:
     #   sudo -u eva -H claude          # /login, then quit
     #   systemctl restart openclaw
     # And ANTHROPIC_API_KEY must NOT be in the service env, or Claude Code
-    # prefers the API key and bills per-token anyway — so openclaw/anthropic-env
-    # is dropped from environmentFiles below.
+    # prefers the API key and bills per-token anyway.
     #
     # Scalar note: the ExecStartPre seed applies this template with
     # `openclaw config patch` (recursive MERGE — objects merge, scalars
@@ -373,6 +377,7 @@ in
       # (`nix-shell`/`nix develop`, for `use nix` projects, come from the system.)
       direnv
       uv
+      gh # pull requests from her fork (see the `projects` skill)
       ffmpeg # full ffmpeg (STT already pulls ffmpeg-headless; this adds codecs)
       imagemagick # `convert`/`magick` image manipulation
       libxml2.bin # `xmllint` (lives in the .bin output, not the default one)
@@ -399,7 +404,8 @@ in
         "uv (Python project/virtualenv manager — `uv venv`, `uv add`)"
         "nix-shell / nix develop (enters a `use nix` project environment)"
         "pandoc (document conversion)"
-        "hugo (static-site generator — build + local preview; see the policy skill for the serve workflow)"
+        "hugo (static-site generator — build a site to check a change)"
+        "gh (GitHub CLI, as eva-nebot — forks and pull requests)"
         "quarto (publishing engine — .qmd/.Rmd to HTML/PDF/docx)"
         "tesseract (OCR — languages: eng, spa, cat)"
         "convert / magick (ImageMagick)"
@@ -491,7 +497,7 @@ in
     #   request-trusted-url can only ever fetch its login page) and is a tertiary
     #   source to be followed to its primary references, never cited itself.
     # - `seo-marketing`: search-visibility and digital-marketing work on ANY property —
-    #   his site (the one repo outside her own tree she can write to), a project's
+    #   his site (changed through pull requests from her fork), a project's
     #   docs, a study landing page, a mailing list. Deliberately GENERIC and
     #   deliberately THIN on conventions: a property's own repo docs are named as the
     #   authority (front-matter fields and their lengths, how keywords derive from
@@ -549,20 +555,19 @@ in
     extraSkillDirs = [ ../../skills ];
 
     # Eva's email: read her Maildir + a recipient-gated send-email helper.
-    # These addresses (all the owner's own) send with no approval; every
-    # other recipient falls through to the Telegram gate. The module generates
-    # the send-email wrapper, read-only tools, allowlist rules and the skill.
-    # manageMaildir lets her organise her OWN mailbox unprompted (flag/refile/
-    # mkdir/incorporate/deliver) — local Maildir mutation only; sending still
-    # goes through the recipient-gated send-email path.
+    # The owner's addresses send with no approval; mail to anyone else is HELD
+    # for him to release. That hold is real only because the send wrappers run
+    # as eva-mail (submitUser) and the host refuses eva's own account mail
+    # submission (my.mail-server.deniedSubmitUsers) — so the wrappers are the
+    # only way mail leaves her. manageMaildir lets her organise her OWN mailbox
+    # (flag/refile/mkdir/incorporate/deliver) — local Maildir mutation only.
     mail = {
       enable = true;
       manageMaildir = true;
       fromAddress = "e.nebot@${owner.domain}";
-      # Shared with send-trusted-mail (see owner.mailAddresses) so the
-      # two outbound wrappers never drift. These send unprompted; any other
-      # recipient falls through to the approval gate.
-      unpromptedRecipients = owner.mailAddresses;
+      submitUser = "eva-mail";
+      # Shared with send-trusted-mail so the two outbound wrappers never drift.
+      unpromptedRecipientsFile = owner.mailAddressesFile;
     };
 
     # Sanctioned self-gating action wrappers (see my.openclaw.actions). These
@@ -640,7 +645,7 @@ in
       };
       trustedMail = {
         enable = true;
-        trustedAddresses = owner.mailAddresses;
+        trustedAddressesFile = owner.mailAddressesFile;
       };
       # Image generation via Gemini. The API key is a runtime file eva owns; the
       # model and endpoint are pinned by nix. This is why
@@ -725,8 +730,8 @@ in
     #
     # safeBins is the pre-blessed set: the module's read-only default PLUS the
     # observe-only system/text tools AND the local filesystem mutators below
-    # (blessed because eva's WRITE surface is confined by permissions to her
-    # own tree + acpuchades-site — see access above). Deliberately NOT pre-
+    # (blessed because eva's WRITE surface is confined to her own tree by the
+    # service sandbox). Deliberately NOT pre-
     # blessed, so they keep prompting: the escalation/exfil vectors — sudo,
     # the shells/interpreters and inline-eval, the exec-wrappers (env/timeout/
     # tee/xargs), sed/awk in-place, find -exec/-delete (guarded), the network
@@ -735,21 +740,14 @@ in
     # SPECIFIC invocation at runtime without a rebuild via `openclaw approvals
     # allowlist add "<glob>"` — per-agent state, not re-seeded here.
     exec = {
-      # YOLO (security=full + ask=off). NOT a posture we'd pick, but the only
-      # one that FUNCTIONS: under the claude-cli runtime OpenClaw cannot gate
-      # Claude's native Bash per-command — its permission handler is BLANKET
-      # (allow iff full+off, else deny) and never consults safeBins/allowlist.
-      # So "allowlist"+"on-miss" denied EVERY command (eva couldn't even write
-      # her own memories — completely unusable). full+off makes OpenClaw launch
-      # Claude with --permission-mode=bypassPermissions, so commands actually
-      # run. The exec gate is thus effectively OFF; eva's containment now rests
-      # on OTHER layers: filesystem permissions (her writable surface is
-      # confined to her own tree + /tmp + acpuchades-site — NOT /home/alex, NOT
-      # the system), no passwordless sudo beyond `sudoCommands`, and (TODO)
-      # network-egress limits. The native runtime — where the gate genuinely
-      # works — is permanently off the table on cost. The safeBins/allowlist
-      # below are kept (harmless, and correct if the runtime ever changes) but
-      # are INERT under claude-cli. See the openclaw-execperms notes.
+      # security=full + ask=off: under the claude-cli runtime OpenClaw cannot
+      # gate Claude's native Bash per command — its permission handler is
+      # blanket (allow iff full+off, else deny) — so this is the only posture
+      # that functions. Containment is enforced by the OTHER layers instead:
+      # the service sandbox (writes confined to her own tree), the egress proxy,
+      # mail through eva-mail (anything not to the owner is held), and
+      # argument-constrained sudo. The safeBins/allowlist below are kept for a
+      # runtime that honours them.
       security = "full";
       ask = "off";
       strictInlineEval = true;
@@ -766,13 +764,10 @@ in
         "sha1sum" "sha512sum" "b2sum" "base64" "base32"
         "xxd" "hexdump" "od" "strings"
         # Filesystem MUTATION, blessed to run unprompted. This is safe ONLY
-        # because eva's writable surface is confined by permissions to her OWN
-        # tree, world-writable /tmp, and the single git-backed acpuchades-site
-        # repo (see `access` above — no nix-config, no /home/alex): the worst
-        # an injected prompt can do with these is trash eva's own disposable
-        # state/mailbox or the site working tree (recoverable from git), never
-        # the flake, the system config, or anything off-box. chown/chgrp are
-        # near-no-ops
+        # because eva's writable surface is confined to her OWN tree and a
+        # private /tmp: the worst an injected prompt can do with these is trash
+        # eva's own disposable state/mailbox, never the flake, the system
+        # config, or anything off-box. chown/chgrp are near-no-ops
         # for a non-root single-group user (can't give files away). The real
         # escalation/exfil vectors are DELIBERATELY absent and still gated:
         # sudo, the shells/interpreters (bash/sh/python/R/node/perl), the
@@ -844,29 +839,11 @@ in
         "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
         "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
         "nixos-version*"
-        # hugo — build + local preview of static sites.
-        # This is the SAFE answer to "let her run `make serve`": hugo is a
-        # bounded transform (no template function spawns a shell), so unlike
-        # `make`/`npm run` it can't be turned into an arbitrary-exec primitive by
-        # a recipe she writes into a repo she has write access to. So `hugo`, not
-        # `make`, is what's blessed — a blessed `make` would be identical to a
-        # blessed `bash`, since she controls the Makefile.
-        #   "hugo"      — bare build (no subcommand IS the build in hugo)
-        #   "hugo -*"   — build with flags (`--minify`, `-D`, `--gc`…); a
-        #                 subcommand never starts with `-`, so this stays a build
-        #   "hugo server*" — the `make serve` equivalent: the live-reload preview
-        #                 server. It defaults to binding 127.0.0.1, so the dev
-        #                 server is loopback-only and not reachable off-box. NB
-        #                 it's long-running/foreground — under a live gate she'd
-        #                 background it; under the current claude-cli runtime the
-        #                 allowlist is inert anyway (see the exec block note).
-        # DELIBERATELY absent, so they keep prompting: `hugo mod*` (fetches Go
-        # modules from the network) and `hugo deploy*` (publishes the built site
-        # to a remote bucket — a publish path, gated like git push). The only
-        # residual leak is a global flag before a subcommand (`hugo --config x
-        # deploy`), which is moot here: deploy needs remote credentials that
-        # aren't on the box, and the gate is inert under the current runtime.
-        "hugo" "hugo -*" "hugo server*"
+        # hugo — build a site to check a change. `hugo mod*` and `hugo deploy*`
+        # are deliberately absent. NB not a bounded transform: site config can
+        # widen hugo's own exec/network policy, so under a live gate this would
+        # need a pinned --config.
+        "hugo" "hugo -*"
       ];
       # git push (and every other remote verb) is simply NOT in the allowlist
       # above, so it misses and prompts every time — the remote is the
@@ -972,7 +949,27 @@ in
     # posts the complete reply once.
     settings.channels.telegram.streaming.mode = "off";
 
-    settings.tools.web.fetch.enabled = true;
+    # Off: an arbitrary-URL fetch is an exfiltration channel. request-trusted-url
+    # covers the reads she needs.
+    settings.tools.web.fetch.enabled = false;
+
+    # Network egress: only through the module's filtering proxy, to the hosts
+    # derived from the config above plus these. See my.openclaw.egress.
+    egress = {
+      enable = true;
+      allowedDomains = [
+        # Her fork + pull-request workflow, and the repos she clones.
+        "github.com"
+        "api.github.com"
+        "codeload.github.com"
+        "*.githubusercontent.com"
+        # Hugo modules (the site's theme) and Python project environments.
+        "proxy.golang.org"
+        "sum.golang.org"
+        "pypi.org"
+        "files.pythonhosted.org"
+      ];
+    };
 
     # Dreaming: background memory consolidation. Runs nightly at 03:00 as a
     # managed sweep (light → REM → deep phases) that promotes short-term daily
@@ -1070,57 +1067,28 @@ in
     # root, bypassing every other gate). What remains:
     #   * `systemctl restart <unit>` for exactly the managed units — sudoers
     #     matches the full argument string, so no other verb or unit passes;
-    #   * shutdown/reboot with any args (power management is availability-only);
     #   * the eva-journal wrapper (validated unit + line count, --no-pager);
     #   * server-health-check (fixed queries, no arguments, counts not raw logs).
-    # nixos-rebuild is gone entirely: a rebuild is not an agent operation.
+    # nixos-rebuild is gone entirely: a rebuild is not an agent operation, and
+    # neither is shutdown/reboot — one injected mail would take down mail, DNS,
+    # VPN and the house with it.
     # Paths are the NixOS profile symlinks `sudo` resolves. This is the single
     # source of truth for eva's sudo access.
     sudoCommands =
       map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service")
         evaManagedUnits
-      ++ [
-        "/run/current-system/sw/bin/shutdown"
-        "/run/current-system/sw/bin/reboot"
-        (lib.getExe evaJournal)
-      ]
+      ++ [ (lib.getExe evaJournal) ]
       # Only where Prometheus runs (it queries server-stats' instance).
       # `""` = no arguments allowed (the script refuses them anyway).
       ++ lib.optional (config.my.server-stats.enable or false)
         "${lib.getExe serverHealthCheck} \"\"";
 
-    # Eva's ONLY grant into alex's tree is write access to the acpuchades-site
-    # repo (she maintains it). Everything else is deliberately dropped: no
-    # nix-config (she can't tamper with the tracked flake ahead of a gated
-    # `sudo nixos-rebuild`), no pals project, and NO /home/alex traversal at
-    # all — so she can neither reach nor list anything of alex's except this
-    # one repo. The X (execute-only) entries on the private parents grant
-    # search-to-reach, NOT listing (r), so their other contents stay hidden;
-    # /srv/encrypted/alex{,/projects} are 0710, so without them eva couldn't
-    # descend to the repo. Reached via its REAL path (/home/alex/GitHub is an
-    # alex-only symlink she can no longer follow, since /home/alex is unlisted).
-    #
-    # This confines eva's writable surface to: her own tree (/home/eva,
-    # /var/lib/openclaw/eva), world-writable /tmp, and this one git-backed repo —
-    # which is what keeps the "full local mutation" exec allowlist below safe.
-    #
-    # NB: changing this stops RE-APPLYING dropped ACLs on switch but does NOT
-    # revoke entries already set (the grant is add-only). Clear the dropped
-    # ones by hand on the live host, then verify with getfacl (do NOT touch
-    # the /srv parents or acpuchades-site — those are still granted):
-    #   sudo setfacl -R -x u:eva,d:u:eva \
-    #     /home/alex/nix-config \
-    #     /srv/encrypted/alex/projects/pals-novartis-extant
-    #   sudo setfacl -x u:eva /home/alex
-    access = {
-      "/srv/encrypted/alex" = { permissions = "X"; };
-      "/srv/encrypted/alex/projects" = { permissions = "X"; };
-      "/srv/encrypted/alex/projects/acpuchades-site" = {
-        permissions = "rwX";
-        recursive = true;
-        defaultAcl = true;
-      };
-    };
+    # No `access` grants: eva reaches nothing of alex's. She works on his site
+    # through GitHub (fork + pull request as eva-nebot), not on his checkout.
+    # ACLs set by earlier generations are not revoked by dropping them here;
+    # clear the old site grant once on the live host:
+    #   sudo setfacl -R -x u:eva,d:u:eva <site checkout>
+    #   sudo setfacl -x u:eva /srv/encrypted/alex /srv/encrypted/alex/projects
 
     # Provider API keys reaching the service via my.openclaw.environmentFiles —
     # the token comes in from outside the module, next to the model/voice that
@@ -1128,6 +1096,7 @@ in
     # public repo or the store
     environmentFiles = [
       config.sops.templates."openclaw/elevenlabs-env".path
+      config.sops.templates."openclaw/eva/github-env".path
     ];
   };
 }

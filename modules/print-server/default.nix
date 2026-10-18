@@ -13,8 +13,8 @@ in
       description = ''
         CIDR ranges allowed to reach CUPS (IPP, TCP 631). Enforced both at the
         firewall (source-restricted accept rules) and inside CUPS via
-        `allowFrom`. Empty means no firewall opening is added (VPN peers on a
-        trusted interface can still connect).
+        `allowFrom`. Empty means no firewall opening is added, so only local
+        clients can print. List the VPN prefixes too: wg0 is not trusted.
       '';
     };
 
@@ -73,6 +73,10 @@ in
       # Newly added queues are shared (advertised over DNS-SD) by default.
       defaultShared = true;
       drivers = cfg.drivers;
+      # cups-browsed (on by default with avahi) adds any IPP printer a LAN
+      # device advertises — the CVE-2024-47176 path. The queues here are
+      # declared, so it has nothing to discover. Sharing (above) is cupsd's own.
+      browsed.enable = false;
     };
 
     # Declarative print queues (lpadmin runs on activation). See the option docs
@@ -91,8 +95,8 @@ in
     };
 
     # Allow IPP (TCP 631) only from the configured networks. Inserted at the top
-    # of the nixos-fw chain so it precedes the default refuse rule. VPN peers are
-    # already covered via the trusted wg interface; these rules cover the LAN.
+    # of the nixos-fw chain so it precedes the default refuse rule. Covers VPN
+    # peers too, by their source prefixes.
     networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
       (net: "iptables -I nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept")
       cfg.allowedNetworks;

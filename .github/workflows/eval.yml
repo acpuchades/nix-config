@@ -28,13 +28,20 @@ on:
     branches: [ main ]
   pull_request:
 
+# Eval only reads the checkout; the private inputs authenticate with their own
+# PAT, so the job's GITHUB_TOKEN needs nothing beyond read.
+permissions:
+  contents: read
+
 jobs:
   eval:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      # Pinned to commit SHAs: a tag can be moved to arbitrary code, and this
+      # job holds NIX_GITHUB_PAT.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: cachix/install-nix-action@v31
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
 
       - name: Set up netrc for the private fugazi-web inputs
         env:

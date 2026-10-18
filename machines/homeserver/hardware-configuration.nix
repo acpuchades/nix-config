@@ -76,8 +76,14 @@
 
   };
 
+  # Re-keyed at random on every boot, so what is paged out (secrets in memory,
+  # DB buffers) is unreadable once the box is off. By PARTUUID: random
+  # encryption overwrites the swap signature that the filesystem UUID lived in.
   swapDevices = [
-    { device = "/dev/disk/by-uuid/202a4b1e-41cd-4196-95b6-6af91735898e"; }
+    {
+      device = "/dev/disk/by-partuuid/0bd6c7aa-42c3-4119-8d4c-c682f5ead15b";
+      randomEncryption.enable = true;
+    }
   ];
 
   # Enables DHCP on each ethernet and wireless interface. In case of scripted networking

@@ -24,6 +24,11 @@ if [ "$#" -lt 1 ]; then
 fi
 
 for r in "$@"; do
+  case "$r" in
+    *[[:space:]]* | "")
+      echo "refused: '$r' is not a single address" >&2
+      exit 2 ;;
+  esac
   rl=$(printf '%s' "$r" | tr 'A-Z' 'a-z')
   for a in ${ENCRYPT_ONLY_ADDRESSES:-}; do
     if [ "$rl" = "$a" ]; then
@@ -32,6 +37,33 @@ for r in "$@"; do
     fi
   done
 done
+
+# $OUTBOX (pinned, set only when the module runs this as a separate submit user)
+# turns the approval gate into a real one: unless EVERY recipient is on the
+# unprompted list ($UNPROMPTED_ADDRESSES, plus $UNPROMPTED_FILE one per line),
+# the message is not sent but held for the owner to release.
+if [ -n "${OUTBOX:-}" ]; then
+  allowed=$(
+    printf '%s\n' ${UNPROMPTED_ADDRESSES:-}
+    if [ -n "${UNPROMPTED_FILE:-}" ]; then
+      grep -v '^[[:space:]]*\(#\|$\)' "$UNPROMPTED_FILE" || true
+    fi
+  )
+  allowed=$(printf '%s\n' "$allowed" | tr 'A-Z' 'a-z')
+  hold=0
+  for r in "$@"; do
+    rl=$(printf '%s' "$r" | tr 'A-Z' 'a-z')
+    printf '%s\n' "$allowed" | grep -qxF -- "$rl" || hold=1
+  done
+  if [ "$hold" = 1 ]; then
+    umask 077
+    id=$(date +%Y%m%d-%H%M%S)-$$
+    cat > "$OUTBOX/$id.eml"
+    printf '%s\n' "$@" > "$OUTBOX/$id.rcpt"
+    echo "held: $id — NOT sent. A recipient is outside the owner's addresses, so it waits for the owner to release it."
+    exit 0
+  fi
+fi
 
 sendmail=${SENDMAIL:-sendmail}
 

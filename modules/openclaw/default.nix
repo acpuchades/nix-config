@@ -21,11 +21,14 @@
 #     its own config at runtime, so it is re-seeded on every start — including
 #     re-patching the allowlist from the ID file — to keep this authoritative.
 #
-#   * WHAT IT CAN DO TO THE HOST — deliberately absent. No systemd sandbox, no
-#     polkit rules, no capability grants. Upstream marks this package
-#     `knownVulnerabilities` (an LLM parses untrusted content with full system
-#     access by default → prompt-injectable), acknowledged below via
-#     permittedInsecurePackages. Confinement is to be configured separately.
+#   * WHAT IT CAN DO TO THE HOST — bounded per instance. Upstream marks this
+#     package `knownVulnerabilities` (an LLM parses untrusted content →
+#     prompt-injectable), acknowledged below via permittedInsecurePackages, so
+#     the module confines what an injected agent can reach: a systemd sandbox
+#     (writes only to its own trees), optional egress filtering through an
+#     allowlisting proxy (`egress`), mail through a separate submit account
+#     whose wrappers hold non-owner mail (`mail.submitUser`), and sudo limited
+#     to `sudoCommands`.
 #
 # Auth uses a Claude subscription rather than an Anthropic API key: OpenClaw
 # reuses a Claude Code CLI login on this host (`claude -p`), selected by the
@@ -192,7 +195,16 @@ let
           # unprompted list does not make a cleartext send to them acceptable.
           ++ encryptOnlyWrapArgs
           ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
-          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
+          ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"
+          # With a submit user, a recipient outside the unprompted set is HELD in
+          # the outbox for the owner instead of sent (see submitUser below).
+          ++ lib.optionals (submitUser != null) (
+            [
+              "--set OUTBOX ${outboxDir}"
+              "--set UNPROMPTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.mail.unpromptedRecipients)}"
+            ]
+            ++ lib.optional (icfg.mail.unpromptedRecipientsFile != null) "--set UNPROMPTED_FILE ${icfg.mail.unpromptedRecipientsFile}"
+          );
         in
         pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
           ''
@@ -349,6 +361,7 @@ let
             "--set SENDMAIL /run/wrappers/bin/sendmail"
             "--set TRUSTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.trustedMail.trustedAddresses)}"
           ]
+          ++ lib.optional (icfg.actions.trustedMail.trustedAddressesFile != null) "--set TRUSTED_ADDRESSES_FILE ${icfg.actions.trustedMail.trustedAddressesFile}"
           ++ encryptOnlyWrapArgs
           ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
           ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
@@ -1078,9 +1091,91 @@ let
       #       reasoning already applied to icfg.extraPackages.
       # NB: ffmpeg-headless (STT) is deliberately NOT here — it is resolved via
       # requireSystemBin and belongs in systemPackages ONLY (see below).
+      # --- mail through a separate account (mail.submitUser) ------------------
+      # Nothing gates a command under the claude-cli runtime, so a send wrapper
+      # that runs AS the agent is no boundary: the agent could call sendmail
+      # itself. With a submit user the real wrappers run as THAT account through
+      # sudo, the host refuses the agent's own account mail submission
+      # (my.mail-server.deniedSubmitUsers), and the wrappers are the only way out.
+      submitUser = icfg.mail.submitUser;
+      outboxDir = "/var/spool/openclaw-outbox/${name}";
+
+      # What the agent finds on its PATH under the real wrapper's name.
+      viaSubmitUser = bin: binName:
+        pkgs.writeShellScriptBin binName ''
+          exec /run/wrappers/bin/sudo -n -u ${submitUser} ${bin}/bin/${binName} "$@"
+        '';
+
+      # Root's side of the outbox: list, read, release or drop held mail.
+      outboxBin =
+        pkgs.runCommandLocal "openclaw-outbox-${name}" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+          ''
+            install -Dm0755 ${./actions/outbox} $out/libexec/openclaw-outbox
+            makeWrapper $out/libexec/openclaw-outbox $out/bin/openclaw-outbox-${name} \
+              --set OUTBOX ${outboxDir} \
+              --set SUBMIT_USER ${submitUser} \
+              --set SENDMAIL /run/wrappers/bin/sendmail \
+              ${lib.optionalString (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"} \
+              ${lib.optionalString (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"} \
+              --prefix PATH : ${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.util-linux ]}
+          '';
+
+      # --- network egress (egress.enable) --------------------------------------
+      # Every connection the agent's uid opens must go through the module's
+      # filtering proxy (my.openclaw.egressProxy); the firewall rejects anything
+      # else it sends, so a tool that ignores the proxy variables fails closed.
+      # The allowlist is DERIVED from what the instance is configured to reach, so
+      # it cannot drift from the wrappers: their hosts, the channel, the model
+      # provider and TTS, plus egress.allowedDomains.
+      urlHost = url: lib.head (lib.splitString "/" (lib.removePrefix "https://" (lib.removePrefix "http://" url)));
+      egressDomains = lib.unique (
+        [ "api.telegram.org" ]
+        ++ lib.optionals (runtimeProvider == "anthropic") [
+          "anthropic.com" "*.anthropic.com" "claude.ai" "*.claude.ai" "claude.com" "*.claude.com"
+        ]
+        ++ lib.optional (icfg.tts.enable && icfg.tts.provider == "elevenlabs") "api.elevenlabs.io"
+        ++ lib.optionals icfg.actions.requestUrl.enable icfg.actions.requestUrl.trustedSites
+        ++ lib.optionals icfg.actions.solveCaptcha.enable icfg.actions.solveCaptcha.allowedSites
+        ++ map urlHost (lib.filter (u: u != "") [
+          (lib.optionalString icfg.actions.generateImage.enable
+            (if icfg.actions.generateImage.apiBase != null then icfg.actions.generateImage.apiBase else "https://generativelanguage.googleapis.com"))
+          (lib.optionalString icfg.actions.checkWeather.enable
+            (if icfg.actions.checkWeather.apiBase != null then icfg.actions.checkWeather.apiBase else "https://api.openweathermap.org"))
+          (lib.optionalString icfg.actions.solveCaptcha.enable
+            (if icfg.actions.solveCaptcha.apiBase != null then icfg.actions.solveCaptcha.apiBase else "https://api.2captcha.com"))
+          (lib.optionalString icfg.actions.zotero.enable
+            (if icfg.actions.zotero.apiBase != null then icfg.actions.zotero.apiBase else "https://api.zotero.org"))
+        ])
+        ++ icfg.egress.allowedDomains
+      );
+      egressChain = "openclaw-egress-${name}";
+      proxyUrl = "http://127.0.0.1:${toString cfg.egressProxy.port}";
+      # The gateway, its browser-control port and the CDP range openclaw derives
+      # from it (gateway+2, then 18800-18899 for the default 18789).
+      gatewayPorts = "${toString icfg.port}:${toString (icfg.port + 110)}";
+      egressRules = ipt: lo: ''
+        ${ipt} -N ${egressChain} 2>/dev/null || ${ipt} -F ${egressChain}
+        ${ipt} -A ${egressChain} -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+        ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString cfg.egressProxy.port} -j RETURN
+        ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${gatewayPorts} -j RETURN
+        ${lib.optionalString (icfg.memorySearch.enable && icfg.memorySearch.provider == "local") ''
+          # The llama-server openclaw spawns (as the agent) for local embeddings.
+          ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString icfg.memorySearch.llamaServerPort} -j RETURN
+        ''}        ${ipt} -A ${egressChain} -o lo -p udp --dport 53 -j RETURN
+        ${ipt} -A ${egressChain} -o lo -p tcp --dport 53 -j RETURN
+        ${ipt} -A ${egressChain} -j REJECT
+        ${ipt} -D OUTPUT -m owner --uid-owner ${icfg.user} -j ${egressChain} 2>/dev/null || true
+        ${ipt} -I OUTPUT -m owner --uid-owner ${icfg.user} -j ${egressChain}
+      '';
+      egressStop = ipt: ''
+        ${ipt} -D OUTPUT -m owner --uid-owner ${icfg.user} -j ${egressChain} 2>/dev/null || true
+        ${ipt} -F ${egressChain} 2>/dev/null || true
+        ${ipt} -X ${egressChain} 2>/dev/null || true
+      '';
+
       actionWrapperBins =
         lib.optionals icfg.mail.enable [
-          mailSendBin
+          (if submitUser != null then viaSubmitUser mailSendBin "send-email" else mailSendBin)
           pkgs.mblaze
         ]
         ++ lib.optionals gpgEnabled [
@@ -1088,7 +1183,9 @@ let
           decryptMailBin
         ]
         ++ lib.optionals icfg.actions.requestUrl.enable [ requestUrlBin ]
-        ++ lib.optionals icfg.actions.trustedMail.enable [ trustedMailBin ]
+        ++ lib.optionals icfg.actions.trustedMail.enable [
+          (if submitUser != null then viaSubmitUser trustedMailBin "send-trusted-mail" else trustedMailBin)
+        ]
         ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
         ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
         ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
@@ -1098,10 +1195,23 @@ let
         ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher;
     in
     {
+      # Not a config key: read by the module-level proxy (see `services` below).
+      egress = { inherit egressDomains; };
+
       # Fail at eval (not runtime) on a memory-search misconfig: the local embedder
       # can't run without a GGUF model, and a remote provider can't run without its
       # key — so at least require the model file for the local backend here.
       assertions = [
+        {
+          # The keyring lives in the agent's state dir, which the submit user
+          # cannot read; encrypted mail would need its own path through sudo.
+          assertion = submitUser != null -> !gpgEnabled;
+          message = "my.openclaw.instances.${name}.mail.submitUser: not supported together with mail.gpg yet.";
+        }
+        {
+          assertion = submitUser != null -> icfg.mail.enable;
+          message = "my.openclaw.instances.${name}.mail.submitUser: requires mail.enable.";
+        }
         {
           assertion =
             icfg.memorySearch.enable && icfg.memorySearch.provider == "local"
@@ -1177,51 +1287,61 @@ let
       ]
       ++ lib.optionals icfg.stt.enable [ pkgs.ffmpeg-headless ]
       ++ actionWrapperBins
-      ++ icfg.extraPackages;
+      ++ icfg.extraPackages
+      ++ lib.optional (submitUser != null) outboxBin;
 
-      users.users.${icfg.user} = {
-        isNormalUser = true;
-        group = icfg.user;
-        home = homeDir;
-        createHome = true;
-        shell = pkgs.bashInteractive;
-        # GECOS. Postfix's sendmail(1) reads the full name from here when no -F is
-        # given, so keeping it in sync with icfg.fullName means anything the agent
-        # sends outside the wrappers still carries the same name.
-        description = if icfg.fullName == "" then "OpenClaw agent" else icfg.fullName;
-        # Every agent is a member of `agents`, the group that reads the SHARED
-        # service API keys (the image/weather/captcha/TTS tokens). Those are
-        # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
-        # account — so the secret is group-readable rather than chowned to whichever
-        # agent happened to be configured first. Deliberately NOT the `openclaw`
-        # group below: that one reads the state TREE, and putting agents in it would
-        # let each agent read every other agent's memory and sessions.
-        extraGroups = [ "agents" ];
-        # Local-only identity: no password, no keys, and sshd refuses it outright
-        # (below), so the account can be inhabited from a root session on this box
-        # and nowhere else. `!` is an invalid hash — it matches nothing.
-        hashedPassword = "!";
-        openssh.authorizedKeys.keys = [ ];
+      users.users = lib.optionalAttrs (submitUser != null) {
+        ${submitUser} = {
+          isSystemUser = true;
+          group = submitUser;
+          description = "Mail submission for OpenClaw agent ${name}";
+        };
+      } // {
+        ${icfg.user} = {
+          isNormalUser = true;
+          group = icfg.user;
+          home = homeDir;
+          createHome = true;
+          shell = pkgs.bashInteractive;
+          # GECOS. Postfix's sendmail(1) reads the full name from here when no -F is
+          # given, so keeping it in sync with icfg.fullName means anything the agent
+          # sends outside the wrappers still carries the same name.
+          description = if icfg.fullName == "" then "OpenClaw agent" else icfg.fullName;
+          # Every agent is a member of `agents`, the group that reads the SHARED
+          # service API keys (the image/weather/captcha/TTS tokens). Those are
+          # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
+          # account — so the secret is group-readable rather than chowned to whichever
+          # agent happened to be configured first. Deliberately NOT the `openclaw`
+          # group below: that one reads the state TREE, and putting agents in it would
+          # let each agent read every other agent's memory and sessions.
+          # The submit user's group reads the address lists both sides use.
+          extraGroups = [ "agents" ] ++ lib.optional (submitUser != null) submitUser;
+          # Local-only identity: no password, no keys, and sshd refuses it outright
+          # (below), so the account can be inhabited from a root session on this box
+          # and nowhere else. `!` is an invalid hash — it matches nothing.
+          hashedPassword = "!";
+          openssh.authorizedKeys.keys = [ ];
+        };
       };
-      users.groups.${icfg.user} = { };
-
-      # Read access to the agent's service state for principals who should be
-      # able to inspect it without becoming the agent. Deliberately NOT the
-      # agent's primary group — it owns its files as itself, and this is only an
-      # ACL over the state tree. Join it with users.users.<name>.extraGroups.
-      users.groups.openclaw = { };
-
-      # Read access to the SHARED service secrets — API keys that belong to a
-      # SERVICE, not to an agent (2Captcha, OpenWeatherMap, Gemini, ElevenLabs …).
-      # Every agent user joins it (see extraGroups above), so such a secret is
-      # granted once with `group = "agents"; mode = "0440";` and every agent —
-      # present and future — can read it, with no agent name anywhere in the secret
-      # declaration. Agent-IDENTITY secrets (a Telegram bot token and its
-      # allowlisted ID) are the opposite case: they stay owned by the one agent they
-      # belong to. Named generically because the membership is "is an agent on this
-      # host", not "is an OpenClaw instance" — a future non-OpenClaw agent joins the
-      # same group and inherits the same key access.
-      users.groups.agents = { };
+      users.groups = lib.optionalAttrs (submitUser != null) { ${submitUser} = { }; } // {
+        ${icfg.user} = { };
+        # Read access to the agent's service state for principals who should be
+        # able to inspect it without becoming the agent. Deliberately NOT the
+        # agent's primary group — it owns its files as itself, and this is only an
+        # ACL over the state tree. Join it with users.users.<name>.extraGroups.
+        openclaw = { };
+        # Read access to the SHARED service secrets — API keys that belong to a
+        # SERVICE, not to an agent (2Captcha, OpenWeatherMap, Gemini, ElevenLabs …).
+        # Every agent user joins it (see extraGroups above), so such a secret is
+        # granted once with `group = "agents"; mode = "0440";` and every agent —
+        # present and future — can read it, with no agent name anywhere in the secret
+        # declaration. Agent-IDENTITY secrets (a Telegram bot token and its
+        # allowlisted ID) are the opposite case: they stay owned by the one agent they
+        # belong to. Named generically because the membership is "is an agent on this
+        # host", not "is an OpenClaw instance" — a future non-OpenClaw agent joins the
+        # same group and inherits the same key access.
+        agents = { };
+      };
 
       # Belt and braces on top of the empty password/key set: an authorized_keys
       # file or password added later cannot silently open remote access. Covers
@@ -1232,15 +1352,27 @@ let
       # Passwordless sudo for exactly the commands listed in icfg.sudoCommands and
       # nothing else. NOPASSWD is required because the account has no password (`!`
       # above), so it could not answer a prompt even if asked.
-      security.sudo.extraRules = lib.mkIf (icfg.sudoCommands != [ ]) [
-        {
+      security.sudo.extraRules =
+        lib.optional (icfg.sudoCommands != [ ]) {
           users = [ icfg.user ];
           commands = map (command: {
             inherit command;
             options = [ "NOPASSWD" ];
           }) icfg.sudoCommands;
         }
-      ];
+        # The real send wrappers, as the submit user, with any arguments: each
+        # one checks its own recipients.
+        ++ lib.optional (submitUser != null) {
+          users = [ icfg.user ];
+          runAs = submitUser;
+          commands = map (command: {
+            inherit command;
+            options = [ "NOPASSWD" ];
+          }) (
+            [ "${mailSendBin}/bin/send-email" ]
+            ++ lib.optional icfg.actions.trustedMail.enable "${trustedMailBin}/bin/send-trusted-mail"
+          );
+        };
 
       # The state dir is the agent's, group-readable by openclaw. setgid so
       # everything written below it inherits that group without the agent having
@@ -1258,7 +1390,16 @@ let
         "d /var/lib/openclaw 0755 root root -"
         "d ${stateDir} 2750 ${icfg.user} openclaw -"
         "Z ${stateDir} - ${icfg.user} openclaw -"
+      ]
+      ++ lib.optionals (submitUser != null) [
+        "d /var/spool/openclaw-outbox 0755 root root -"
+        "d ${outboxDir} 0700 ${submitUser} ${submitUser} -"
       ];
+
+      networking.firewall = lib.mkIf icfg.egress.enable {
+        extraCommands = egressRules "iptables" "127.0.0.1" + egressRules "ip6tables" "::1";
+        extraStopCommands = egressStop "iptables" + egressStop "ip6tables";
+      };
 
       # Grant the agent ACL access to icfg.access paths. This is an ACTIVATION
       # SCRIPT, not a oneshot service, and it matters: activation scripts run on
@@ -1327,12 +1468,25 @@ let
         # ("sudo: command not found"; eva never ran one from 2026-08 until
         # this fix). Grants no new privilege: the absolute wrapper paths were
         # always reachable, and sudoers still decides what runs.
-        ++ lib.optional (icfg.sudoCommands != [ ]) "/run/wrappers";
+        ++ lib.optional (icfg.sudoCommands != [ ] || submitUser != null) "/run/wrappers";
 
         environment = {
           HOME = homeDir;
           OPENCLAW_STATE_DIR = stateDir;
           OPENCLAW_CONFIG_PATH = configFile;
+        }
+        # Every HTTP client the agent runs (the gateway's undici, Claude Code,
+        # chromium, curl, git, gh, python) reads these; the firewall rejects
+        # whatever does not.
+        // lib.optionalAttrs icfg.egress.enable {
+          HTTP_PROXY = proxyUrl;
+          HTTPS_PROXY = proxyUrl;
+          http_proxy = proxyUrl;
+          https_proxy = proxyUrl;
+          NO_PROXY = "localhost,127.0.0.1,::1";
+          no_proxy = "localhost,127.0.0.1,::1";
+          # Telemetry and update checks would only fail at the proxy.
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1";
         };
 
         serviceConfig = {
@@ -1438,6 +1592,37 @@ let
           # 0640 files / 0750 dirs, so the openclaw group can read what the agent
           # writes below the state dir. Its home stays 0700 regardless.
           UMask = "0027";
+
+          # Confinement. The filesystem is read-only apart from the agent's own
+          # trees; other homes are hidden. Not NoNewPrivileges, nor a capability
+          # bound or syscall filter: sudo (sudoCommands, the submit user) needs
+          # setuid, and the `offline` launcher needs namespaces.
+          ProtectSystem = "strict";
+          ProtectHome = "tmpfs";
+          BindPaths = [ homeDir ];
+          ReadWritePaths = [
+            stateDir
+            # sudo's timestamp dir; may not exist yet.
+            "-/run/sudo"
+          ]
+          # sendmail(1) drops the message here (setgid postdrop).
+          ++ lib.optional icfg.mail.enable "/var/lib/postfix/queue/maildrop"
+          # Held mail; written by the submit user, which sudo starts inside this
+          # same mount namespace (the directory is 0700 to it, not the agent).
+          ++ lib.optional (submitUser != null) outboxDir;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+          ProtectClock = true;
+          ProtectHostname = true;
+          RestrictRealtime = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          SystemCallArchitectures = "native";
+          RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" ];
         };
       };
     };
@@ -1984,6 +2169,32 @@ let
           '';
         };
 
+        unpromptedRecipientsFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Runtime file adding to `unpromptedRecipients`, one address per line (same
+            constraints as actions.trustedMail.trustedAddressesFile). Read by the
+            send-email wrapper only when `submitUser` is set — the exec allowlist
+            rules cannot come from a runtime file.
+          '';
+        };
+
+        submitUser = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "eva-mail";
+          description = ''
+            System account (created here) that the send wrappers run as, through
+            sudo. Meant for a host that refuses the agent's own account mail
+            submission (authorized_submit_users), which turns the wrappers into
+            the only way mail leaves — the recipient checks then hold even when
+            nothing gates the agent's commands. send-email no longer delivers to
+            a recipient outside the unprompted list: it HOLDS the message in an
+            outbox that root lists and releases with `openclaw-outbox-<name>`.
+          '';
+        };
+
         # --- confidential mail (OpenPGP) -------------------------------------
         # Closes a REAL leak: inbound reaches this box through an external
         # forwarder and outbound leaves through a relay, so both see the full
@@ -2165,6 +2376,18 @@ let
               to. Any other recipient is refused. Uses `mail.fromAddress` as the
               envelope sender. Pinned into the wrapper, so the trusted set cannot be
               widened at runtime.
+            '';
+          };
+          trustedAddressesFile = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            example = "/run/secrets/openclaw/eva/owner-addresses";
+            description = ''
+              Runtime file adding to `trustedAddresses`, one address per line, so
+              they stay out of the store and the repo. It must not be writable by
+              the agent (it would widen its own list) and must be readable by
+              whoever runs the wrapper: the agent, or `mail.submitUser` when set.
+              An unreadable file refuses every send.
             '';
           };
         };
@@ -2597,6 +2820,25 @@ let
         };
       };
 
+      egress = {
+        enable = lib.mkEnableOption ''
+          network egress filtering: the agent's uid may only open connections to
+          the module's filtering proxy (my.openclaw.egressProxy), its own gateway
+          ports and the local resolver; the proxy only forwards to an allowlist
+          derived from this instance (channel, model provider, TTS, the wrappers'
+          hosts, request-trusted-url and captcha sites) plus `allowedDomains`'';
+        allowedDomains = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [ "github.com" "*.githubusercontent.com" ];
+          description = ''
+            Extra hosts the agent may reach, as fnmatch patterns (`*.example.com`
+            does not cover the apex). Proxy denials show in
+            `journalctl -u tinyproxy` as "Proxying refused on filtered domain".
+          '';
+        };
+      };
+
       access = lib.mkOption {
         type = lib.types.attrsOf (
           lib.types.submodule {
@@ -2695,6 +2937,12 @@ in
       description = "OpenClaw package to run.";
     };
 
+    egressProxy.port = lib.mkOption {
+      type = lib.types.port;
+      default = 8888;
+      description = "Loopback port of the egress-filtering proxy (instances with egress.enable).";
+    };
+
     defaultSafeBins = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       readOnly = true;
@@ -2740,6 +2988,8 @@ in
         inherit icfg;
         frag = mkInstance name icfg;
       }) cfg.instances;
+      egressInstances = lib.mapAttrs (name: icfg: (mkInstance name icfg).egress)
+        (lib.filterAttrs (_: i: i.enable && i.egress.enable) cfg.instances);
       onKey = key: lib.mkMerge (map (e: lib.mkIf e.icfg.enable e.frag.${key}) frags);
     in
     {
@@ -2749,7 +2999,29 @@ in
       security = onKey "security";
       system = onKey "system";
       nixpkgs = onKey "nixpkgs";
-      services = onKey "services";
+      services = lib.mkMerge [
+        (onKey "services")
+        {
+          # One filtering proxy for every instance with egress.enable; its
+          # allowlist is the union of theirs.
+          tinyproxy = lib.mkIf (egressInstances != { }) {
+            enable = true;
+            settings = {
+              Listen = "127.0.0.1";
+              Port = cfg.egressProxy.port;
+              Allow = [ "127.0.0.1" ];
+              ConnectPort = [ 443 ];
+              DisableViaHeader = true;
+              FilterType = "fnmatch";
+              FilterDefaultDeny = true;
+              FilterURLs = false;
+              Filter = pkgs.writeText "openclaw-egress-allowlist"
+                (lib.concatMapStrings (d: d + "\n") (lib.unique (lib.concatMap (i: i.egressDomains) (lib.attrValues egressInstances))));
+            };
+          };
+        }
+      ];
+      networking = onKey "networking";
 
       assertions = lib.mkMerge (
         (map (e: lib.mkIf e.icfg.enable e.frag.assertions) frags)

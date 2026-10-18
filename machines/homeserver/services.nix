@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 {
   services = {
     # Enable the X11 windowing system.
@@ -41,8 +41,8 @@
       publish.enable = true;
       publish.userServices = true;
       # The nixpkgs default opens UDP 5353 to EVERY source, i.e. the internet
-      # (hostname disclosure + reflection vector). LAN peers still reach it
-      # through the blanket LAN accept in networking.nix.
+      # (hostname disclosure + reflection vector). LAN peers reach it through
+      # the source-restricted mDNS rule in networking.nix.
       openFirewall = false;
     };
 
@@ -167,12 +167,19 @@
     openssh = {
       enable = true;
       openFirewall = true;
+      # Only keys declared in Nix count: a key appended to some account's
+      # ~/.ssh/authorized_keys (by a compromised service, say) opens nothing.
+      authorizedKeysInHomedir = false;
       settings = {
         PermitRootLogin = "no";
+        # One login account. Merges with the per-agent DenyUsers from
+        # modules/openclaw; AllowUsers is the allowlist half of that.
+        AllowUsers = [ "alex" ];
         # Key-only: port 22 is open to the internet, and password auth there
         # is a 24/7 online guessing surface that fail2ban only slows down.
         # alex's key is declared in users.nix, so a rebuild cannot lock it out.
         PasswordAuthentication = false;
+        KbdInteractiveAuthentication = false;
         X11Forwarding = false;
         MaxAuthTries = 3;
         LoginGraceTime = 20;
@@ -218,6 +225,28 @@
   # Read from the option so it follows wherever dataDir is set above.
   systemd.services.bitcoind-main.unitConfig.RequiresMountsFor =
     [ config.services.bitcoind.main.dataDir ];
+
+  # Tighter than upstream's ProtectSystem=full: bitcoind parses untrusted P2P
+  # traffic from the internet (8333 is open), so a parser bug should land in a
+  # process that can write only its datadir and sees no homes or kernel knobs.
+  systemd.services.bitcoind-main.serviceConfig = {
+    ProtectSystem = lib.mkForce "strict";
+    ReadWritePaths = [ config.services.bitcoind.main.dataDir ];
+    ProtectHome = true;
+    CapabilityBoundingSet = "";
+    RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+    RestrictNamespaces = true;
+    SystemCallFilter = [ "@system-service" ];
+    SystemCallArchitectures = "native";
+    ProtectKernelTunables = true;
+    ProtectKernelModules = true;
+    ProtectKernelLogs = true;
+    ProtectControlGroups = true;
+    ProtectClock = true;
+    LockPersonality = true;
+    RestrictRealtime = true;
+    RestrictSUIDSGID = true;
+  };
 
   # Web root for www.acpuchades.com (my.web-server.virtualHosts). Setgid so the
   # tree the runner rsyncs in keeps the group, and group-writable so alex can

@@ -238,17 +238,20 @@ in
       # Agent IDENTITY secrets are declared by each agent's own module
       # (agents/<name>); only their values live in this vault.
 
+      # rspamd's copy of eva's owner addresses (the trusted-sender map; see
+      # my.mail-server.trustedSendersFile). Same value as
+      # openclaw/eva/owner-addresses, which agents/eva declares for eva's own
+      # wrappers — a second entry only because the reader is a different user.
+      "rspamd/trusted-senders" = {
+        key = "openclaw/eva/owner-addresses";
+        owner = config.services.rspamd.user;
+        mode = "0400";
+        restartUnits = [ "rspamd.service" ];
+      };
+
       # ElevenLabs API key for reply TTS, rendered into openclaw/elevenlabs-env
       # below and read by the openclaw service as ELEVENLABS_API_KEY.
       "elevenlabs/token" = {
-        group = "agents";
-        mode = "0440";
-      };
-
-      # Anthropic API key. CURRENTLY UNUSED — the claude-cli runtime authenticates
-      # via the Claude subscription login, not an API key — kept for an easy switch
-      # back to native/API auth. Rendered into openclaw/anthropic-env below.
-      "anthropic/token" = {
         group = "agents";
         mode = "0440";
       };
@@ -501,17 +504,6 @@ in
         mode = "0400";
         content = ''
           AUTH_TOKEN=${config.sops.placeholder."grafana/renderer-token"}
-        '';
-      };
-
-      # Env file for eva's native agent runtime (Anthropic API) — CURRENTLY UNUSED
-      # (the subscription login is used instead), kept for a quick switch back.
-      # Reads anthropic/token.
-      "openclaw/anthropic-env" = {
-        group = "agents";
-        mode = "0440";
-        content = ''
-          ANTHROPIC_API_KEY=${config.sops.placeholder."anthropic/token"}
         '';
       };
 

@@ -148,7 +148,7 @@ api_post() {
 
 # `balance` short-circuits: no task, just the account credit.
 if [ "$KIND" = "balance" ]; then
-  jq -n --arg key "$TOKEN" '{clientKey:$key}' > "$REQ_FILE"
+  jq -n --rawfile key "$CAPTCHA_TOKEN_FILE" '{clientKey:($key | gsub("[\\r\\n]"; ""))}' > "$REQ_FILE"
   api_post getBalance "$REQ_FILE"
   if [ "$JSON" = 1 ]; then jq . "$RESP_FILE"; else jq -r '.balance' "$RESP_FILE"; fi
   exit 0
@@ -229,9 +229,10 @@ case "$KIND" in
 esac
 
 # createTask — the task JSON goes in via --slurpfile, so a base64 image body
-# never rides on argv (it would overrun ARG_MAX).
-jq -n --arg key "$TOKEN" --arg soft "${CAPTCHA_SOFT_ID:-}" --slurpfile task "$TASK_FILE" '
-  { clientKey: $key, task: $task[0] }
+# never rides on argv (it would overrun ARG_MAX); the key via --rawfile, so it
+# never shows in the world-readable process table.
+jq -n --rawfile key "$CAPTCHA_TOKEN_FILE" --arg soft "${CAPTCHA_SOFT_ID:-}" --slurpfile task "$TASK_FILE" '
+  { clientKey: ($key | gsub("[\\r\\n]"; "")), task: $task[0] }
   + (if $soft == "" then {} else { softId: ($soft | tonumber) } end)
 ' > "$REQ_FILE"
 api_post createTask "$REQ_FILE"
@@ -241,7 +242,7 @@ TASK_ID="$(jq -r '.taskId // empty' "$RESP_FILE")"
 
 # Poll for the result. 2Captcha asks for a few seconds' grace before the first
 # poll (the task is still being handed to a worker), hence the leading sleep.
-jq -n --arg key "$TOKEN" --arg id "$TASK_ID" '{clientKey:$key, taskId:($id|tonumber)}' > "$REQ_FILE"
+jq -n --rawfile key "$CAPTCHA_TOKEN_FILE" --arg id "$TASK_ID" '{clientKey:($key | gsub("[\\r\\n]"; "")), taskId:($id|tonumber)}' > "$REQ_FILE"
 WAITED=0
 while :; do
   sleep "$POLL"

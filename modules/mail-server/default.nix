@@ -5,16 +5,51 @@ let
 
   # Custom rspamd rule (loaded via rspamd.local.lua) that stamps
   # `X-Trusted-Sender: yes` on inbound mail whose visible From is on
-  # cfg.trustedSenders AND passes DMARC (so the From is cryptographically
-  # authenticated, not spoofed). Any inbound copy of the header is stripped first
-  # so a sender cannot forge it. It only MARKS mail — it never rejects or filters
-  # delivery. See the trustedSenders option.
+  # cfg.trustedSenders (or the trustedSendersFile map) AND carries a passing DKIM
+  # signature aligned with the From domain. Any inbound copy of the header is
+  # stripped first so a sender cannot forge it. It only MARKS mail — it never
+  # rejects or filters delivery. See the trustedSenders option.
+  #
+  # DKIM, not "any DMARC pass": DMARC also passes on SPF alignment, and several
+  # trusted domains authorise shared senders in SPF (Microsoft 365, newsletter
+  # services), so anyone with an account there could pass as the owner. Legit
+  # mail reaches eva through the Cloudflare forward, where SPF cannot align
+  # anyway, so it already depends on DKIM.
   trustedSenderLua = pkgs.writeText "rspamd-trusted-sender.lua" ''
     local lua_mime = require "lua_mime"
 
     local trusted = {
     ${lib.concatMapStrings (a: ''  ["${lib.toLower a}"] = true,
     '') cfg.trustedSenders}}
+    ${lib.optionalString (cfg.trustedSendersFile != null) ''
+    local trusted_map = rspamd_config:add_map({
+      type = 'set',
+      url = '${cfg.trustedSendersFile}',
+      description = 'trusted senders',
+    })
+    ''}
+    local function is_trusted(addr)
+      if trusted[addr] then return true end
+      ${lib.optionalString (cfg.trustedSendersFile != null)
+        "if trusted_map and trusted_map:get_key(addr) then return true end"}
+      return false
+    end
+
+    -- Relaxed alignment: the signing domain is the From domain, a parent of
+    -- it, or a subdomain of it.
+    local function dkim_aligned(task, from_dom)
+      for _, r in ipairs(task:get_dkim_results() or {}) do
+        if r.result == 'allow' and r.domain then
+          local d = r.domain:lower()
+          if d == from_dom
+            or from_dom:sub(-(#d + 1)) == '.' .. d
+            or d:sub(-(#from_dom + 1)) == '.' .. from_dom then
+            return true
+          end
+        end
+      end
+      return false
+    end
 
     rspamd_config:register_symbol({
       name = 'STAMP_X_TRUSTED_SENDER',
@@ -24,14 +59,16 @@ let
         local hdr = 'X-Trusted-Sender'
         local ok = false
         local from = task:get_from('mime')
-        if from and from[1] and from[1].addr then
+        if from and from[1] and from[1].addr and from[1].domain then
           local addr = tostring(from[1].addr):lower()
-          if trusted[addr] and task:has_symbol('DMARC_POLICY_ALLOW') then
+          local dom = tostring(from[1].domain):lower()
+          if is_trusted(addr) and task:has_symbol('DMARC_POLICY_ALLOW')
+            and dkim_aligned(task, dom) then
             ok = true
           end
         end
         -- Always strip any inbound copy of the header (anti-forgery); add ours
-        -- only when the From is trusted AND DMARC-authenticated.
+        -- only when the From is trusted AND DKIM-authenticated.
         if ok then
           lua_mime.modify_headers(task, {
             remove = { [hdr] = 0 },
@@ -82,9 +119,9 @@ in
       example = [ "boss@example.com" ];
       description = ''
         Inbound senders to mark as VERIFIED-trusted. For each message whose visible
-        `From:` is on this list AND that passes DMARC (so the `From:` is
-        cryptographically authenticated — DKIM survives the Cloudflare forward for
-        DKIM-signing providers), rspamd stamps an `X-Trusted-Sender: yes` header;
+        `From:` is on this list AND that passes DMARC with an aligned DKIM signature
+        (so the `From:` is cryptographically authenticated — DKIM survives the
+        Cloudflare forward), rspamd stamps an `X-Trusted-Sender: yes` header;
         any inbound copy of that header is stripped first, so a sender cannot forge
         it. This does NOT reject or filter delivery — every message is still
         delivered. It only MARKS who is verified, for a downstream consumer (e.g. an
@@ -92,6 +129,52 @@ in
         case-insensitive, exact address. A trusted address on a domain that does not
         pass DMARC is simply not stamped (treated as untrusted downstream —
         fail-safe). Empty (default) installs no rule.
+      '';
+    };
+
+    trustedSendersFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      example = "/run/secrets/rspamd/trusted-senders";
+      description = ''
+        Runtime file adding to trustedSenders, one lowercase address per line
+        (rspamd `set` map, re-read on change), so the addresses stay out of the
+        store and the repo. Must be readable by the rspamd user.
+      '';
+    };
+
+    localRecipients = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "eva" ];
+      description = ''
+        Local parts accepted from the network (plus the alias table). Empty keeps
+        Postfix's default of every account in passwd, which makes every service
+        user a mailbox that anyone on the internet can fill.
+      '';
+    };
+
+    deniedSubmitUsers = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      example = [ "eva" ];
+      description = ''
+        Local accounts refused mail submission through sendmail(1)/postdrop
+        (authorized_submit_users). With SMTP to localhost blocked for them too,
+        such an account can only send through whatever wrapper runs as another
+        user — an agent's recipient-checking submit account, for instance.
+      '';
+    };
+
+    pinnedSenders = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      example = { eva = [ "e.nebot@example.com" ]; };
+      description = ''
+        Envelope senders each local login may use with sendmail(1) -f
+        (local_login_sender_maps). Logins not listed keep the default of any
+        sender. Stops a compromised local user from relaying through the
+        smarthost as another address of the domain.
       '';
     };
 
@@ -173,6 +256,13 @@ in
         # local, so it would leave via the smarthost instead of being delivered.)
         mydestination = "localhost, localhost.localdomain, $myhostname, ${cfg.mailDomain}, ${config.networking.hostName}";
         home_mailbox = "Maildir/";
+      } // lib.optionalAttrs (cfg.localRecipients != [ ]) {
+        local_recipient_maps = "inline:{ ${lib.concatMapStringsSep ", " (u: "${u}=ok") cfg.localRecipients} } $alias_maps";
+      } // lib.optionalAttrs (cfg.deniedSubmitUsers != [ ]) {
+        authorized_submit_users = lib.concatMapStringsSep ", " (u: "!${u}") cfg.deniedSubmitUsers + ", static:all";
+      } // lib.optionalAttrs (cfg.pinnedSenders != { }) {
+        local_login_sender_maps = "inline:{ ${lib.concatStringsSep ", " (lib.mapAttrsToList (u: ss: "${u}=${lib.concatStringsSep " " ss}") cfg.pinnedSenders)} }, static:*";
+      } // {
 
         # --- inbound TLS (opportunistic STARTTLS on :25) ---
         smtpd_tls_cert_file = "/var/lib/acme/${certName}/fullchain.pem";
@@ -190,8 +280,13 @@ in
         # --- rspamd milter (inbound spam scoring) ---
         smtpd_milters = "inet:127.0.0.1:11332";
         non_smtpd_milters = "inet:127.0.0.1:11332";
-        milter_default_action = "accept";
+        # tempfail, not accept: rspamd is what strips a forged X-Trusted-Sender,
+        # so while it is down (every restart) mail must wait, not bypass it.
+        milter_default_action = "tempfail";
         milter_protocol = "6";
+        # And strip it here too, independently of rspamd: cleanup drops the
+        # client's copy, while the one rspamd adds afterwards is not re-checked.
+        header_checks = "regexp:${pkgs.writeText "header_checks" "/^X-Trusted-Sender:/ IGNORE\n"}";
 
         # --- outbound: relay everything through the Mailjet smarthost ---
         # (this is what the old mail-relay module did; Mailjet signs DKIM.)
@@ -210,7 +305,7 @@ in
     services.rspamd = {
       enable = true;
       # Load the trusted-sender stamping rule (only when a list is configured).
-      localLuaRules = lib.mkIf (cfg.trustedSenders != [ ]) trustedSenderLua;
+      localLuaRules = lib.mkIf (cfg.trustedSenders != [ ] || cfg.trustedSendersFile != null) trustedSenderLua;
       workers.rspamd_proxy = {
         type = "rspamd_proxy";
         bindSockets = [ "127.0.0.1:11332" ];

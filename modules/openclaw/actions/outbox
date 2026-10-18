@@ -1,0 +1,70 @@
+#!/bin/sh
+# Root's side of an openclaw agent's mail outbox. send-email (run as the
+# agent's submit user) holds a message here when a recipient is outside the
+# owner's addresses; nothing leaves until the owner releases it.
+#
+#   openclaw-outbox-<agent> [list]       held messages: id, recipients, subject
+#   openclaw-outbox-<agent> show ID      the full message
+#   openclaw-outbox-<agent> release ID   send it, as the submit user
+#   openclaw-outbox-<agent> drop ID      delete it unsent
+#
+# $OUTBOX, $SUBMIT_USER, $SENDMAIL, $MAIL_FROM and $MAIL_FROM_NAME are pinned
+# by the module's wrapper.
+set -eu
+
+cmd=${1:-list}
+id=${2:-}
+
+need_id() {
+  case "$id" in
+    [0-9]*-[0-9]*-[0-9]*) ;;
+    *) echo "usage: $(basename "$0") $cmd ID" >&2; exit 2 ;;
+  esac
+  case "$id" in
+    */* | *..*) echo "bad id: $id" >&2; exit 2 ;;
+  esac
+  if [ ! -f "$OUTBOX/$id.eml" ] || [ ! -f "$OUTBOX/$id.rcpt" ]; then
+    echo "no held message $id" >&2
+    exit 1
+  fi
+}
+
+case "$cmd" in
+  list)
+    found=0
+    for f in "$OUTBOX"/*.rcpt; do
+      [ -e "$f" ] || continue
+      found=1
+      i=$(basename "$f" .rcpt)
+      subject=$(grep -m1 -i '^Subject:' "$OUTBOX/$i.eml" || true)
+      printf '%s  to: %s  %s\n' "$i" "$(tr '\n' ' ' < "$f")" "$subject"
+    done
+    [ "$found" = 1 ] || echo "(nothing held)"
+    ;;
+  show)
+    need_id
+    printf 'To (envelope): %s\n\n' "$(tr '\n' ' ' < "$OUTBOX/$id.rcpt")"
+    cat "$OUTBOX/$id.eml"
+    ;;
+  release)
+    need_id
+    # One address per line, no whitespace inside (send-email refuses those).
+    # shellcheck disable=SC2046
+    set -- $(cat "$OUTBOX/$id.rcpt")
+    set -- -- "$@"
+    if [ -n "${MAIL_FROM_NAME:-}" ]; then set -- -F "$MAIL_FROM_NAME" "$@"; fi
+    if [ -n "${MAIL_FROM:-}" ]; then set -- -f "$MAIL_FROM" "$@"; fi
+    runuser -u "$SUBMIT_USER" -- "$SENDMAIL" -i "$@" < "$OUTBOX/$id.eml"
+    rm -f "$OUTBOX/$id.eml" "$OUTBOX/$id.rcpt"
+    echo "released: $id"
+    ;;
+  drop)
+    need_id
+    rm -f "$OUTBOX/$id.eml" "$OUTBOX/$id.rcpt"
+    echo "dropped: $id"
+    ;;
+  *)
+    echo "usage: $(basename "$0") [list | show ID | release ID | drop ID]" >&2
+    exit 2
+    ;;
+esac

@@ -15,15 +15,38 @@
 ;; Division of labour with the corfu/cape stack (10-completion.el):
 ;;   - corfu   -> popup list of LSP/symbol candidates for the current token
 ;;   - copilot -> greyed-out inline suggestion for the rest of the line/block
+;; Privacy gate: Copilot uploads the buffer to GitHub as soon as the mode is
+;; on, so it stays off for temp files (decrypted secrets, see 02-defaults.el),
+;; inside git-crypt repos (a dominating .gitattributes with filter=git-crypt),
+;; and inside any project opted out with an empty `.no-copilot' file at its
+;; root. Gated at enable time, not via `copilot-disable-predicates': those only
+;; suppress suggestions, after the document has already been sent.
+;;
 ;; They are kept from fighting: Copilot's overlay is hidden while the corfu
 ;; popup is on screen, and TAB accepts a Copilot suggestion only when one is
 ;; actually showing (`copilot-completion-map' is live only then, so otherwise
 ;; TAB indents as usual).
 (use-package copilot
   :preface
+  (defun my/copilot-git-crypt-dir-p (dir)
+    "Non-nil if DIR has a .gitattributes routing files through git-crypt."
+    (let ((attrs (expand-file-name ".gitattributes" dir)))
+      (and (file-readable-p attrs)
+           (with-temp-buffer
+             (insert-file-contents attrs)
+             (re-search-forward "filter=git-crypt" nil t)))))
+  (defun my/copilot-private-p ()
+    "Non-nil if the current buffer must not be sent to Copilot."
+    (let ((file (or buffer-file-name default-directory)))
+      (and file
+           (or (my/file-in-temp-dir-p file)
+               (locate-dominating-file file ".no-copilot")
+               (locate-dominating-file file #'my/copilot-git-crypt-dir-p)))))
   (defun my/copilot-maybe-enable ()
-    "Enable copilot-mode only when a Copilot credential exists."
-    (when (file-exists-p "~/.config/github-copilot/apps.json")
+    "Enable copilot-mode when a Copilot credential exists and the buffer is
+not private (see `my/copilot-private-p')."
+    (when (and (file-exists-p "~/.config/github-copilot/apps.json")
+               (not (my/copilot-private-p)))
       (copilot-mode 1)))
   :hook (prog-mode . my/copilot-maybe-enable)
   :bind (:map copilot-completion-map

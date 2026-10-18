@@ -41,12 +41,11 @@ inputs@{ config, lib, host, ...}:
       inherit defaultSopsFile;
       defaultSopsFormat = "yaml";
 
+      # Declare only what something on the host reads: every entry here is
+      # decrypted onto disk on both hosts. anthropic/token, icloud/password and
+      # ntfy/token (all still in the YAML) had no consumer on either host —
+      # the homeserver's alerting uses its own system-level ntfy/token.
       secrets = gitCryptSecrets // {
-
-        "anthropic/token" = {
-          sopsFile = ./secrets/${host}.yml;
-          key = "anthropic/token";
-        };
 
         "crates-io/token" = {
           sopsFile = ./secrets/${host}.yml;
@@ -56,15 +55,6 @@ inputs@{ config, lib, host, ...}:
         "github/token" = {
           sopsFile = ./secrets/${host}.yml;
           key = "github/token";
-        };
-
-        "icloud/password" = {
-          key = "icloud/password";
-        };
-
-        "ntfy/token" = {
-          sopsFile = ./secrets/${host}.yml;
-          key = "ntfy/token";
         };
 
         "pypi/token" = {
@@ -82,9 +72,27 @@ inputs@{ config, lib, host, ...}:
           key = "prefect/password";
         };
 
+        # Work cluster coordinates: kept out of this public repo, rendered into
+        # an ssh config fragment below (Include'd by programs/ssh.nix).
+        "ssh/biocluster/host" = {
+          sopsFile = ./secrets/default.yml;
+          key = "ssh/biocluster/host";
+        };
+
+        "ssh/biocluster/user" = {
+          sopsFile = ./secrets/default.yml;
+          key = "ssh/biocluster/user";
+        };
+
       };
 
       templates = {
+        "ssh/biocluster.conf".content = ''
+          Host biocluster
+            HostName ${config.sops.placeholder."ssh/biocluster/host"}
+            User ${config.sops.placeholder."ssh/biocluster/user"}
+        '';
+
         "cargo/credentials.toml".content = ''
           [registry]
           token = "${config.sops.placeholder."crates-io/token"}"

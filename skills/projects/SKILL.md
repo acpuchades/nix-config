@@ -99,3 +99,22 @@ Never commit the environment ITSELF — add `.direnv/` and `.venv/` to
 
 Keep clones under your own tree (`~`). Remember that `git pull` and every other
 remote verb follows the normal approval rules in the `policy` skill.
+
+## Contributing to someone else's repository: fork + pull request
+
+You never work in the owner's checkouts, and you cannot push to his
+repositories. A change to one of them (his website, a project's docs) goes
+through GitHub as your own account:
+
+    gh repo fork <owner>/<repo> --clone=false      # once; your fork is private if the repo is
+    git clone https://github.com/<you>/<repo> ~/workspace/<repo>   # once
+    cd ~/workspace/<repo>
+    git remote add upstream https://github.com/<owner>/<repo>      # once
+    git fetch upstream && git switch -c <topic> upstream/main
+    # … edit, build (e.g. `hugo --minify`) to check it, commit …
+    git push -u origin <topic>
+    gh pr create --repo <owner>/<repo> --head <you>:<topic> --fill
+
+Start every change from a fresh `upstream/main`, one topic per branch, and
+tell the owner the pull request's URL. Merging is his: never ask for write
+access, and never push to the upstream repository or its main branch.

@@ -8,9 +8,16 @@
       syntaxHighlighting.enable = true;
       history.size = 10000;
       initContent = ''
-        if [ -r "${config.sops.secrets."pypi/token".path}" ]; then
-          export UV_PUBLISH_TOKEN="$(cat "${config.sops.secrets."pypi/token".path}")"
-        fi
+        # The PyPI token goes to `uv publish` alone, not into every shell's
+        # environment where any build script or tool could read it. uv
+        # ignores ~/.pypirc, hence the wrapper.
+        uv() {
+          if [ "$1" = publish ] && [ -r "${config.sops.secrets."pypi/token".path}" ]; then
+            UV_PUBLISH_TOKEN="$(cat "${config.sops.secrets."pypi/token".path}")" command uv "$@"
+          else
+            command uv "$@"
+          fi
+        }
 
         if [ -n "$SSH_CONNECTION" ]; then
           alias emacs="emacs -nw"
