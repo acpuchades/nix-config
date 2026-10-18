@@ -57,9 +57,10 @@ let
   wg = "${pkgs.wireguard-tools}/bin/wg";
 
   # A tunnel's (publicKey, endpoint) candidates always have the configured peer
-  # first; the watchdog rotates through the rest — the primary's alternate
-  # addresses, then the fallback servers. Kept here so the unit and the watchdog
-  # agree on the ordering by construction.
+  # first, then the primary's alternate addresses, then the fallback servers.
+  # Kept here so the unit and the watchdog agree on the indices by construction.
+  # This is the CONFIGURED order; the watchdog re-ranks it by each candidate's
+  # failure history when it rotates (see `failover_order`).
   candidatesOf = t:
     map (e: {
       inherit (t.peer) publicKey;
@@ -360,6 +361,9 @@ let
       # Present while an outage alert is out, so the alert fires once per
       # outage (not once a minute) and the recovery is announced exactly once.
       downFile = "/run/protonvpn-${t.interface}.down";
+      # When each candidate last failed. In /var/lib, not /run: a server that
+      # died yesterday is still the worst bet after a reboot.
+      histFile = "/var/lib/protonvpn-watchdog/${t.interface}.history";
       notify = cfg.watchdog.notify;
     in
     {
@@ -385,6 +389,8 @@ let
         description = "ProtonVPN watchdog for ${t.interface}";
         serviceConfig = {
           Type = "oneshot";
+          # Shared by every tunnel's watchdog; one history file per interface.
+          StateDirectory = "protonvpn-watchdog";
           EnvironmentFile = lib.mkIf (notify.environmentFile != null) notify.environmentFile;
           ExecStart = pkgs.writeShellScript "protonvpn-watchdog-${t.interface}" ''
             set -u
@@ -442,6 +448,56 @@ let
               ${wgPrefix}${pkgs.wireguard-tools}/bin/wg set ${t.interface} "''${args[@]}"
             }
 
+            # Failure history: "<publicKey> <endpoint> <epoch>" per candidate
+            # that has failed and not passed a probe since. Keyed by the pair,
+            # never by index, so reordering or extending the config cannot pin
+            # one server's history on another. Entries for candidates no longer
+            # configured are dropped on the next save.
+            declare -A lastfail=()
+            if [ -r ${histFile} ]; then
+              while read -r k e ts; do
+                [ -n "''${ts:-}" ] && lastfail["$k $e"]=$ts
+              done < ${histFile}
+            fi
+
+            save_history() {
+              local i id tmp=${histFile}.tmp
+              : > "$tmp"
+              for i in "''${!keys[@]}"; do
+                id="''${keys[$i]} ''${endpoints[$i]}"
+                [ -n "''${lastfail[$id]:-}" ] && echo "$id ''${lastfail[$id]}" >> "$tmp"
+              done
+              ${pkgs.coreutils}/bin/mv -f "$tmp" ${histFile}
+            }
+
+            # mark <idx> ok|failed — no-op for -1 (a hand-set endpoint).
+            mark() {
+              [ "$1" -ge 0 ] || return 0
+              local id="''${keys[$1]} ''${endpoints[$1]}"
+              if [ "$2" = ok ]; then
+                [ -n "''${lastfail[$id]:-}" ] || return 0
+                unset 'lastfail[$id]'
+              else
+                lastfail[$id]=$(${pkgs.coreutils}/bin/date +%s)
+              fi
+              save_history || true
+            }
+
+            # Every candidate but $1, best bet first: never failed (or passed
+            # since) before failed, and among the failed the one that failed
+            # LONGEST ago first. Ties keep the configured order, so with no
+            # history this is exactly the declared list. When everything has
+            # failed this degrades to round-robin, which is what you want while
+            # Proton itself, not one server, is the problem.
+            failover_order() {
+              local i
+              for i in "''${!keys[@]}"; do
+                [ "$i" = "$1" ] && continue
+                echo "''${lastfail["''${keys[$i]} ''${endpoints[$i]}"]:-0} $i"
+              done | ${pkgs.coreutils}/bin/sort -s -n -k1,1 -k2,2 \
+                   | ${pkgs.coreutils}/bin/cut -d' ' -f2
+            }
+
             # Consecutive failures, carried across invocations: this unit is a
             # oneshot, so the count cannot live in memory.
             fails=0
@@ -449,6 +505,7 @@ let
 
             if probe; then
               ${pkgs.coreutils}/bin/rm -f ${failFile}
+              mark "$(live_idx)" ok
               if [ -e ${downFile} ]; then
                 notify default white_check_mark "${t.interface} is back up" \
                   "${t.interface} passes its probe again, on $(label_of "$(live_idx)")." \
@@ -467,24 +524,27 @@ let
             # cascade — and there is no reason to sit on a dead endpoint while a
             # counter fills.
             #
-            # On candidate c: cycle the other n-1 starting after it, wrapping
-            # around. On none (a hand-set endpoint): try all n from 0.
-            idx=$(live_idx)
-            from=$idx
-            tries=$n
-            [ "$idx" -ge 0 ] && tries=$((n - 1))
+            # Try every other candidate in `failover_order` (all n when on a
+            # hand-set endpoint), marking each one's outcome so the next
+            # failover starts from whatever has been reliable lately.
+            from=$(live_idx)
+            mark "$from" failed
+            order=$(failover_order "$from")
 
-            if [ "$tries" -gt 0 ]; then
-              for _ in $(${pkgs.coreutils}/bin/seq 1 "$tries"); do
-                idx=$(( (idx + 1) % n ))
+            if [ -n "$order" ]; then
+              for idx in $order; do
                 next=''${endpoints[$idx]}
                 echo "watchdog: rotating ${t.interface} to $next"
-                set_peer "$idx" || continue
+                if ! set_peer "$idx"; then
+                  mark "$idx" failed
+                  continue
+                fi
 
                 # Give the new endpoint a handshake window before judging it.
                 ${pkgs.coreutils}/bin/sleep 5
                 if probe; then
                   echo "watchdog: ${t.interface} recovered on $next"
+                  mark "$idx" ok
                   ${pkgs.coreutils}/bin/rm -f ${failFile}
                   if [ -e ${downFile} ]; then
                     notify default white_check_mark "${t.interface} is back up" \
@@ -497,6 +557,7 @@ let
                   fi
                   exit 0
                 fi
+                mark "$idx" failed
               done
 
               echo "watchdog: no endpoint answered for ${t.interface}"
@@ -699,8 +760,12 @@ let
         });
         default = [ ];
         description = ''
-          Other Proton SERVERS the watchdog fails over to, tried in order after
-          the primary's extraEndpoints. The swap replaces the interface's peer
+          Other Proton SERVERS the watchdog fails over to. With no failure
+          history they are tried in order after the primary's extraEndpoints;
+          once candidates have failed, the watchdog tries never-failed ones
+          first and the one that failed longest ago next (history persists in
+          /var/lib/protonvpn-watchdog), so a dead server sinks to the back
+          without anyone editing this list. The swap replaces the interface's peer
           in one `wg set` (old peer removed, new one added), so it is as live as
           an endpoint rotation. The client private key needs no change: Proton
           registers it account-wide, so it handshakes with any of its servers.
