@@ -686,6 +686,15 @@ let
         # The name is Cloudflare-proxied; ntfy locks out repeated auth
         # failures per visitor on its own, given the real one.
         trustedProxies = config.my.web-server.trustedProxies;
+        # The alert publisher (my.ntfy-alert, the UPS, the protonvpn watchdog),
+        # provisioned from config so it cannot silently go missing again. Token
+        # only: the hash is of a random password that was thrown away. The token
+        # is ntfy/token, the same one the publishers send.
+        provision.users.homeserver = {
+          passwordHash = "$2a$10$O5hET1OJbNpS92PB8YUvu.Xys2vmnZYGXImuYYSJCd50jasVw0.m2";
+          access."alerts-*" = "wo";
+        };
+        provision.tokensFile = config.sops.templates."ntfy/server-env".path;
       };
 
       # OpenClaw agent — Telegram-only, loopback gateway, but NOT confined on

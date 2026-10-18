@@ -19,9 +19,17 @@
 #     does not — buffered, those subscriptions look like they simply hang.
 #
 # Access control is deny-all by default: an open ntfy server on a public
-# hostname will be found and used as free infrastructure by others. Users and
-# per-topic grants are created imperatively with the CLI, which reads
-# /etc/ntfy/server.yml (installed by the upstream module):
+# hostname will be found and used as free infrastructure by others.
+#
+# Machine publishers (anything whose token lives in sops) are PROVISIONED
+# declaratively via `provision` below: ntfy creates the user, its ACL and its
+# token from config at every start, adopts a same-named user created by hand,
+# replaces a provisioned token when the configured one changes, and leaves
+# hand-made users alone. Doing this by hand once is how the homeserver's
+# publisher went missing for months with every alert silently 403ing.
+#
+# Human users (phones, the web app) are still created imperatively with the
+# CLI, which reads /etc/ntfy/server.yml (installed by the upstream module):
 #
 #   sudo ntfy user add --role=admin alex
 #   sudo ntfy user add --role=user homeassistant
@@ -124,11 +132,51 @@ in
       default = "24h";
       description = "How long uploaded attachments are kept before expiry.";
     };
+
+    provision = {
+      users = lib.mkOption {
+        type = lib.types.attrsOf (lib.types.submodule {
+          options = {
+            role = lib.mkOption {
+              type = lib.types.enum [ "user" "admin" ];
+              default = "user";
+            };
+            passwordHash = lib.mkOption {
+              type = lib.types.str;
+              description = ''
+                bcrypt hash from `ntfy user hash`. For a token-only publisher,
+                hash a random password and throw the password away.
+              '';
+            };
+            access = lib.mkOption {
+              type = lib.types.attrsOf (lib.types.enum [ "rw" "ro" "wo" "deny" ]);
+              default = { };
+              example = { "alerts-*" = "wo"; };
+              description = "Topic pattern → permission.";
+            };
+          };
+        });
+        default = { };
+        description = "Users ntfy provisions from config at every start.";
+      };
+
+      tokensFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = ''
+          systemd EnvironmentFile setting `NTFY_AUTH_TOKENS=user:tk_…:label`
+          (comma-separated for several). A secret, so it stays out of
+          server.yml. Each token must be `tk_` + 29 lowercase alphanumerics
+          (`ntfy token generate`): a malformed one stops ntfy from starting.
+        '';
+      };
+    };
   };
 
   config = lib.mkIf cfg.enable {
     services.ntfy-sh = {
       enable = true;
+      environmentFile = cfg.provision.tokensFile;
       settings = {
         base-url = "https://${cfg.hostName}";
         listen-http = "127.0.0.1:${toString cfg.port}";
@@ -137,6 +185,13 @@ in
         proxy-trusted-hosts = lib.mkIf (cfg.trustedProxies != [])
           (lib.concatStringsSep "," cfg.trustedProxies);
         auth-default-access = cfg.defaultAccess;
+
+        auth-users = lib.mkIf (cfg.provision.users != { })
+          (lib.mapAttrsToList (n: u: "${n}:${u.passwordHash}:${u.role}") cfg.provision.users);
+        auth-access = lib.mkIf (cfg.provision.users != { })
+          (lib.concatLists (lib.mapAttrsToList (n: u:
+            lib.mapAttrsToList (topic: perm: "${n}:${topic}:${perm}") u.access)
+            cfg.provision.users));
 
         cache-duration = cfg.messageRetention;
         attachment-expiry-duration = cfg.attachmentRetention;
