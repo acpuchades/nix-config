@@ -197,10 +197,12 @@ let
       # rebuild and take the `got:` value from the mismatch.
       #
       # Under nix-caddy-withplugins (the overlay below) this covers ONLY the
-      # plugins' own Go modules, so a Caddy or nixpkgs bump no longer touches it;
-      # what does is adding, removing or bumping a plugin above. It was
+      # plugins' own Go modules, so a nixpkgs bump no longer touches it; what
+      # does is adding, removing or bumping a plugin above — or a
+      # nix-caddy-withplugins bump that moves the Caddy version the plugins
+      # resolve against (2026-10-18, 2.11.7, with the plugin list unchanged). It was
       # `sha256-w1H86by…` under nixpkgs' withPlugins and is not comparable.
-      my.caddy-plugins.hash = "sha256-6FwLem59rxu0M+Rz2nGylF5cTbO7meZb9j0Tqk5YY5A=";
+      my.caddy-plugins.hash = "sha256-6efTbiAH0AKk7fZgwJVbuutjSu299ltVHB7nW/qQR2U=";
 
       my.acme-cloudflare = {
         enable = true;

@@ -671,22 +671,6 @@ let
           };
           workspace = "${homeDir}/workspace";
         }
-        // lib.optionalAttrs icfg.memorySearch.enable {
-          # Embedding-backed recall over the agent's memory files. Provider is the
-          # host's choice (local keyless GGUF by default); the local model path and an
-          # optional remote model name are folded in only when set, so the emitted
-          # config matches whichever backend was picked.
-          memorySearch = {
-            enabled = true;
-            provider = icfg.memorySearch.provider;
-          }
-          // lib.optionalAttrs (icfg.memorySearch.localModelPath != null) {
-            local.modelPath = "${icfg.memorySearch.localModelPath}";
-          }
-          // lib.optionalAttrs (icfg.memorySearch.model != null) {
-            model = icfg.memorySearch.model;
-          };
-        }
         // lib.optionalAttrs icfg.heartbeat.enable {
           # Periodic autonomous turns, assembled from my.openclaw.heartbeat. A
           # default (overridable via icfg.settings), not an enforced key.
@@ -722,7 +706,9 @@ let
         # open-additionalProps providers.<provider> slot; the provider API key is
         # NOT put here — it is read from the environment (e.g. ELEVENLABS_API_KEY),
         # so no secret enters the store.
-        messages.tts = {
+        # Top-level `tts` since openclaw 2026.10.x; `messages.tts` is now rejected
+        # ("messages: Unrecognized key: tts").
+        tts = {
           # NB: no `enabled` key. OpenClaw 2026.5.x treats messages.tts.enabled as a
           # LEGACY key and rejects the config at load ("messages.tts.enabled is
           # legacy; use messages.tts.auto") — emitting it alongside `auto` fails the
@@ -763,11 +749,16 @@ let
         # 16 kHz mono WAV via ffmpeg and reads whisper's `.txt` sidecar, so no
         # wrapper is needed; the transcript is then fed to the agent like a typed
         # message. Lives in defaultConfig (a preference), so icfg.settings can tune it.
-        tools.media.audio = {
-          enabled = true;
+        #
+        # Since openclaw 2026.10.x the model list is shared across media kinds
+        # (tools.media.models, each entry tagged with its `capabilities`);
+        # tools.media.audio.models is rejected.
+        tools.media = {
+          audio.enabled = true;
           models = [
             {
               type = "cli";
+              capabilities = [ "audio" ];
               command = "whisper-cli";
               args = [
                 "-m"
@@ -786,6 +777,59 @@ let
           ];
         };
       };
+
+      # Embedding-backed recall over the agent's memory files (top-level
+      # `memory.search` since openclaw 2026.10.x; agents.defaults.memorySearch is
+      # rejected). Provider is the host's choice (local keyless GGUF by default);
+      # the local model path and an optional remote model name are folded in only
+      # when set, so the emitted config matches whichever backend was picked.
+      #
+      # "local" no longer embeds in-process (node-llama-cpp was removed in
+      # 2026.10.x): it needs a managed llama.cpp provider with a `localService`,
+      # which openclaw spawns on demand and stops when idle. We declare it here
+      # with a direct `--model` command instead of letting `openclaw configure`
+      # download its own llama-server and model — a configured command without a
+      # `--models-preset` is run as given, so the server binary and the GGUF both
+      # stay Nix-provided. `models = [ ]`: embeddings only, no chat models.
+      memoryConfig = lib.optionalAttrs icfg.memorySearch.enable (
+        {
+          memory.search = {
+            enabled = true;
+            provider = icfg.memorySearch.provider;
+          }
+          // lib.optionalAttrs (icfg.memorySearch.localModelPath != null) {
+            local.modelPath = "${icfg.memorySearch.localModelPath}";
+          }
+          // lib.optionalAttrs (icfg.memorySearch.model != null) {
+            model = icfg.memorySearch.model;
+          };
+        }
+        // lib.optionalAttrs (icfg.memorySearch.provider == "local") {
+          models.providers.llama-cpp =
+            let
+              port = toString icfg.memorySearch.llamaServerPort;
+            in
+            {
+              baseUrl = "http://127.0.0.1:${port}/v1";
+              apiKey = "llama-cpp-local"; # openclaw's keyless-local marker
+              api = "openai-completions";
+              localService = {
+                command = lib.getExe' icfg.memorySearch.llamaCppPackage "llama-server";
+                args = [
+                  "--embeddings"
+                  "--model"
+                  "${icfg.memorySearch.localModelPath}"
+                  "--host"
+                  "127.0.0.1"
+                  "--port"
+                  port
+                ];
+                healthUrl = "http://127.0.0.1:${port}/health";
+              };
+              models = [ ];
+            };
+        }
+      );
 
       # Non-negotiable security invariants. Access is locked to an explicit
       # numeric-ID allowlist and groups are disabled; the gateway stays loopback.
@@ -929,7 +973,7 @@ let
         skills.load.extraDirs = [ skillsStageDir ];
       };
 
-      fullConfig = lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate defaultConfig mailConfig) icfg.settings) enforcedConfig;
+      fullConfig = lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate (lib.recursiveUpdate defaultConfig memoryConfig) mailConfig) icfg.settings) enforcedConfig;
 
       # The config blueprint, rendered to the store as plain JSON. It holds NO
       # secrets — the bot token is a systemd credential and the allowlisted ID is
@@ -1662,7 +1706,7 @@ let
       tts = {
         # Reply text-to-speech, modelled as options rather than a raw settings blob
         # so voice/provider/etc. are configured from outside the module. Assembled
-        # into messages.tts (see defaultConfig). The provider API key is never a
+        # into the top-level tts block (see defaultConfig). The provider API key is never a
         # Nix value — it is read from the service environment (e.g. wire an
         # EnvironmentFile setting ELEVENLABS_API_KEY on the host).
         enable = lib.mkEnableOption "reply text-to-speech";
@@ -1746,7 +1790,7 @@ let
       stt = {
         enable = lib.mkEnableOption ''
           inbound speech-to-text so eva understands voice messages. Wires a
-          whisper.cpp CLI entry into tools.media.audio and puts whisper-cli +
+          whisper.cpp CLI entry into tools.media.models and puts whisper-cli +
           ffmpeg on the service PATH. OpenClaw transcodes the inbound OGG/Opus to
           16 kHz WAV and reads whisper's .txt output; the transcript is handed to
           the agent like a typed message. Needs stt.model set'';
@@ -1790,8 +1834,8 @@ let
       # Modelled as options because the embedding backend is a real choice with a
       # cost/privacy/keys tradeoff: openclaw's own default provider is "openai"
       # (needs an API key), so a host that keeps no keys must opt into a local
-      # embedder or wire a remote key deliberately. Assembles
-      # agents.defaults.memorySearch.
+      # embedder or wire a remote key deliberately. Assembles memory.search (and,
+      # for "local", the managed llama-cpp provider — see memoryConfig).
       memorySearch = {
         enable = lib.mkEnableOption ''
           semantic memory search. When off, the agent still has its memory FILES
@@ -1803,8 +1847,8 @@ let
           default = "local";
           example = "voyage";
           description = ''
-            Embedding backend (maps to agents.defaults.memorySearch.provider).
-            "local" runs a GGUF model on-box via node-llama-cpp — keyless, no
+            Embedding backend (maps to memory.search.provider).
+            "local" runs a GGUF model on-box via llama-server — keyless, no
             per-token cost, and memory text never leaves the host — and needs
             `localModelPath`. Remote providers ("openai", "voyage", "gemini",
             "mistral", "ollama", "lmstudio", …) instead need their API key in the
@@ -1825,7 +1869,8 @@ let
             GGUF embedding model file for `provider = "local"`, supplied from OUTSIDE
             the module (e.g. a fetchurl) so no model is baked into the generic module
             — the same pattern as `stt.model`. Maps to
-            agents.defaults.memorySearch.local.modelPath. Ignored by remote
+            memory.search.local.modelPath and is the `--model` llama-server is
+            started with. Ignored by remote
             providers. A small model (e.g. nomic-embed-text v1.5 Q4_K_M, ~84MB) is
             CPU-friendly; pick a multilingual model if recall in other languages
             matters. Required when `provider = "local"` and `enable` is set.
@@ -1837,8 +1882,25 @@ let
           example = "voyage-3-lite";
           description = ''
             Embedding model NAME override for a REMOTE provider (maps to
-            agents.defaults.memorySearch.model). Null uses the provider default. Not
+            memory.search.model). Null uses the provider default. Not
             used by `provider = "local"` — that takes `localModelPath` instead.
+          '';
+        };
+        llamaCppPackage = lib.mkOption {
+          type = lib.types.package;
+          default = pkgs.llama-cpp;
+          defaultText = lib.literalExpression "pkgs.llama-cpp";
+          description = ''
+            llama.cpp package providing the `llama-server` openclaw spawns for
+            `provider = "local"` embeddings.
+          '';
+        };
+        llamaServerPort = lib.mkOption {
+          type = lib.types.port;
+          default = 19432; # openclaw's llama-cpp default
+          description = ''
+            Loopback port of the on-demand llama-server for `provider = "local"`.
+            Give each instance its own when several use local embeddings.
           '';
         };
       };
@@ -2261,7 +2323,7 @@ let
               so `trusted.com@evil.com` is tested as evil.com. A captcha on any other
               page is refused. EMPTY (the default) means NO host restriction — set it,
               normally to the hosts the agent's browser may navigate to
-              (`settings.browser.ssrfPolicy.hostnameAllowlist`), so a prompt-injected
+              (`settings.browser.ssrfPolicy.allowedHostnames`), so a prompt-injected
               agent cannot spend the owner's credit solving captchas elsewhere.
             '';
           };

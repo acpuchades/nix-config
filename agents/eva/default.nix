@@ -152,7 +152,7 @@ let
 
   # Hosts eva's BROWSER may navigate to. Defined ONCE and shared by BOTH gates
   # that must agree on "pages eva is allowed to be on": the browser SSRF
-  # hostnameAllowlist (settings.browser.ssrfPolicy below) and the solve-captcha
+  # navigation gate (settings.browser.ssrfPolicy below) and the solve-captcha
   # page-host gate (actions.solveCaptcha.allowedSites). Keeping them one list is
   # what stops eva from being steered into spending captcha credit on a page she
   # could not have browsed to in the first place.
@@ -893,46 +893,52 @@ in
     # process isolation but is standard for headless server use.
     settings.browser.executablePath = "/run/current-system/sw/bin/chromium";
     settings.browser.noSandbox = true;
-    # Browser SSRF policy. TWO keys with OPPOSITE meanings — both are needed
-    # (verified against openclaw src/infra/net/ssrf.ts):
+    # Browser SSRF policy (openclaw 2026.10.x; verified against
+    # extensions/browser navigation-guard + src/infra/net/ssrf.ts). ONE list,
+    # read by TWO checks with different matching:
     #
-    #   hostnameAllowlist — the RESTRICTIVE one. EMPTY/UNSET MEANS ALLOW ALL
-    #     (matchesHostnameAllowlist returns true on an empty list), so leaving
-    #     it out left the browser an unrestricted, JS-executing navigator —
-    #     i.e. exactly the ungated outbound channel that tools.web.fetch is
-    #     disabled to prevent, since a prompt-injected eva could navigate to
-    #     https://evil/?secret=… . Non-empty pins navigation to these hosts.
-    #     Globs are `*.suffix` (subdomains only, not the apex) — same shape as
-    #     the request-trusted-url trustedSites globs above.
-    #   allowedHostnames — NOT a restriction: an exact-match EXCEPTION list
-    #     (Set.has(), NO globs — verified at ssrf.ts shouldSkipPrivateNetworkChecks)
-    #     that skips the private-network / blocked-hostname checks. Needed
-    #     because these hosts resolve into the LAN, which the SSRF guard blocks
-    #     by default. Per-host, so we avoid the blanket
-    #     dangerouslyAllowPrivateNetwork. It does NOT grant passage through the
-    #     hostnameAllowlist gate, which is why every LAN host must appear in
-    #     BOTH lists. A `*.acpuchades.com` glob here would be inert (no
-    #     exact-match), so this list stays per-host by necessity.
+    #   navigation gate — with `dangerouslyAllowPrivateNetwork = false` set
+    #     EXPLICITLY (unset skips the gate entirely, leaving the browser an
+    #     unrestricted, JS-executing navigator — exactly the ungated outbound
+    #     channel tools.web.fetch is disabled to prevent, since a prompt-injected
+    #     eva could navigate to https://evil/?secret=…), a hostname navigation is
+    #     refused unless it matches allowedHostnames. Globs are `*.suffix`
+    #     (subdomains only, not the apex) — same shape as the request-trusted-url
+    #     trustedSites globs above. Re-applied to every redirect hop and the final
+    #     URL. CAVEAT: IP-literal URLs bypass this gate by design (they get only the
+    #     private-network check), so a public IP literal is still navigable.
+    #   private-network exception — EXACT match only (no globs): a host resolving
+    #     into the LAN, which the SSRF guard blocks by default, is let through
+    #     only if listed verbatim. Per-host, so we avoid the blanket
+    #     dangerouslyAllowPrivateNetwork = true.
     #
-    # The allowlist gate carries `*.acpuchades.com` (owner's call, 2026-07-29),
-    # matching actions.requestUrl.trustedSites: the browser may navigate to any
+    # 2026.6.x split these into hostnameAllowlist (the gate) and allowedHostnames
+    # (the exception); 2026.10.x dropped hostnameAllowlist and folded both into
+    # this one list, which is why evaBrowsableSites and the LAN hosts are
+    # concatenated below.
+    #
+    # The gate carries `*.acpuchades.com` (owner's call, 2026-07-29), matching
+    # actions.requestUrl.trustedSites: the browser may navigate to any
     # acpuchades.com subdomain, including internal admin UIs (adguard,
     # vaultwarden, prefect, mail…). LAN-resolving subdomains are still gated a
-    # SECOND time by the private-network check, so eva can only actually reach
-    # the ones ALSO listed in allowedHostnames below; a public-resolving
+    # SECOND time by the exact-match private-network check, so eva can only
+    # actually reach the ones listed per-host below; a public-resolving
     # subdomain passes both. The apex itself is NOT covered (`*.` is
     # subdomains-only). github.com stays OUT — the one plausibly
     # attacker-controlled host an injected turn could steer a browser toward.
-    # Shared with solve-captcha's page-host gate (see evaBrowsableSites above), so
-    # the pages she may browse and the pages she may solve a captcha on are the
-    # same set by construction.
-    settings.browser.ssrfPolicy.hostnameAllowlist = evaBrowsableSites;
-    settings.browser.ssrfPolicy.allowedHostnames = [
-      "cloud.${owner.domain}" # Nextcloud (resolves into LAN)
-      "home.${owner.domain}" # home dashboard (resolves into LAN)
-      "status.${owner.domain}" # Grafana metrics/dashboards (resolves into LAN)
-      "www.fugazitrade.com" # fugazi-web backtest SPA (resolves into LAN)
-    ];
+    # evaBrowsableSites is shared with solve-captcha's page-host gate (see
+    # above), so the pages she may browse and the pages she may solve a captcha
+    # on are the same set by construction.
+    settings.browser.ssrfPolicy.dangerouslyAllowPrivateNetwork = false;
+    settings.browser.ssrfPolicy.allowedHostnames = lib.unique (
+      evaBrowsableSites
+      ++ [
+        "cloud.${owner.domain}" # Nextcloud (resolves into LAN)
+        "home.${owner.domain}" # home dashboard (resolves into LAN)
+        "status.${owner.domain}" # Grafana metrics/dashboards (resolves into LAN)
+        "www.fugazitrade.com" # fugazi-web backtest SPA (resolves into LAN)
+      ]
+    );
     # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
     # under channels.imessage, so putting it on the telegram channel tripped
     # the strict schema ("channels.telegram: must NOT have additional
@@ -1036,13 +1042,13 @@ in
     };
 
     # ElevenLabs voice parameters not exposed as module options — injected raw.
-    # NB: the path is `messages.tts.…`, NOT top-level `tts.…`. `settings.*` merges
-    # into the config ROOT, so `settings.tts` creates a top-level `tts` key, which
-    # the schema rejects ("<root>: Invalid input") and crash-loops the seed. These
-    # deep-merge with the module-emitted `messages.tts.…voiceSettings.speed`.
+    # NB: the path is top-level `tts.…` since openclaw 2026.10.x, which now
+    # REJECTS `messages.tts` ("messages: Unrecognized key"); 2026.6.x was the
+    # reverse. `settings.*` merges into the config ROOT, so these deep-merge with
+    # the module-emitted `tts.…voiceSettings.speed`.
     # stability 0.45 = more expressive/variable delivery; similarityBoost 0.95 = close to voice clone.
-    settings.messages.tts.personas.default.providers.elevenlabs.voiceSettings.stability = 0.45;
-    settings.messages.tts.personas.default.providers.elevenlabs.voiceSettings.similarityBoost = 0.95;
+    settings.tts.personas.default.providers.elevenlabs.voiceSettings.stability = 0.45;
+    settings.tts.personas.default.providers.elevenlabs.voiceSettings.similarityBoost = 0.95;
 
     # Inbound speech-to-text: local whisper.cpp so eva understands voice
     # notes (the claude-cli runtime can't ingest audio itself). The
