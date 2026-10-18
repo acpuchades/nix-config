@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # One owner for `services.caddy.package`.
 #
@@ -13,7 +18,8 @@
 # So the list is the mergeable thing and the package is derived from it. A module
 # contributes what it needs — `my.caddy-plugins.plugins = [ "…@vX" ]` — and NixOS
 # concatenates the definitions, the way `globalConfig` already concatenates.
-let cfg = config.my.caddy-plugins;
+let
+  cfg = config.my.caddy-plugins;
 in
 {
   options.my.caddy-plugins = {

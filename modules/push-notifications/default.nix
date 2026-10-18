@@ -59,7 +59,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Restrict access to these CIDR ranges (empty = unrestricted).
 
@@ -71,7 +71,12 @@ in
     };
 
     defaultAccess = lib.mkOption {
-      type = lib.types.enum [ "read-write" "read-only" "write-only" "deny-all" ];
+      type = lib.types.enum [
+        "read-write"
+        "read-only"
+        "write-only"
+        "deny-all"
+      ];
       default = "deny-all";
       description = ''
         Access granted to unauthenticated clients. `deny-all` means every
@@ -90,7 +95,7 @@ in
 
     trustedProxies = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         CIDRs of CDN edges in front of Caddy. ntfy takes the rightmost
         X-Forwarded-For entry not listed here, so without them a proxied
@@ -134,8 +139,9 @@ in
         listen-http = "127.0.0.1:${toString cfg.port}";
 
         behind-proxy = cfg.behindProxy;
-        proxy-trusted-hosts = lib.mkIf (cfg.trustedProxies != [])
-          (lib.concatStringsSep "," cfg.trustedProxies);
+        proxy-trusted-hosts = lib.mkIf (cfg.trustedProxies != [ ]) (
+          lib.concatStringsSep "," cfg.trustedProxies
+        );
         auth-default-access = cfg.defaultAccess;
 
         cache-duration = cfg.messageRetention;
@@ -146,10 +152,11 @@ in
       };
     };
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (cfg.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
+      lib.filter (s: s != "") [
+        (lib.optionalString (
+          cfg.allowedNetworks != [ ]
+        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
         # flush_interval -1 disables response buffering outright, which is what
         # ntfy's held-open subscription streams need. No `encode gzip` here for
         # the same reason: compressing a stream reintroduces buffering.
@@ -157,6 +164,7 @@ in
           reverse_proxy http://127.0.0.1:${toString cfg.port} {
             flush_interval -1
           }''
-      ]);
+      ]
+    );
   };
 }

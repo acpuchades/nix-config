@@ -194,7 +194,9 @@ let
           # Confidential recipients are refused here (see mail.gpg): being on the
           # unprompted list does not make a cleartext send to them acceptable.
           ++ encryptOnlyWrapArgs
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (
+            icfg.mail.fromAddress != null
+          ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
           ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"
           # With a submit user, a recipient outside the unprompted set is HELD in
           # the outbox for the owner instead of sent (see submitUser below).
@@ -203,15 +205,16 @@ let
               "--set OUTBOX ${outboxDir}"
               "--set UNPROMPTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.mail.unpromptedRecipients)}"
             ]
-            ++ lib.optional (icfg.mail.unpromptedRecipientsFile != null) "--set UNPROMPTED_FILE ${icfg.mail.unpromptedRecipientsFile}"
+            ++ lib.optional (
+              icfg.mail.unpromptedRecipientsFile != null
+            ) "--set UNPROMPTED_FILE ${icfg.mail.unpromptedRecipientsFile}"
           );
         in
-        pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
-          ''
-            install -Dm0755 ${./actions/send-email} $out/libexec/send-email
-            makeWrapper $out/libexec/send-email $out/bin/send-email \
-              ${lib.concatStringsSep " \\\n  " wrapArgs}
-          '';
+        pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+          install -Dm0755 ${./actions/send-email} $out/libexec/send-email
+          makeWrapper $out/libexec/send-email $out/bin/send-email \
+            ${lib.concatStringsSep " \\\n  " wrapArgs}
+        '';
 
       # One exact allowlist rule per pre-blessed recipient: `send-email <addr>`. Any
       # other recipient (or more than one in a single send) fails to match and falls
@@ -287,18 +290,26 @@ let
             "--set GPG ${pkgs.gnupg}/bin/gpg"
             "--set GNUPGHOME ${gnupgHome}"
             "--set ENCRYPT_KEYS ${lib.escapeShellArg gpgEncryptKeys}"
-            "--prefix PATH : ${lib.makeBinPath [ pkgs.gnupg pkgs.coreutils ]}"
+            "--prefix PATH : ${
+              lib.makeBinPath [
+                pkgs.gnupg
+                pkgs.coreutils
+              ]
+            }"
           ]
-          ++ lib.optional (gpgCfg.fingerprint != null) "--set SIGN_KEY ${lib.escapeShellArg gpgCfg.fingerprint}"
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (
+            gpgCfg.fingerprint != null
+          ) "--set SIGN_KEY ${lib.escapeShellArg gpgCfg.fingerprint}"
+          ++ lib.optional (
+            icfg.mail.fromAddress != null
+          ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
           ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
-        pkgs.runCommandLocal "openclaw-send-encrypted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
-          ''
-            install -Dm0755 ${./actions/send-encrypted-mail} $out/libexec/send-encrypted-mail
-            makeWrapper $out/libexec/send-encrypted-mail $out/bin/send-encrypted-mail \
-              ${lib.concatStringsSep " \\\n  " wrapArgs}
-          '';
+        pkgs.runCommandLocal "openclaw-send-encrypted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+          install -Dm0755 ${./actions/send-encrypted-mail} $out/libexec/send-encrypted-mail
+          makeWrapper $out/libexec/send-encrypted-mail $out/bin/send-encrypted-mail \
+            ${lib.concatStringsSep " \\\n  " wrapArgs}
+        '';
 
       # `decrypt-mail`: read-only and destination-less (it opens a file the agent can
       # already read and reaches no network), so it is safe to bless whole-binary. It
@@ -312,7 +323,12 @@ let
               --set GPG ${pkgs.gnupg}/bin/gpg \
               --set GNUPGHOME ${gnupgHome} \
               --set TRUSTED_SIGNERS ${lib.escapeShellArg gpgTrustedSigners} \
-              --prefix PATH : ${lib.makeBinPath [ pkgs.gnupg pkgs.coreutils ]}
+              --prefix PATH : ${
+                lib.makeBinPath [
+                  pkgs.gnupg
+                  pkgs.coreutils
+                ]
+              }
           '';
 
       # Rebuild the keyring from nix at every start: kill any agent left over from
@@ -361,17 +377,20 @@ let
             "--set SENDMAIL /run/wrappers/bin/sendmail"
             "--set TRUSTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.trustedMail.trustedAddresses)}"
           ]
-          ++ lib.optional (icfg.actions.trustedMail.trustedAddressesFile != null) "--set TRUSTED_ADDRESSES_FILE ${icfg.actions.trustedMail.trustedAddressesFile}"
+          ++ lib.optional (
+            icfg.actions.trustedMail.trustedAddressesFile != null
+          ) "--set TRUSTED_ADDRESSES_FILE ${icfg.actions.trustedMail.trustedAddressesFile}"
           ++ encryptOnlyWrapArgs
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (
+            icfg.mail.fromAddress != null
+          ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
           ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
-        pkgs.runCommandLocal "openclaw-send-trusted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
-          ''
-            install -Dm0755 ${./actions/send-trusted-mail} $out/libexec/send-trusted-mail
-            makeWrapper $out/libexec/send-trusted-mail $out/bin/send-trusted-mail \
-              ${lib.concatStringsSep " \\\n  " wrapArgs}
-          '';
+        pkgs.runCommandLocal "openclaw-send-trusted-mail" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+          install -Dm0755 ${./actions/send-trusted-mail} $out/libexec/send-trusted-mail
+          makeWrapper $out/libexec/send-trusted-mail $out/bin/send-trusted-mail \
+            ${lib.concatStringsSep " \\\n  " wrapArgs}
+        '';
 
       # `generate-image`: the generic actions/generate-image script wrapped so the
       # model, token-file path, optional reference image, API base and tool paths are
@@ -466,9 +485,7 @@ let
                 ]
               } \
               --set CAPTCHA_TOKEN_FILE ${lib.escapeShellArg icfg.actions.solveCaptcha.tokenFile} \
-              --set CAPTCHA_ALLOWED_SITES ${
-                lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.solveCaptcha.allowedSites)
-              } \
+              --set CAPTCHA_ALLOWED_SITES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.actions.solveCaptcha.allowedSites)} \
               --set CAPTCHA_TIMEOUT ${toString icfg.actions.solveCaptcha.timeoutSeconds} \
               --set CAPTCHA_POLL_INTERVAL ${toString icfg.actions.solveCaptcha.pollIntervalSeconds} \
               ${
@@ -526,16 +543,15 @@ let
           ) "--set ZOTERO_API_BASE ${lib.escapeShellArg icfg.actions.zotero.apiBase}";
           wrapped = lib.concatStringsSep " \\\n  " wrapArgs;
         in
-        pkgs.runCommandLocal "openclaw-zotero" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
-          ''
-            install -Dm0755 ${./actions/zotero} $out/libexec/zotero
-            makeWrapper $out/libexec/zotero $out/bin/check-zotero \
-              --set ZOTERO_ROLE read \
-              ${wrapped}
-            makeWrapper $out/libexec/zotero $out/bin/zotero-add \
-              --set ZOTERO_ROLE add \
-              ${wrapped}
-          '';
+        pkgs.runCommandLocal "openclaw-zotero" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+          install -Dm0755 ${./actions/zotero} $out/libexec/zotero
+          makeWrapper $out/libexec/zotero $out/bin/check-zotero \
+            --set ZOTERO_ROLE read \
+            ${wrapped}
+          makeWrapper $out/libexec/zotero $out/bin/zotero-add \
+            --set ZOTERO_ROLE add \
+            ${wrapped}
+        '';
 
       # `check-calendar`: list upcoming events from an .ics calendar (python +
       # icalendar + recurring-ical-events). It takes the calendar SOURCE directly
@@ -556,7 +572,12 @@ let
           ''
             install -Dm0755 ${./actions/check-calendar} $out/libexec/check-calendar
             makeWrapper $out/libexec/check-calendar $out/bin/check-calendar \
-              --prefix PATH : ${lib.makeBinPath [ checkCalendarPython requestUrlBin ]}
+              --prefix PATH : ${
+                lib.makeBinPath [
+                  checkCalendarPython
+                  requestUrlBin
+                ]
+              }
           '';
 
       # `make-invite`: composes an iTIP calendar invitation on stdout — it does NOT
@@ -573,15 +594,16 @@ let
           wrapArgs = [
             "--prefix PATH : ${lib.makeBinPath [ pkgs.coreutils ]}"
           ]
-          ++ lib.optional (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+          ++ lib.optional (
+            icfg.mail.fromAddress != null
+          ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
           ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}";
         in
-        pkgs.runCommandLocal "openclaw-make-invite" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
-          ''
-            install -Dm0755 ${./actions/make-invite} $out/libexec/make-invite
-            makeWrapper $out/libexec/make-invite $out/bin/make-invite \
-              ${lib.concatStringsSep " \\\n  " wrapArgs}
-          '';
+        pkgs.runCommandLocal "openclaw-make-invite" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
+          install -Dm0755 ${./actions/make-invite} $out/libexec/make-invite
+          makeWrapper $out/libexec/make-invite $out/bin/make-invite \
+            ${lib.concatStringsSep " \\\n  " wrapArgs}
+        '';
 
       # `offline CMD …`: run CMD in a throwaway user+network namespace with NO
       # network interfaces (only a down `lo`), so a network-capable tool cannot reach
@@ -603,7 +625,15 @@ let
       # the static scripts in ./actions/ they are FUNCTIONS returning a writeTextDir,
       # imported with the shared skillArgs below. (Distinct from any repo-root
       # ./skills of static, agent-shared SKILL.md content — a different layer.)
-      skillArgs = { inherit pkgs lib icfg homeDir mailFromDisplay; };
+      skillArgs = {
+        inherit
+          pkgs
+          lib
+          icfg
+          homeDir
+          mailFromDisplay
+          ;
+      };
       mailSkillsDir = import ./skills/mail.nix skillArgs;
       captchaSkillsDir = import ./skills/captcha.nix skillArgs;
       policySkillsDir = import ./skills/policy.nix skillArgs;
@@ -890,63 +920,71 @@ let
             let
               inherit (icfg.exec) security ask;
               mode =
-                if ask == "always" || (security == "full" && ask == "on-miss") then null
-                else if security == "deny" then "deny"
-                else if security == "allowlist" && ask == "off" then "allowlist"
-                else if security == "full" then "full"
-                else "ask";
+                if ask == "always" || (security == "full" && ask == "on-miss") then
+                  null
+                else if security == "deny" then
+                  "deny"
+                else if security == "allowlist" && ask == "off" then
+                  "allowlist"
+                else if security == "full" then
+                  "full"
+                else
+                  "ask";
             in
             if mode != null then { inherit mode; } else { inherit security ask; }
           )
           // {
-          strictInlineEval = icfg.exec.strictInlineEval;
-          safeBins =
-            icfg.exec.safeBins
-            ++ lib.optionals icfg.mail.enable mailReadBins
-            ++ lib.optionals (icfg.mail.enable && icfg.mail.manageMaildir) mailManageBins
-            # The trusted-* action wrappers SELF-GATE their destination (refusing
-            # anything off the trusted list), so they are safe to bless whole-binary:
-            # any invocation either targets a trusted destination or exits non-zero.
-            ++ lib.optionals icfg.actions.requestUrl.enable [ "request-trusted-url" ]
-            ++ lib.optionals icfg.actions.trustedMail.enable [ "send-trusted-mail" ]
-            # send-encrypted-mail refuses any recipient without a pinned key and has
-            # no cleartext path at all; decrypt-mail is read-only and reaches no
-            # network. Both are therefore safe whole-binary. Raw `gpg` is NOT here
-            # and NOT on the agent's PATH — these wrappers are its entire OpenPGP
-            # surface (see mail.gpg).
-            ++ lib.optionals gpgEnabled [
-              "send-encrypted-mail"
-              "decrypt-mail"
-            ]
-            # generate-image is likewise destination-pinned (fixed model/endpoint), so
-            # blessing the whole binary only ever hits the configured image endpoint.
-            ++ lib.optionals icfg.actions.generateImage.enable [ "generate-image" ]
-            # check-weather is destination-pinned to the configured weather endpoint.
-            ++ lib.optionals icfg.actions.checkWeather.enable [ "check-weather" ]
-            # solve-captcha is destination-pinned to the configured solving endpoint
-            # AND self-gates the page host against allowedSites, so blessing the whole
-            # binary opens no destination the operator has not already blessed.
-            ++ lib.optionals icfg.actions.solveCaptcha.enable [ "solve-captcha" ]
-            # check-calendar only ever does local .ics parsing plus a fetch that
-            # DELEGATES to the host-gated request-trusted-url binary, so blessing it
-            # whole-binary opens no exfil channel beyond what request-trusted-url
-            # already allows.
-            ++ lib.optionals icfg.actions.checkCalendar.enable [ "check-calendar" ]
-            # make-invite only writes a message to stdout — no network, no send, no
-            # destination of any kind — so the whole binary is safe. What it composes
-            # still has to pass a SENDER's recipient gate to go anywhere.
-            ++ lib.optionals icfg.actions.makeInvite.enable [ "make-invite" ]
-            # check-zotero is GET-only against a fixed endpoint; zotero-add is a WRITE
-            # but a doubly-pinned one — the endpoint is fixed (the agent supplies item
-            # data, never a URL), the library is the one its key owns, and it is
-            # create-only (items carrying key/version are refused), so nothing already
-            # in the library can be changed or destroyed. Blessing either whole-binary
-            # therefore opens no destination and no deletion path.
-            ++ lib.optionals icfg.actions.zotero.enable [ "check-zotero" "zotero-add" ];
-        }
-        // lib.optionalAttrs (icfg.exec.safeBinProfiles != { }) {
-          safeBinProfiles = icfg.exec.safeBinProfiles;
-        };
+            strictInlineEval = icfg.exec.strictInlineEval;
+            safeBins =
+              icfg.exec.safeBins
+              ++ lib.optionals icfg.mail.enable mailReadBins
+              ++ lib.optionals (icfg.mail.enable && icfg.mail.manageMaildir) mailManageBins
+              # The trusted-* action wrappers SELF-GATE their destination (refusing
+              # anything off the trusted list), so they are safe to bless whole-binary:
+              # any invocation either targets a trusted destination or exits non-zero.
+              ++ lib.optionals icfg.actions.requestUrl.enable [ "request-trusted-url" ]
+              ++ lib.optionals icfg.actions.trustedMail.enable [ "send-trusted-mail" ]
+              # send-encrypted-mail refuses any recipient without a pinned key and has
+              # no cleartext path at all; decrypt-mail is read-only and reaches no
+              # network. Both are therefore safe whole-binary. Raw `gpg` is NOT here
+              # and NOT on the agent's PATH — these wrappers are its entire OpenPGP
+              # surface (see mail.gpg).
+              ++ lib.optionals gpgEnabled [
+                "send-encrypted-mail"
+                "decrypt-mail"
+              ]
+              # generate-image is likewise destination-pinned (fixed model/endpoint), so
+              # blessing the whole binary only ever hits the configured image endpoint.
+              ++ lib.optionals icfg.actions.generateImage.enable [ "generate-image" ]
+              # check-weather is destination-pinned to the configured weather endpoint.
+              ++ lib.optionals icfg.actions.checkWeather.enable [ "check-weather" ]
+              # solve-captcha is destination-pinned to the configured solving endpoint
+              # AND self-gates the page host against allowedSites, so blessing the whole
+              # binary opens no destination the operator has not already blessed.
+              ++ lib.optionals icfg.actions.solveCaptcha.enable [ "solve-captcha" ]
+              # check-calendar only ever does local .ics parsing plus a fetch that
+              # DELEGATES to the host-gated request-trusted-url binary, so blessing it
+              # whole-binary opens no exfil channel beyond what request-trusted-url
+              # already allows.
+              ++ lib.optionals icfg.actions.checkCalendar.enable [ "check-calendar" ]
+              # make-invite only writes a message to stdout — no network, no send, no
+              # destination of any kind — so the whole binary is safe. What it composes
+              # still has to pass a SENDER's recipient gate to go anywhere.
+              ++ lib.optionals icfg.actions.makeInvite.enable [ "make-invite" ]
+              # check-zotero is GET-only against a fixed endpoint; zotero-add is a WRITE
+              # but a doubly-pinned one — the endpoint is fixed (the agent supplies item
+              # data, never a URL), the library is the one its key owns, and it is
+              # create-only (items carrying key/version are refused), so nothing already
+              # in the library can be changed or destroyed. Blessing either whole-binary
+              # therefore opens no destination and no deletion path.
+              ++ lib.optionals icfg.actions.zotero.enable [
+                "check-zotero"
+                "zotero-add"
+              ];
+          }
+          // lib.optionalAttrs (icfg.exec.safeBinProfiles != { }) {
+            safeBinProfiles = icfg.exec.safeBinProfiles;
+          };
       };
 
       # Skill directories loaded for this instance, between the module defaults and
@@ -1137,7 +1175,8 @@ let
       outboxDir = "/var/spool/openclaw-outbox/${name}";
 
       # What the agent finds on its PATH under the real wrapper's name.
-      viaSubmitUser = bin: binName:
+      viaSubmitUser =
+        bin: binName:
         pkgs.writeShellScriptBin binName ''
           exec /run/wrappers/bin/sudo -n -u ${submitUser} ${bin}/bin/${binName} "$@"
         '';
@@ -1151,9 +1190,21 @@ let
               --set OUTBOX ${outboxDir} \
               --set SUBMIT_USER ${submitUser} \
               --set SENDMAIL /run/wrappers/bin/sendmail \
-              ${lib.optionalString (icfg.mail.fromAddress != null) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"} \
-              ${lib.optionalString (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"} \
-              --prefix PATH : ${lib.makeBinPath [ pkgs.coreutils pkgs.gnugrep pkgs.util-linux ]}
+              ${
+                lib.optionalString (
+                  icfg.mail.fromAddress != null
+                ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
+              } \
+              ${
+                lib.optionalString (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"
+              } \
+              --prefix PATH : ${
+                lib.makeBinPath [
+                  pkgs.coreutils
+                  pkgs.gnugrep
+                  pkgs.util-linux
+                ]
+              }
           '';
 
       # --- network egress (egress.enable) --------------------------------------
@@ -1163,25 +1214,49 @@ let
       # The allowlist is DERIVED from what the instance is configured to reach, so
       # it cannot drift from the wrappers: their hosts, the channel, the model
       # provider and TTS, plus egress.allowedDomains.
-      urlHost = url: lib.head (lib.splitString "/" (lib.removePrefix "https://" (lib.removePrefix "http://" url)));
+      urlHost =
+        url: lib.head (lib.splitString "/" (lib.removePrefix "https://" (lib.removePrefix "http://" url)));
       egressDomains = lib.unique (
         [ "api.telegram.org" ]
         ++ lib.optionals (runtimeProvider == "anthropic") [
-          "anthropic.com" "*.anthropic.com" "claude.ai" "*.claude.ai" "claude.com" "*.claude.com"
+          "anthropic.com"
+          "*.anthropic.com"
+          "claude.ai"
+          "*.claude.ai"
+          "claude.com"
+          "*.claude.com"
         ]
         ++ lib.optional (icfg.tts.enable && icfg.tts.provider == "elevenlabs") "api.elevenlabs.io"
         ++ lib.optionals icfg.actions.requestUrl.enable icfg.actions.requestUrl.trustedSites
         ++ lib.optionals icfg.actions.solveCaptcha.enable icfg.actions.solveCaptcha.allowedSites
-        ++ map urlHost (lib.filter (u: u != "") [
-          (lib.optionalString icfg.actions.generateImage.enable
-            (if icfg.actions.generateImage.apiBase != null then icfg.actions.generateImage.apiBase else "https://generativelanguage.googleapis.com"))
-          (lib.optionalString icfg.actions.checkWeather.enable
-            (if icfg.actions.checkWeather.apiBase != null then icfg.actions.checkWeather.apiBase else "https://api.openweathermap.org"))
-          (lib.optionalString icfg.actions.solveCaptcha.enable
-            (if icfg.actions.solveCaptcha.apiBase != null then icfg.actions.solveCaptcha.apiBase else "https://api.2captcha.com"))
-          (lib.optionalString icfg.actions.zotero.enable
-            (if icfg.actions.zotero.apiBase != null then icfg.actions.zotero.apiBase else "https://api.zotero.org"))
-        ])
+        ++ map urlHost (
+          lib.filter (u: u != "") [
+            (lib.optionalString icfg.actions.generateImage.enable (
+              if icfg.actions.generateImage.apiBase != null then
+                icfg.actions.generateImage.apiBase
+              else
+                "https://generativelanguage.googleapis.com"
+            ))
+            (lib.optionalString icfg.actions.checkWeather.enable (
+              if icfg.actions.checkWeather.apiBase != null then
+                icfg.actions.checkWeather.apiBase
+              else
+                "https://api.openweathermap.org"
+            ))
+            (lib.optionalString icfg.actions.solveCaptcha.enable (
+              if icfg.actions.solveCaptcha.apiBase != null then
+                icfg.actions.solveCaptcha.apiBase
+              else
+                "https://api.2captcha.com"
+            ))
+            (lib.optionalString icfg.actions.zotero.enable (
+              if icfg.actions.zotero.apiBase != null then
+                icfg.actions.zotero.apiBase
+              else
+                "https://api.zotero.org"
+            ))
+          ]
+        )
         ++ icfg.egress.allowedDomains
       );
       egressChain = "openclaw-egress-${name}";
@@ -1199,10 +1274,12 @@ let
         # configurable), so allow the ephemeral range. Fixed-port local
         # services all sit below it.
         ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport 32768:60999 -j RETURN
-        ${lib.optionalString (icfg.memorySearch.enable && icfg.memorySearch.provider == "local") ''
-          # The llama-server openclaw spawns (as the agent) for local embeddings.
-          ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString icfg.memorySearch.llamaServerPort} -j RETURN
-        ''}        ${ipt} -A ${egressChain} -o lo -p udp --dport 53 -j RETURN
+        ${
+          lib.optionalString (icfg.memorySearch.enable && icfg.memorySearch.provider == "local") ''
+            # The llama-server openclaw spawns (as the agent) for local embeddings.
+            ${ipt} -A ${egressChain} -o lo -d ${lo} -p tcp --dport ${toString icfg.memorySearch.llamaServerPort} -j RETURN
+          ''
+        }        ${ipt} -A ${egressChain} -o lo -p udp --dport 53 -j RETURN
         ${ipt} -A ${egressChain} -o lo -p tcp --dport 53 -j RETURN
         ${ipt} -A ${egressChain} -j REJECT
         ${ipt} -D OUTPUT -m owner --uid-owner ${icfg.user} -j ${egressChain} 2>/dev/null || true
@@ -1286,9 +1363,7 @@ let
           message = "my.openclaw.instances.${name}.mail.gpg: needs at least one entry in `keys` (an owner address + pinned fingerprint + public key file).";
         }
         {
-          assertion = lib.all (
-            k: builtins.match "[0-9A-Fa-f]{40}" k.fingerprint != null
-          ) icfg.mail.gpg.keys;
+          assertion = lib.all (k: builtins.match "[0-9A-Fa-f]{40}" k.fingerprint != null) icfg.mail.gpg.keys;
           message = "my.openclaw.instances.${name}.mail.gpg.keys: each `fingerprint` must be a full 40-character hex OpenPGP fingerprint with no spaces.";
         }
         {
@@ -1331,39 +1406,41 @@ let
       ++ icfg.extraPackages
       ++ lib.optional (submitUser != null) outboxBin;
 
-      users.users = lib.optionalAttrs (submitUser != null) {
-        ${submitUser} = {
-          isSystemUser = true;
-          group = submitUser;
-          description = "Mail submission for OpenClaw agent ${name}";
+      users.users =
+        lib.optionalAttrs (submitUser != null) {
+          ${submitUser} = {
+            isSystemUser = true;
+            group = submitUser;
+            description = "Mail submission for OpenClaw agent ${name}";
+          };
+        }
+        // {
+          ${icfg.user} = {
+            isNormalUser = true;
+            group = icfg.user;
+            home = homeDir;
+            createHome = true;
+            shell = pkgs.bashInteractive;
+            # GECOS. Postfix's sendmail(1) reads the full name from here when no -F is
+            # given, so keeping it in sync with icfg.fullName means anything the agent
+            # sends outside the wrappers still carries the same name.
+            description = if icfg.fullName == "" then "OpenClaw agent" else icfg.fullName;
+            # Every agent is a member of `agents`, the group that reads the SHARED
+            # service API keys (the image/weather/captcha/TTS tokens). Those are
+            # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
+            # account — so the secret is group-readable rather than chowned to whichever
+            # agent happened to be configured first. Deliberately NOT the `openclaw`
+            # group below: that one reads the state TREE, and putting agents in it would
+            # let each agent read every other agent's memory and sessions.
+            # The submit user's group reads the address lists both sides use.
+            extraGroups = [ "agents" ] ++ lib.optional (submitUser != null) submitUser;
+            # Local-only identity: no password, no keys, and sshd refuses it outright
+            # (below), so the account can be inhabited from a root session on this box
+            # and nowhere else. `!` is an invalid hash — it matches nothing.
+            hashedPassword = "!";
+            openssh.authorizedKeys.keys = [ ];
+          };
         };
-      } // {
-        ${icfg.user} = {
-          isNormalUser = true;
-          group = icfg.user;
-          home = homeDir;
-          createHome = true;
-          shell = pkgs.bashInteractive;
-          # GECOS. Postfix's sendmail(1) reads the full name from here when no -F is
-          # given, so keeping it in sync with icfg.fullName means anything the agent
-          # sends outside the wrappers still carries the same name.
-          description = if icfg.fullName == "" then "OpenClaw agent" else icfg.fullName;
-          # Every agent is a member of `agents`, the group that reads the SHARED
-          # service API keys (the image/weather/captcha/TTS tokens). Those are
-          # per-SERVICE, not per-agent — a second agent uses the same 2Captcha
-          # account — so the secret is group-readable rather than chowned to whichever
-          # agent happened to be configured first. Deliberately NOT the `openclaw`
-          # group below: that one reads the state TREE, and putting agents in it would
-          # let each agent read every other agent's memory and sessions.
-          # The submit user's group reads the address lists both sides use.
-          extraGroups = [ "agents" ] ++ lib.optional (submitUser != null) submitUser;
-          # Local-only identity: no password, no keys, and sshd refuses it outright
-          # (below), so the account can be inhabited from a root session on this box
-          # and nowhere else. `!` is an invalid hash — it matches nothing.
-          hashedPassword = "!";
-          openssh.authorizedKeys.keys = [ ];
-        };
-      };
       users.groups = lib.optionalAttrs (submitUser != null) { ${submitUser} = { }; } // {
         ${icfg.user} = { };
         # Read access to the agent's service state for principals who should be
@@ -1406,13 +1483,16 @@ let
         ++ lib.optional (submitUser != null) {
           users = [ icfg.user ];
           runAs = submitUser;
-          commands = map (command: {
-            inherit command;
-            options = [ "NOPASSWD" ];
-          }) (
-            [ "${mailSendBin}/bin/send-email" ]
-            ++ lib.optional icfg.actions.trustedMail.enable "${trustedMailBin}/bin/send-trusted-mail"
-          );
+          commands =
+            map
+              (command: {
+                inherit command;
+                options = [ "NOPASSWD" ];
+              })
+              (
+                [ "${mailSendBin}/bin/send-email" ]
+                ++ lib.optional icfg.actions.trustedMail.enable "${trustedMailBin}/bin/send-trusted-mail"
+              );
         };
 
       # The state dir is the agent's, group-readable by openclaw. setgid so
@@ -1668,7 +1748,12 @@ let
           RestrictSUIDSGID = true;
           LockPersonality = true;
           SystemCallArchitectures = "native";
-          RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" "AF_NETLINK" ];
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+            "AF_NETLINK"
+          ];
         };
       };
     };
@@ -2150,7 +2235,7 @@ let
       };
 
       settings = lib.mkOption {
-        type = settingsFormat.type;
+        inherit (settingsFormat) type;
         default = { };
         example = lib.literalExpression ''
           {
@@ -2822,7 +2907,7 @@ let
           '';
         };
         safeBinProfiles = lib.mkOption {
-          type = settingsFormat.type;
+          inherit (settingsFormat) type;
           default = { };
           example = lib.literalExpression ''
             {
@@ -2889,7 +2974,10 @@ let
         allowedDomains = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          example = [ "github.com" "*.githubusercontent.com" ];
+          example = [
+            "github.com"
+            "*.githubusercontent.com"
+          ];
           description = ''
             Extra hosts the agent may reach, as fnmatch patterns (`*.example.com`
             does not cover the apex). Proxy denials show in
@@ -3047,8 +3135,9 @@ in
         inherit icfg;
         frag = mkInstance name icfg;
       }) cfg.instances;
-      egressInstances = lib.mapAttrs (name: icfg: (mkInstance name icfg).egress)
-        (lib.filterAttrs (_: i: i.enable && i.egress.enable) cfg.instances);
+      egressInstances = lib.mapAttrs (name: icfg: (mkInstance name icfg).egress) (
+        lib.filterAttrs (_: i: i.enable && i.egress.enable) cfg.instances
+      );
       onKey = key: lib.mkMerge (map (e: lib.mkIf e.icfg.enable e.frag.${key}) frags);
     in
     {
@@ -3074,8 +3163,11 @@ in
               FilterType = "fnmatch";
               FilterDefaultDeny = true;
               FilterURLs = false;
-              Filter = pkgs.writeText "openclaw-egress-allowlist"
-                (lib.concatMapStrings (d: d + "\n") (lib.unique (lib.concatMap (i: i.egressDomains) (lib.attrValues egressInstances))));
+              Filter = pkgs.writeText "openclaw-egress-allowlist" (
+                lib.concatMapStrings (d: d + "\n") (
+                  lib.unique (lib.concatMap (i: i.egressDomains) (lib.attrValues egressInstances))
+                )
+              );
             };
           };
         }

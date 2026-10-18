@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # Transmission BitTorrent daemon + web UI.
 #
@@ -75,7 +80,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Restrict web UI access to these CIDR ranges (empty = unrestricted).";
     };
 
@@ -150,7 +155,7 @@ in
       enable = true;
       # stateVersion < 25.11 makes the package default a `throw`; set it explicitly.
       package = pkgs.transmission_4;
-      group = cfg.group;
+      inherit (cfg) group;
       downloadDirPermissions = "0770";
       # Peer port lives on the VPN tunnel (handled by the egress layer) and the
       # web UI is proxied by Caddy — nothing belongs on the LAN firewall.
@@ -215,13 +220,15 @@ in
 
     # Reverse proxy the web UI, restricted to private nets + basic auth. Mirrors
     # the snippet used by modules/dns-filtering.
-    services.caddy.virtualHosts.${cfg.hostName}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-      (lib.optionalString (cfg.allowedNetworks != [])
-        "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-      (lib.optionalString (cfg.basicAuthFile != null)
-        "import ${cfg.basicAuthFile}")
-      "reverse_proxy http://${cfg.rpcAddress}:${toString cfg.rpcPort}"
-      "encode gzip"
-    ]);
+    services.caddy.virtualHosts.${cfg.hostName}.extraConfig = lib.concatStringsSep "\n" (
+      lib.filter (s: s != "") [
+        (lib.optionalString (
+          cfg.allowedNetworks != [ ]
+        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+        (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
+        "reverse_proxy http://${cfg.rpcAddress}:${toString cfg.rpcPort}"
+        "encode gzip"
+      ]
+    );
   };
 }

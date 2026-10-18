@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 #
 # ntfy-alert — opt-in push alerts to the self-hosted ntfy server.
@@ -32,7 +37,10 @@ let
   #   ntfy-notify <topic> <title> <priority> <tags> <message>
   ntfyNotify = pkgs.writeShellApplication {
     name = "ntfy-notify";
-    runtimeInputs = [ pkgs.curl pkgs.coreutils ];
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.coreutils
+    ];
     text = ''
       topic="''${1:?topic required}"; title="''${2:-Alert}"
       priority="''${3:-default}"; tags="''${4:-}"; message="''${5:-}"
@@ -45,8 +53,7 @@ let
       # Best-effort and time-bounded: an alert must never hang a shutdown path
       # or wedge the triggering context.
       curl -fsS --max-time 20 "''${auth[@]}" \
-        ${lib.optionalString (cfg.resolveTo != null)
-          "--resolve ${baseHost}:443:${cfg.resolveTo}"} \
+        ${lib.optionalString (cfg.resolveTo != null) "--resolve ${baseHost}:443:${cfg.resolveTo}"} \
         -H "Title: $title" \
         -H "Priority: $priority" \
         ''${tags:+-H "Tags: $tags"} \
@@ -66,7 +73,11 @@ let
   # OnFailure handler body. Invoked as: failure-notify <failed-unit-name>
   failureNotify = pkgs.writeShellApplication {
     name = "ntfy-failure-notify";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools ];
+    runtimeInputs = [
+      ntfyNotify
+      pkgs.coreutils
+      pkgs.nettools
+    ];
     text = ''
       unit="''${1:-unknown unit}"
       host="$(hostname)"
@@ -81,7 +92,9 @@ let
       ntfy-notify "${cfg.systemTopic}" \
         "$unit failed on $host" \
         high "x" \
-        "Unit $unit entered failed state at $(date -Is). Further failures are muted until it has been healthy for ${toString (cfg.failureClearAfter / 60)} min, which is announced. Inspect with: journalctl -u $unit -n 50" \
+        "Unit $unit entered failed state at $(date -Is). Further failures are muted until it has been healthy for ${
+          toString (cfg.failureClearAfter / 60)
+        } min, which is announced. Inspect with: journalctl -u $unit -n 50" \
         && touch "$marker" || true
     '';
   };
@@ -93,7 +106,12 @@ let
   # satisfies either, however briefly it comes up between failures.
   failureSweep = pkgs.writeShellApplication {
     name = "ntfy-failure-sweep";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools pkgs.systemd ];
+    runtimeInputs = [
+      ntfyNotify
+      pkgs.coreutils
+      pkgs.nettools
+      pkgs.systemd
+    ];
     text = ''
       [ -d ${failedDir} ] || exit 0
       now=$(date +%s)
@@ -147,8 +165,14 @@ let
   # on the next run instead of being silently marked as sent.
   healthCheck = pkgs.writeShellApplication {
     name = "ntfy-health-check";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools
-      pkgs.smartmontools pkgs.btrfs-progs pkgs.util-linux ];
+    runtimeInputs = [
+      ntfyNotify
+      pkgs.coreutils
+      pkgs.nettools
+      pkgs.smartmontools
+      pkgs.btrfs-progs
+      pkgs.util-linux
+    ];
     text = ''
       state=/var/lib/ntfy-alert
       host=$(hostname)
@@ -207,7 +231,12 @@ let
   # One-shot notice at boot: an unannounced reboot is a crash or a power loss.
   bootNotice = pkgs.writeShellApplication {
     name = "ntfy-boot-notice";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools pkgs.systemd ];
+    runtimeInputs = [
+      ntfyNotify
+      pkgs.coreutils
+      pkgs.nettools
+      pkgs.systemd
+    ];
     text = ''
       last=$(journalctl -b -1 -n 1 -o short-iso --no-pager -q 2>/dev/null \
         | cut -d' ' -f1)
@@ -222,7 +251,11 @@ let
   # any timer-driven NUT behaviour is preserved untouched.
   powerNotify = pkgs.writeShellApplication {
     name = "ntfy-power-notify";
-    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools ];
+    runtimeInputs = [
+      ntfyNotify
+      pkgs.coreutils
+      pkgs.nettools
+    ];
     text = ''
       type="''${NOTIFYTYPE:-UNKNOWN}"
       msg="''${1:-UPS event}"
@@ -275,8 +308,12 @@ in
 
     failureUnits = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
-      example = [ "postgresql" "caddy" "vaultwarden" ];
+      default = [ ];
+      example = [
+        "postgresql"
+        "caddy"
+        "vaultwarden"
+      ];
       description = ''
         Bare systemd service names (no .service) to alert on when they enter a
         failed state. This is the ONLY thing that opts a unit into alerting —
@@ -374,7 +411,11 @@ in
         description = "ntfy alert that the host booted";
         wantedBy = [ "multi-user.target" ];
         wants = [ "network-online.target" ];
-        after = [ "network-online.target" "caddy.service" "ntfy-sh.service" ];
+        after = [
+          "network-online.target"
+          "caddy.service"
+          "ntfy-sh.service"
+        ];
         # Boot-only: a rebuild must not re-announce a boot.
         restartIfChanged = false;
         serviceConfig = {

@@ -4,18 +4,19 @@
   # Configure Emacs with completion packages
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      # Completion framework
-      vertico
-      consult
-      corfu
-      cape
-      marginalia
-      embark
-      embark-consult
-      orderless
-      nerd-icons-corfu
-    ];
+    extraPackages =
+      epkgs: with epkgs; [
+        # Completion framework
+        vertico
+        consult
+        corfu
+        cape
+        marginalia
+        embark
+        embark-consult
+        orderless
+        nerd-icons-corfu
+      ];
   };
 
   # Completion configuration that will be loaded by init.el

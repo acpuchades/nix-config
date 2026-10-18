@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   options.my.home-assistant = {
@@ -37,19 +42,19 @@
 
     extraComponents = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Extra built-in components to include";
     };
 
     customComponents = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [];
+      default = [ ];
       description = "Extra custom components to install";
     };
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Restrict access to these CIDR ranges (empty = unrestricted)";
     };
 
@@ -105,20 +110,25 @@
       enable = true;
       openFirewall = false;
       configDir = config.my.home-assistant.configDir;
-      extraPackages = python3Packages: [ python3Packages.psycopg2 python3Packages.isal ];
+      extraPackages = python3Packages: [
+        python3Packages.psycopg2
+        python3Packages.isal
+      ];
       extraComponents = config.my.home-assistant.extraComponents;
       customComponents = config.my.home-assistant.customComponents;
       config = {
-        default_config = {};
+        default_config = { };
         http = {
           server_host = "127.0.0.1";
           server_port = config.my.home-assistant.port;
           use_x_forwarded_for = true;
-          trusted_proxies = [ "127.0.0.1" "::1" ];
+          trusted_proxies = [
+            "127.0.0.1"
+            "::1"
+          ];
         };
         recorder = {
-          db_url =
-            "postgresql://${config.my.home-assistant.database.user}@/${config.my.home-assistant.database.name}?host=/var/run/postgresql";
+          db_url = "postgresql://${config.my.home-assistant.database.user}@/${config.my.home-assistant.database.name}?host=/var/run/postgresql";
           # Default 5s keeps the HDD under PGDATA seeking nonstop; batch commits
           # instead (history lags by up to this much, lost on a crash).
           commit_interval = 30;
@@ -138,11 +148,15 @@
     };
 
     services.caddy.virtualHosts."${config.my.home-assistant.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.home-assistant.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.home-assistant.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}"
-        "encode gzip"
-      ]);
+      lib.concatStringsSep "\n"
+        (
+          lib.filter (s: s != "") [
+            (lib.optionalString (config.my.home-assistant.allowedNetworks != [ ])
+              "@denied not remote_ip ${lib.concatStringsSep " " config.my.home-assistant.allowedNetworks}\nabort @denied"
+            )
+            "reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}"
+            "encode gzip"
+          ]
+        );
   };
 }

@@ -1,4 +1,9 @@
-{ pkgs, host, lib, ... }:
+{
+  pkgs,
+  host,
+  lib,
+  ...
+}:
 {
   programs.claude-code =
     let
@@ -25,7 +30,10 @@
         playwright = {
           type = "stdio";
           command = "${pkgs.playwright-mcp}/bin/playwright-mcp";
-          args = [ "--headless" "--isolated" ];
+          args = [
+            "--headless"
+            "--isolated"
+          ];
         };
       };
 
@@ -118,7 +126,9 @@
       # Registering the marketplace only makes the plugin *available*; this is what
       # turns it on.
       // lib.optionalAttrs onHomeserver {
-        enabledPlugins = { "${pluginName}@${marketplaceName}" = true; };
+        enabledPlugins = {
+          "${pluginName}@${marketplaceName}" = true;
+        };
       };
     };
 }

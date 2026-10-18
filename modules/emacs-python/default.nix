@@ -12,9 +12,10 @@
   # Paquetes de Emacs
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      blacken
-    ];
+    extraPackages =
+      epkgs: with epkgs; [
+        blacken
+      ];
   };
 
   # Configuración de Python para Emacs

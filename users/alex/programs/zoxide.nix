@@ -1,8 +1,6 @@
-{ ... }:
-{
-  programs.zoxide =
-    {
-      enable = true;
-      enableZshIntegration = true;
-    };
+_: {
+  programs.zoxide = {
+    enable = true;
+    enableZshIntegration = true;
+  };
 }

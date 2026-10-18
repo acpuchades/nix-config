@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 # Package-level, not server-level: this fixes `pkgs.prefect` itself, which BOTH
 # hosts install (the CLI, via home.packages and the homeserver's system
@@ -28,9 +28,9 @@
   # overlay and confirm `nix build .#nixosConfigurations.homeserver.pkgs.prefect`
   # still succeeds. Last checked: 2026-08-28.
   nixpkgs.overlays = [
-    (final: prev: {
+    (_final: prev: {
       pythonPackagesExtensions = (prev.pythonPackagesExtensions or [ ]) ++ [
-        (pyFinal: pyPrev: {
+        (_pyFinal: pyPrev: {
           prefect = pyPrev.prefect.overridePythonAttrs (old: {
             pythonRelaxDeps = (old.pythonRelaxDeps or [ ]) ++ [ "fastapi" ];
           });

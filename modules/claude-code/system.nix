@@ -18,5 +18,5 @@
 # module system's own pkgs and says nothing about a separate import.
 { pkgsUnstable }:
 {
-  nixpkgs.overlays = [ (final: prev: { claude-code = pkgsUnstable.claude-code; }) ];
+  nixpkgs.overlays = [ (_final: _prev: { inherit (pkgsUnstable) claude-code; }) ];
 }

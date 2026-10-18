@@ -15,7 +15,7 @@ let
   # to read it. Otherwise the folders are owned by the jellyfin service account.
   shared = cfg.shareGroup != null;
 
-  accelerated = cfg.accelerationDevices != [];
+  accelerated = cfg.accelerationDevices != [ ];
 in
 {
   options.my.media-server = {
@@ -34,7 +34,11 @@ in
 
     libraries = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "Movies" "Shows" "Music" ];
+      default = [
+        "Movies"
+        "Shows"
+        "Music"
+      ];
       description = ''
         Library subfolders to create under mediaDir. Each becomes a directory
         you point a Jellyfin library at; add new entries to provision more.
@@ -55,13 +59,13 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Restrict access to these CIDR ranges (empty = unrestricted)";
     };
 
     allowedDirectNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       example = [ "192.168.2.0/24" ];
       description = ''
         CIDR ranges allowed to reach Jellyfin's own HTTP port (8096) directly,
@@ -72,7 +76,7 @@ in
 
     accelerationDevices = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       example = lib.literalExpression ''[ "/dev/dri/renderD128" ]'';
       description = ''
         DRI render nodes to expose to Jellyfin for hardware transcoding. Grants
@@ -93,29 +97,34 @@ in
 
     # Source-restricted accepts for direct app access (same pattern as
     # samba/print/dns-filtering). Jellyfin's own login still applies there.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept")
-      cfg.allowedDirectNetworks;
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept || true")
-      cfg.allowedDirectNetworks;
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
+      net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept"
+    ) cfg.allowedDirectNetworks;
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
+      net:
+      "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept || true"
+    ) cfg.allowedDirectNetworks;
 
     # Let jellyfin read the (group-owned) share, and reach the GPU when transcoding.
     users.users.jellyfin.extraGroups =
       lib.optional shared cfg.shareGroup
-      ++ lib.optionals accelerated [ "video" "render" ];
+      ++ lib.optionals accelerated [
+        "video"
+        "render"
+      ];
 
-    systemd.services.jellyfin.serviceConfig.DeviceAllow =
-      lib.mkIf accelerated (map (d: "${d} rw") cfg.accelerationDevices);
+    systemd.services.jellyfin.serviceConfig.DeviceAllow = lib.mkIf accelerated (
+      map (d: "${d} rw") cfg.accelerationDevices
+    );
 
     # Provision the media root and each library folder.
     systemd.tmpfiles.rules =
-      let mk = path:
-        if shared
-        then "d ${path} 2770 root ${cfg.shareGroup} -"
-        else "d ${path} 0750 jellyfin jellyfin -";
-      in [ (mk cfg.mediaDir) ]
-        ++ map (lib: mk "${cfg.mediaDir}/${lib}") cfg.libraries;
+      let
+        mk =
+          path:
+          if shared then "d ${path} 2770 root ${cfg.shareGroup} -" else "d ${path} 0750 jellyfin jellyfin -";
+      in
+      [ (mk cfg.mediaDir) ] ++ map (lib: mk "${cfg.mediaDir}/${lib}") cfg.libraries;
 
     # mediaDir is an option and typically lives on a separate data disk, but
     # systemd infers no mount dependency from a path a service merely reads. If
@@ -126,12 +135,14 @@ in
     # option and no-ops when mediaDir is on /.
     systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ cfg.mediaDir ];
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (cfg.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
+      lib.filter (s: s != "") [
+        (lib.optionalString (
+          cfg.allowedNetworks != [ ]
+        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
         "reverse_proxy http://127.0.0.1:${toString jellyfinPort}"
         "encode gzip"
-      ]);
+      ]
+    );
   };
 }

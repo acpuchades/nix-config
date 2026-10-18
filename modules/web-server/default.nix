@@ -20,7 +20,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Source CIDRs (IPv4 and IPv6) the firewall accepts on 80/443; empty
         opens both ports to everyone. Unlike a vhost's allowedNetworks (a
@@ -31,7 +31,7 @@ in
 
     trustedProxies = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         CIDR ranges of reverse proxies (e.g. Cloudflare edges) whose
         X-Forwarded-For is trusted, making {client_ip} the real visitor
@@ -40,26 +40,28 @@ in
     };
 
     loginRateLimits = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule {
-        options = {
-          paths = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            example = [ "/api/auth/login" ];
-            description = "Login endpoints (POST only) that share the budget.";
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            paths = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              example = [ "/api/auth/login" ];
+              description = "Login endpoints (POST only) that share the budget.";
+            };
+            events = lib.mkOption {
+              type = lib.types.int;
+              default = 10;
+              description = "Attempts allowed per client per window.";
+            };
+            window = lib.mkOption {
+              type = lib.types.str;
+              default = "1m";
+              description = "Sliding window the budget refills over.";
+            };
           };
-          events = lib.mkOption {
-            type = lib.types.int;
-            default = 10;
-            description = "Attempts allowed per client per window.";
-          };
-          window = lib.mkOption {
-            type = lib.types.str;
-            default = "1m";
-            description = "Sliding window the budget refills over.";
-          };
-        };
-      });
-      default = {};
+        }
+      );
+      default = { };
       description = ''
         Per-vhost brute-force budget on login endpoints, keyed on {client_ip}
         (see trustedProxies), for apps with no lockout of their own. Applied
@@ -69,63 +71,74 @@ in
     };
 
     virtualHosts = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule {
-        options = {
-          root = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Document root for static content";
-          };
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            root = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Document root for static content";
+            };
 
-          proxyPass = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Proxy pass URL";
-          };
+            proxyPass = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Proxy pass URL";
+            };
 
-          proxyWebsockets = lib.mkOption {
-            type = lib.types.bool;
-            default = false;
-            description = "Enable websocket proxying";
-          };
+            proxyWebsockets = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Enable websocket proxying";
+            };
 
-          redirect = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Permanent redirect target URL (request path and query are appended)";
-          };
+            redirect = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Permanent redirect target URL (request path and query are appended)";
+            };
 
-          basicAuthFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = "Basic auth file";
-          };
+            basicAuthFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = "Basic auth file";
+            };
 
-          allowedNetworks = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            default = [];
-            description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+            allowedNetworks = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+            };
           };
-        };
-      });
-      default = {};
+        }
+      );
+      default = { };
       description = "Virtual hosts configuration";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    networking.firewall.allowedTCPPorts = lib.mkIf (cfg.allowedNetworks == []) [ 80 443 ];
+    networking.firewall.allowedTCPPorts = lib.mkIf (cfg.allowedNetworks == [ ]) [
+      80
+      443
+    ];
 
     # Source-restricted accepts, inserted at the head of nixos-fw like the
     # other per-service rules on this host. IPv6 ranges go to ip6tables —
     # iptables rejects them, and the v6 chain is otherwise closed.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
-      (net: "${if lib.hasInfix ":" net then "ip6tables" else "iptables"} -I nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept")
-      cfg.allowedNetworks;
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
+      net:
+      "${
+        if lib.hasInfix ":" net then "ip6tables" else "iptables"
+      } -I nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept"
+    ) cfg.allowedNetworks;
 
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
-      (net: "${if lib.hasInfix ":" net then "ip6tables" else "iptables"} -D nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept || true")
-      cfg.allowedNetworks;
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
+      net:
+      "${
+        if lib.hasInfix ":" net then "ip6tables" else "iptables"
+      } -D nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept || true"
+    ) cfg.allowedNetworks;
 
     services.caddy = {
       enable = true;
@@ -149,15 +162,14 @@ in
       # have been checked.
       globalConfig = ''
         admin unix//var/lib/caddy/admin.sock|0600
-        ${lib.optionalString (cfg.loginRateLimits != {}) "order rate_limit before basic_auth"}
-        ${lib.optionalString
-          (cfg.serverMetrics || cfg.trustedProxies != []) ''
-        servers {
-          ${lib.optionalString cfg.serverMetrics "metrics"}
-          ${lib.optionalString (cfg.trustedProxies != []) ''
-            trusted_proxies static ${lib.concatStringsSep " " cfg.trustedProxies}
-            trusted_proxies_strict''}
-        }''}
+        ${lib.optionalString (cfg.loginRateLimits != { }) "order rate_limit before basic_auth"}
+        ${lib.optionalString (cfg.serverMetrics || cfg.trustedProxies != [ ]) ''
+          servers {
+            ${lib.optionalString cfg.serverMetrics "metrics"}
+            ${lib.optionalString (cfg.trustedProxies != [ ]) ''
+              trusted_proxies static ${lib.concatStringsSep " " cfg.trustedProxies}
+              trusted_proxies_strict''}
+          }''}
       '';
 
       virtualHosts = lib.mkMerge [
@@ -178,27 +190,27 @@ in
         }) cfg.loginRateLimits)
 
         (lib.mapAttrs (_name: hostConfig: {
-        extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-          (lib.optionalString (hostConfig.allowedNetworks != [])
-            "@denied not remote_ip ${lib.concatStringsSep " " hostConfig.allowedNetworks}\nabort @denied")
-          # Every vhost here is TLS-only; pin that in the browser so one
-          # plaintext hit can't strip the session.
-          ''header Strict-Transport-Security "max-age=31536000"''
-          (lib.optionalString (hostConfig.basicAuthFile != null)
-            "import ${hostConfig.basicAuthFile}")
-          (lib.optionalString (hostConfig.root != null)
-            "root * ${hostConfig.root}\nfile_server")
-          (lib.optionalString (hostConfig.proxyPass != null)
-            "reverse_proxy ${hostConfig.proxyPass}")
-          (lib.optionalString (hostConfig.redirect != null)
-            "redir ${hostConfig.redirect}{uri} permanent")
-          "encode gzip"
-        ]);
-      }) cfg.virtualHosts)
+          extraConfig = lib.concatStringsSep "\n" (
+            lib.filter (s: s != "") [
+              (lib.optionalString (
+                hostConfig.allowedNetworks != [ ]
+              ) "@denied not remote_ip ${lib.concatStringsSep " " hostConfig.allowedNetworks}\nabort @denied")
+              # Every vhost here is TLS-only; pin that in the browser so one
+              # plaintext hit can't strip the session.
+              ''header Strict-Transport-Security "max-age=31536000"''
+              (lib.optionalString (hostConfig.basicAuthFile != null) "import ${hostConfig.basicAuthFile}")
+              (lib.optionalString (hostConfig.root != null) "root * ${hostConfig.root}\nfile_server")
+              (lib.optionalString (hostConfig.proxyPass != null) "reverse_proxy ${hostConfig.proxyPass}")
+              (lib.optionalString (hostConfig.redirect != null) "redir ${hostConfig.redirect}{uri} permanent")
+              "encode gzip"
+            ]
+          );
+        }) cfg.virtualHosts)
       ];
     };
 
-    my.caddy-plugins.plugins = lib.mkIf (cfg.loginRateLimits != {})
-      [ "github.com/mholt/caddy-ratelimit@v0.1.0" ];
+    my.caddy-plugins.plugins = lib.mkIf (cfg.loginRateLimits != { }) [
+      "github.com/mholt/caddy-ratelimit@v0.1.0"
+    ];
   };
 }

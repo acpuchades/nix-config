@@ -9,7 +9,12 @@
 #   * optionally my.ntfy-alert (whose failureUnits become her restart and
 #     journal set) and my.server-stats (the health check is only granted
 #     where it runs).
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   # Who eva works for. Owner-specific data lives here so it reads apart from
@@ -29,11 +34,11 @@ let
   # (my.ntfy-alert.failureUnits) plus her own service. Drives BOTH grants
   # below — the per-unit `systemctl restart` sudo entries and the journal
   # wrapper's read allowlist — so the two can never drift apart.
-  evaManagedUnits = lib.unique
-    ([ "openclaw-eva" ]
-      # `or false`: a host without these modules simply grants fewer units.
-      ++ lib.optionals (config.my.ntfy-alert.enable or false)
-        config.my.ntfy-alert.failureUnits);
+  evaManagedUnits = lib.unique (
+    [ "openclaw-eva" ]
+    # `or false`: a host without these modules simply grants fewer units.
+    ++ lib.optionals (config.my.ntfy-alert.enable or false) config.my.ntfy-alert.failureUnits
+  );
 
   # Root-run journal reader for the managed units, replacing eva's old
   # systemd-journal group membership (which exposed auth, mail and web
@@ -67,21 +72,26 @@ let
   # can carry secrets). That gives eva the security signal without handing
   # back the whole-box journal the 2026-09-19 audit took away.
   healthQueries = {
-    targets_down = ''up == 0'';
+    targets_down = "up == 0";
     failed_units = ''node_systemd_unit_state{state="failed"} == 1'';
     filesystems_over_85pct = ''100 * (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"}) > 85'';
     filesystems_readonly = ''node_filesystem_readonly{fstype!~"tmpfs|ramfs|overlay|squashfs|nsfs|efivarfs"} == 1'';
-    memory_available_pct = ''100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes'';
+    memory_available_pct = "100 * node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes";
     load15_per_cpu = ''node_load15 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})'';
-    smart_unhealthy = ''smartctl_device_smart_status != 1'';
-    smart_critical_warning = ''smartctl_device_critical_warning > 0'';
+    smart_unhealthy = "smartctl_device_smart_status != 1";
+    smart_critical_warning = "smartctl_device_critical_warning > 0";
     disk_temperature_c = ''smartctl_device_temperature{temperature_type="current"}'';
-    btrfs_device_errors = ''node_btrfs_device_errors_total > 0'';
-    uptime_seconds = ''time() - node_boot_time_seconds'';
+    btrfs_device_errors = "node_btrfs_device_errors_total > 0";
+    uptime_seconds = "time() - node_boot_time_seconds";
   };
   serverHealthCheck = pkgs.writeShellApplication {
     name = "server-health-check";
-    runtimeInputs = [ pkgs.coreutils pkgs.curl pkgs.jq pkgs.systemd ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.jq
+      pkgs.systemd
+    ];
     text = ''
       if [ "$#" -ne 0 ]; then
         echo "server-health-check: takes no arguments" >&2; exit 1
@@ -186,45 +196,47 @@ let
   # (toolkit.python / toolkit.r) read the SAME source. The skill lists are derived
   # with `map (p: p.pname) …`, so the inventory advertised to eva can never drift
   # from what is actually installed — add a package here and it appears in both.
-  evaPythonLibs = ps: with ps; [
-    requests
-    icalendar
-    vobject
-    python-dateutil
-    lxml
-    openpyxl
-    pdfplumber
-    # Document handling
-    pandas          # dataframe layer over openpyxl/pdfplumber/CSV; widest interop
-    polars          # faster dataframe for larger data (CPU, multi-threaded)
-    python-docx     # read/write .docx (Word)
-    python-pptx     # read/write .pptx (PowerPoint)
-    pytesseract     # OCR wrapper (needs the `tesseract` binary in extraPackages)
-    beautifulsoup4  # HTML parsing/cleanup
-    markdownify     # HTML -> Markdown
-    # Ad-hoc CPU modelling
-    numpy
-    scikit-learn    # classical ML (no GPU needed)
-    matplotlib      # plots / model-eval visuals
-  ];
-  evaRLibs = rp: with rp; [
-    tidyverse
-    readxl
-    writexl
-    # Project environments — generates a pinned default.nix for an R project she
-    # clones, which `use nix` + direnv then loads (see the `projects` skill).
-    rix
-    # Statistics / modelling
-    lme4        # linear mixed-effects models
-    nlme        # linear/nonlinear mixed-effects models
-    survival    # survival analysis (Surv, coxph, survfit)
-    # Tidy / tables / reporting
-    janitor     # clean_names(), tabyl(), remove_empty()
-    gt          # publication-quality display tables
-    gtsummary   # summary & regression tables (built on gt)
-    rmarkdown
-    quarto      # Quarto R interface — needs the `quarto` CLI (in extraPackages)
-  ];
+  evaPythonLibs =
+    ps: with ps; [
+      requests
+      icalendar
+      vobject
+      python-dateutil
+      lxml
+      openpyxl
+      pdfplumber
+      # Document handling
+      pandas # dataframe layer over openpyxl/pdfplumber/CSV; widest interop
+      polars # faster dataframe for larger data (CPU, multi-threaded)
+      python-docx # read/write .docx (Word)
+      python-pptx # read/write .pptx (PowerPoint)
+      pytesseract # OCR wrapper (needs the `tesseract` binary in extraPackages)
+      beautifulsoup4 # HTML parsing/cleanup
+      markdownify # HTML -> Markdown
+      # Ad-hoc CPU modelling
+      numpy
+      scikit-learn # classical ML (no GPU needed)
+      matplotlib # plots / model-eval visuals
+    ];
+  evaRLibs =
+    rp: with rp; [
+      tidyverse
+      readxl
+      writexl
+      # Project environments — generates a pinned default.nix for an R project she
+      # clones, which `use nix` + direnv then loads (see the `projects` skill).
+      rix
+      # Statistics / modelling
+      lme4 # linear mixed-effects models
+      nlme # linear/nonlinear mixed-effects models
+      survival # survival analysis (Surv, coxph, survfit)
+      # Tidy / tables / reporting
+      janitor # clean_names(), tabyl(), remove_empty()
+      gt # publication-quality display tables
+      gtsummary # summary & regression tables (built on gt)
+      rmarkdown
+      quarto # Quarto R interface — needs the `quarto` CLI (in extraPackages)
+    ];
 in
 {
   imports = [ ../../modules/openclaw ];
@@ -236,7 +248,9 @@ in
   # but owned by root: a file eva OWNS she could chmod and rewrite, adding an
   # attacker's Telegram ID or address to her own allowlist.
   sops.secrets = {
-    "openclaw/eva/telegram-token" = { mode = "0400"; };
+    "openclaw/eva/telegram-token" = {
+      mode = "0400";
+    };
     "openclaw/eva/telegram-userid" = {
       group = "eva";
       mode = "0440";
@@ -248,7 +262,9 @@ in
     # eva-nebot's GitHub token (classic, `repo` scope). That account holds read
     # access to the owner's site repo and its own fork, so the token reaches
     # nothing else; changes go in as pull requests (see the `projects` skill).
-    "openclaw/eva/github-token" = { mode = "0400"; };
+    "openclaw/eva/github-token" = {
+      mode = "0400";
+    };
   };
 
   # gh reads GH_TOKEN; git asks gh for HTTPS credentials (the GIT_CONFIG_* env
@@ -401,7 +417,13 @@ in
       quarto # Quarto CLI — renders the rPackages.quarto R interface (evaRLibs)
       # OCR engine; `pytesseract` shells out to this binary. Default ships eng
       # only, so bundle the languages eva actually sees (English/Spanish/Catalan).
-      (tesseract.override { enableLanguages = [ "eng" "spa" "cat" ]; })
+      (tesseract.override {
+        enableLanguages = [
+          "eng"
+          "spa"
+          "cat"
+        ];
+      })
       (python3.withPackages evaPythonLibs)
       (rWrapper.override { packages = evaRLibs rPackages; })
     ];
@@ -440,15 +462,17 @@ in
         Server diagnostics (root-run wrappers; invoke them with `sudo` and the
         EXACT path shown — sudo only accepts that path):
 
-        ${lib.optionalString (config.my.server-stats.enable or false) ''
-        - `sudo ${lib.getExe serverHealthCheck}` — daily health and security
-          digest as JSON, no arguments: Prometheus checks (targets down, failed
-          units, filesystems over 85% or read-only, memory, load per CPU, SMART
-          status/warnings/temperatures, btrfs device errors, uptime) plus the last
-          24h of sshd and auth activity summarised as counts (accepted logins by
-          user/IP, failed and invalid-user attempts, top failing source IPs, sudo
-          use by user, auth failures). Empty lists mean nothing to report.
-        ''}- `sudo ${lib.getExe evaJournal} <unit> [lines]` — the journal of one of
+        ${
+          lib.optionalString (config.my.server-stats.enable or false) ''
+            - `sudo ${lib.getExe serverHealthCheck}` — daily health and security
+              digest as JSON, no arguments: Prometheus checks (targets down, failed
+              units, filesystems over 85% or read-only, memory, load per CPU, SMART
+              status/warnings/temperatures, btrfs device errors, uptime) plus the last
+              24h of sshd and auth activity summarised as counts (accepted logins by
+              user/IP, failed and invalid-user attempts, top failing source IPs, sudo
+              use by user, auth failures). Empty lists mean nothing to report.
+          ''
+        }- `sudo ${lib.getExe evaJournal} <unit> [lines]` — the journal of one of
           the units you manage (${lib.concatStringsSep ", " evaManagedUnits}),
           without the `.service` suffix.
 
@@ -769,15 +793,55 @@ in
       safeBins = config.my.openclaw.defaultSafeBins ++ [
         # Process / system / network INSPECTION (read-only; their mutating
         # subcommands need root, which a bare non-sudo invocation lacks).
-        "ps" "pgrep" "pstree" "lsof" "ss" "ip" "journalctl" "w" "who"
-        "vmstat" "iostat" "mpstat" "lscpu" "lsblk" "lsmem" "lsusb" "lspci"
-        "nproc" "arch" "getent" "locale" "tty" "cal"
+        "ps"
+        "pgrep"
+        "pstree"
+        "lsof"
+        "ss"
+        "ip"
+        "journalctl"
+        "w"
+        "who"
+        "vmstat"
+        "iostat"
+        "mpstat"
+        "lscpu"
+        "lsblk"
+        "lsmem"
+        "lsusb"
+        "lspci"
+        "nproc"
+        "arch"
+        "getent"
+        "locale"
+        "tty"
+        "cal"
         # More read-only text/data shaping (stdin/args -> stdout; no writes,
         # no exec, no network).
-        "tac" "tr" "rev" "fold" "fmt" "expand" "unexpand" "paste" "join"
-        "printf" "seq" "expr" "test" "namei" "pathchk"
-        "sha1sum" "sha512sum" "b2sum" "base64" "base32"
-        "xxd" "hexdump" "od" "strings"
+        "tac"
+        "tr"
+        "rev"
+        "fold"
+        "fmt"
+        "expand"
+        "unexpand"
+        "paste"
+        "join"
+        "printf"
+        "seq"
+        "expr"
+        "test"
+        "namei"
+        "pathchk"
+        "sha1sum"
+        "sha512sum"
+        "b2sum"
+        "base64"
+        "base32"
+        "xxd"
+        "hexdump"
+        "od"
+        "strings"
         # Filesystem MUTATION, blessed to run unprompted. This is safe ONLY
         # because eva's writable surface is confined to her OWN tree and a
         # private /tmp: the worst an injected prompt can do with these is trash
@@ -790,8 +854,21 @@ in
         # (env/timeout/nohup/nice/stdbuf/setsid/tee/xargs), in-place code
         # editors (sed/awk -i), and the network tools (curl/wget) — those keep
         # raising the Telegram approval prompt.
-        "mkdir" "rmdir" "touch" "cp" "mv" "ln" "mktemp" "truncate"
-        "rm" "unlink" "shred" "dd" "chmod" "chgrp" "chown"
+        "mkdir"
+        "rmdir"
+        "touch"
+        "cp"
+        "mv"
+        "ln"
+        "mktemp"
+        "truncate"
+        "rm"
+        "unlink"
+        "shred"
+        "dd"
+        "chmod"
+        "chgrp"
+        "chown"
         # File discovery. `find` is whole-binary blessed but CONSTRAINED by
         # the safeBinProfiles.find guard below (its mutating/exec predicates
         # are denied), so `find . -type f` reads unprompted while
@@ -803,7 +880,13 @@ in
         # enumerate devices) need root and are DELIBERATELY absent, so a bare
         # invocation of those still prompts. (`lp -h <remote>` could target another
         # IPP server, but eva's default destination is the local daemon.)
-        "lp" "lpr" "lpstat" "lpq" "lprm" "cancel" "lpoptions"
+        "lp"
+        "lpr"
+        "lpstat"
+        "lpq"
+        "lprm"
+        "cancel"
+        "lpoptions"
         # The daily health digest (see serverHealthCheck above). Blessed by NAME
         # only — deliberately not curl: the script's fixed loopback queries are
         # the whole capability. Like the rest of this list it is inert under
@@ -828,37 +911,75 @@ in
       # allowlist add "<glob>"` (per-agent state, not re-seeded here).
       allowlist = [
         # git — read-only porcelain/plumbing.
-        "git status*" "git log*" "git diff*" "git show*" "git blame*"
-        "git rev-parse*" "git describe*" "git ls-files*" "git shortlog*"
-        "git reflog*" "git cat-file*" "git branch --list*" "git remote -v"
-        "git config --get*" "git config --list*"
+        "git status*"
+        "git log*"
+        "git diff*"
+        "git show*"
+        "git blame*"
+        "git rev-parse*"
+        "git describe*"
+        "git ls-files*"
+        "git shortlog*"
+        "git reflog*"
+        "git cat-file*"
+        "git branch --list*"
+        "git remote -v"
+        "git config --get*"
+        "git config --list*"
         # git — LOCAL write subcommands. The remote is the security boundary,
         # so committing/branching/staging/rewriting local history is blessed,
         # but every network-touching verb is DELIBERATELY absent and keeps
         # prompting: push, pull, fetch, clone, remote (add/set-url), submodule
         # (can fetch), ls-remote. eva can commit freely; publishing always
         # goes through the approval gate.
-        "git add*" "git commit*" "git restore*" "git checkout*"
-        "git switch*" "git stash*" "git reset*" "git mv*" "git rm*"
-        "git merge*" "git rebase*" "git cherry-pick*" "git revert*"
-        "git tag*" "git branch*" "git clean*" "git notes*"
-        "git worktree*" "git apply*" "git am*"
+        "git add*"
+        "git commit*"
+        "git restore*"
+        "git checkout*"
+        "git switch*"
+        "git stash*"
+        "git reset*"
+        "git mv*"
+        "git rm*"
+        "git merge*"
+        "git rebase*"
+        "git cherry-pick*"
+        "git revert*"
+        "git tag*"
+        "git branch*"
+        "git clean*"
+        "git notes*"
+        "git worktree*"
+        "git apply*"
+        "git am*"
         # systemctl — inspection subcommands (status/show/list/is-* never
         # mutate). Restart/stop/start still go through her gated sudo grant.
-        "systemctl status*" "systemctl show*" "systemctl cat*"
-        "systemctl list-units*" "systemctl list-timers*"
-        "systemctl list-unit-files*" "systemctl is-active*"
-        "systemctl is-enabled*" "systemctl is-failed*"
-        "systemctl --user status*" "systemctl --user list-units*"
+        "systemctl status*"
+        "systemctl show*"
+        "systemctl cat*"
+        "systemctl list-units*"
+        "systemctl list-timers*"
+        "systemctl list-unit-files*"
+        "systemctl is-active*"
+        "systemctl is-enabled*"
+        "systemctl is-failed*"
+        "systemctl --user status*"
+        "systemctl --user list-units*"
         # nix — read-only query subcommands (no build/gc/store mutation).
-        "nix eval*" "nix flake metadata*" "nix flake show*" "nix search*"
-        "nix path-info*" "nix store ls*" "nix-instantiate --parse*"
+        "nix eval*"
+        "nix flake metadata*"
+        "nix flake show*"
+        "nix search*"
+        "nix path-info*"
+        "nix store ls*"
+        "nix-instantiate --parse*"
         "nixos-version*"
         # hugo — build a site to check a change. `hugo mod*` and `hugo deploy*`
         # are deliberately absent. NB not a bounded transform: site config can
         # widen hugo's own exec/network policy, so under a live gate this would
         # need a pinned --config.
-        "hugo" "hugo -*"
+        "hugo"
+        "hugo -*"
       ];
       # git push (and every other remote verb) is simply NOT in the allowlist
       # above, so it misses and prompts every time — the remote is the
@@ -869,15 +990,27 @@ in
       # delete/exec primitive. Any find command carrying one of these still
       # MISSES and raises the inline approval prompt.
       safeBinProfiles.find.deniedFlags = [
-        "-delete" "-exec" "-execdir" "-ok" "-okdir"
-        "-fls" "-fprint" "-fprintf" "-fprint0"
+        "-delete"
+        "-exec"
+        "-execdir"
+        "-ok"
+        "-okdir"
+        "-fls"
+        "-fprint"
+        "-fprintf"
+        "-fprint0"
       ];
       # Network-capable converters: blessed ONLY in the `offline <tool>` form
       # (module ships the `offline` unshare-net launcher and seeds
       # `offline ffmpeg*` etc. into the allowlist). `offline ffmpeg …` runs
       # unprompted but with no network, so it can't be turned into an exfil
       # fetch; the bare tools stay gated.
-      netIsolatedBins = [ "ffmpeg" "ffprobe" "pandoc" "xmllint" ];
+      netIsolatedBins = [
+        "ffmpeg"
+        "ffprobe"
+        "pandoc"
+        "xmllint"
+      ];
     };
     settings.tools.fs.workspaceOnly = false; # filesystem tools beyond the workspace (ACL-granted paths)
     # Browser: point at the nix store chromium and disable sandbox (required
@@ -1090,13 +1223,11 @@ in
     # Paths are the NixOS profile symlinks `sudo` resolves. This is the single
     # source of truth for eva's sudo access.
     sudoCommands =
-      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service")
-        evaManagedUnits
+      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service") evaManagedUnits
       ++ [ (lib.getExe evaJournal) ]
       # Only where Prometheus runs (it queries server-stats' instance).
       # `""` = no arguments allowed (the script refuses them anyway).
-      ++ lib.optional (config.my.server-stats.enable or false)
-        "${lib.getExe serverHealthCheck} \"\"";
+      ++ lib.optional (config.my.server-stats.enable or false) "${lib.getExe serverHealthCheck} \"\"";
 
     # No `access` grants: eva reaches nothing of alex's. She works on his site
     # through GitHub (fork + pull request as eva-nebot), not on his checkout.

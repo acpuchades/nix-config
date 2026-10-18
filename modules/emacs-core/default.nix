@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   # Configure Emacs with core packages
@@ -8,32 +13,33 @@
     # homeserver that pulls the whole graphics closure for an Emacs only
     # ever run as `emacs -nw`/emacsclient. Darwin gets the native NS build.
     package = if pkgs.stdenv.isDarwin then pkgs.emacs30 else pkgs.emacs30-nox;
-    extraPackages = epkgs: with epkgs; [
-      # Package management
-      use-package
+    extraPackages =
+      epkgs: with epkgs; [
+        # Package management
+        use-package
 
-      # File organization
-      no-littering
+        # File organization
+        no-littering
 
-      # Performance
-      gcmh
+        # Performance
+        gcmh
 
-      # Snippets
-      yasnippet
-      yasnippet-snippets
+        # Snippets
+        yasnippet
+        yasnippet-snippets
 
-      # Core tools
-      super-save
+        # Core tools
+        super-save
 
-      # Shell integration
-      eshell-toggle
-      exec-path-from-shell
+        # Shell integration
+        eshell-toggle
+        exec-path-from-shell
 
-      # Environment (envrc only — the `direnv` package is a competing
-      # integration that fights envrc over exec-path; see 00-core.el)
-      envrc
+        # Environment (envrc only — the `direnv` package is a competing
+        # integration that fights envrc over exec-path; see 00-core.el)
+        envrc
 
-    ];
+      ];
   };
 
   # Core emacs configuration
@@ -70,7 +76,9 @@
   # hidden, so the daemon's Emacs owns the Dock. It is a shell script, not an
   # AppleScript applet, so Finder's "Open With" hands it no files.
   home.packages = lib.optional pkgs.stdenv.isDarwin (
-    let emacs = config.programs.emacs.finalPackage; in
+    let
+      emacs = config.programs.emacs.finalPackage;
+    in
     pkgs.runCommand "emacs-client-app" { } ''
       contents="$out/Applications/Emacs Client.app/Contents"
       mkdir -p "$contents/MacOS" "$contents/Resources"
@@ -100,15 +108,23 @@
   launchd.agents.emacs-daemon = lib.mkIf pkgs.stdenv.isDarwin {
     enable = true;
     config = {
-      ProgramArguments = [ "${config.programs.emacs.finalPackage}/bin/emacs" "--fg-daemon" ];
+      ProgramArguments = [
+        "${config.programs.emacs.finalPackage}/bin/emacs"
+        "--fg-daemon"
+      ];
       # Home-manager restarts an agent only when its plist bytes change, so a
       # rebuild that touched only ~/.emacs.d left the daemon on the old config.
       # Every file deployed there (across all emacs-* modules and
       # 99-personal.el), collected into one store path, makes any config edit
       # change the plist. This restart drops unsaved buffers in the daemon.
-      EnvironmentVariables.EMACS_CONFIG = toString (pkgs.linkFarm "emacs-d-config"
-        (lib.mapAttrsToList (_: f: { name = f.target; path = f.source; })
-          (lib.filterAttrs (_: f: lib.hasPrefix ".emacs.d/" f.target) config.home.file)));
+      EnvironmentVariables.EMACS_CONFIG = toString (
+        pkgs.linkFarm "emacs-d-config" (
+          lib.mapAttrsToList (_: f: {
+            name = f.target;
+            path = f.source;
+          }) (lib.filterAttrs (_: f: lib.hasPrefix ".emacs.d/" f.target) config.home.file)
+        )
+      );
       RunAtLoad = true;
       KeepAlive = true;
       StandardErrorPath = "/tmp/emacs-daemon.err";

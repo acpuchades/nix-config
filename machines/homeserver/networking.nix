@@ -32,7 +32,7 @@ in
     firewall = {
       enable = true;
       allowedTCPPorts = [
-        8333  # bitcoin
+        8333 # bitcoin
       ];
 
       # NO blanket LAN accept, deliberately (dropped 2026-09-19): "everything

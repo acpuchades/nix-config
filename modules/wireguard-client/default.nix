@@ -72,7 +72,10 @@ let
 
         allowedIPs = lib.mkOption {
           type = lib.types.listOf lib.types.str;
-          default = [ "0.0.0.0/0" "::/0" ];
+          default = [
+            "0.0.0.0/0"
+            "::/0"
+          ];
           description = ''
             Traffic the peer is allowed to carry (crypto-routing).
             Full-tunnel by default; whether these also become kernel
@@ -154,10 +157,10 @@ in
   config = lib.mkIf (cfg.enable && cfg.interfaces != { }) {
     networking.wireguard.interfaces = lib.mapAttrs (_: ifc: {
       ips = ifc.address;
-      privateKeyFile = ifc.privateKeyFile;
-      listenPort = ifc.listenPort;
+      inherit (ifc) privateKeyFile;
+      inherit (ifc) listenPort;
       mtu = lib.mkIf (ifc.mtu != null) ifc.mtu;
-      allowedIPsAsRoutes = ifc.allowedIPsAsRoutes;
+      inherit (ifc) allowedIPsAsRoutes;
       table = lib.mkIf (ifc.table != null) ifc.table;
       peers = [
         {

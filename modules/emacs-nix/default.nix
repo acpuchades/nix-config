@@ -7,9 +7,10 @@
   # Paquetes de Emacs
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      nix-ts-mode
-    ];
+    extraPackages =
+      epkgs: with epkgs; [
+        nix-ts-mode
+      ];
   };
 
   # Configuración de Nix para Emacs

@@ -8,19 +8,20 @@
   # Configure Emacs with ESS packages
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      # ESS packages
-      ess
-      ess-smart-equals
-      ess-view-data
+    extraPackages =
+      epkgs: with epkgs; [
+        # ESS packages
+        ess
+        ess-smart-equals
+        ess-view-data
 
-      # R-Markdown and Quarto support (plain .md is emacs-dev's markdown-mode;
-      # polymode only claims .Rmd/.qmd)
-      polymode
-      poly-R
-      poly-markdown
-      quarto-mode
-    ];
+        # R-Markdown and Quarto support (plain .md is emacs-dev's markdown-mode;
+        # polymode only claims .Rmd/.qmd)
+        polymode
+        poly-R
+        poly-markdown
+        quarto-mode
+      ];
   };
 
   # ESS configuration that will be loaded by init.el

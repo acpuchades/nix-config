@@ -7,9 +7,10 @@
   # Paquetes de Emacs
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      cargo-mode
-    ];
+    extraPackages =
+      epkgs: with epkgs; [
+        cargo-mode
+      ];
   };
 
   # Configuración de Rust para Emacs

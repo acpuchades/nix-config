@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.my.mail-server;
@@ -19,19 +24,23 @@ let
     local lua_mime = require "lua_mime"
 
     local trusted = {
-    ${lib.concatMapStrings (a: ''  ["${lib.toLower a}"] = true,
-    '') cfg.trustedSenders}}
+    ${
+      lib.concatMapStrings (a: ''
+        ["${lib.toLower a}"] = true,
+      '') cfg.trustedSenders
+    }}
     ${lib.optionalString (cfg.trustedSendersFile != null) ''
-    local trusted_map = rspamd_config:add_map({
-      type = 'set',
-      url = '${cfg.trustedSendersFile}',
-      description = 'trusted senders',
-    })
+      local trusted_map = rspamd_config:add_map({
+        type = 'set',
+        url = '${cfg.trustedSendersFile}',
+        description = 'trusted senders',
+      })
     ''}
     local function is_trusted(addr)
       if trusted[addr] then return true end
-      ${lib.optionalString (cfg.trustedSendersFile != null)
-        "if trusted_map and trusted_map:get_key(addr) then return true end"}
+      ${lib.optionalString (
+        cfg.trustedSendersFile != null
+      ) "if trusted_map and trusted_map:get_key(addr) then return true end"}
       return false
     end
 
@@ -169,7 +178,9 @@ in
     pinnedSenders = lib.mkOption {
       type = lib.types.attrsOf (lib.types.listOf lib.types.str);
       default = { };
-      example = { eva = [ "e.nebot@example.com" ]; };
+      example = {
+        eva = [ "e.nebot@example.com" ];
+      };
       description = ''
         Envelope senders each local login may use with sendmail(1) -f
         (local_login_sender_maps). Logins not listed keep the default of any
@@ -222,110 +233,121 @@ in
       certName = if cfg.acmeCertName != null then cfg.acmeCertName else cfg.hostname;
     in
     lib.mkIf cfg.enable {
-    # Inbound STARTTLS certificate — managed here only when acmeCertName is not set.
-    # When acmeCertName points to an existing security.acme.certs entry (e.g. a
-    # wildcard cert), that entry must already grant group = "postfix" and reload
-    # postfix.service on renewal.
-    security.acme = lib.mkIf (cfg.acmeCertName == null) {
-      acceptTerms = true;
-      defaults.email = cfg.acmeEmail;
-      certs.${cfg.hostname} = {
-        dnsProvider = "cloudflare";
-        environmentFile = cfg.acmeEnvironmentFile;
-        group = "postfix";
-        reloadServices = [ "postfix.service" ];
+      # Inbound STARTTLS certificate — managed here only when acmeCertName is not set.
+      # When acmeCertName points to an existing security.acme.certs entry (e.g. a
+      # wildcard cert), that entry must already grant group = "postfix" and reload
+      # postfix.service on renewal.
+      security.acme = lib.mkIf (cfg.acmeCertName == null) {
+        acceptTerms = true;
+        defaults.email = cfg.acmeEmail;
+        certs.${cfg.hostname} = {
+          dnsProvider = "cloudflare";
+          environmentFile = cfg.acmeEnvironmentFile;
+          group = "postfix";
+          reloadServices = [ "postfix.service" ];
+        };
       };
+
+      services.postfix = {
+        enable = true;
+
+        settings.main = {
+          myhostname = cfg.hostname;
+          myorigin = cfg.origin;
+          mydomain = cfg.origin;
+
+          # Receive on all interfaces (the router forwards WAN:25 here). IPv4 only:
+          # no AAAA is published for the MX, so senders reach us over v4.
+          inet_interfaces = "all";
+          inet_protocols = "ipv4";
+
+          # mailDomain is local: <user>@mailDomain delivers to that system user.
+          # (mailDomain must NOT also be a virtual domain, or Postfix rewrites the
+          # bare username to <user>@myorigin and relays it out — the apex isn't
+          # local, so it would leave via the smarthost instead of being delivered.)
+          mydestination = "localhost, localhost.localdomain, $myhostname, ${cfg.mailDomain}, ${config.networking.hostName}";
+          home_mailbox = "Maildir/";
+        }
+        // lib.optionalAttrs (cfg.localRecipients != [ ]) {
+          local_recipient_maps = "inline:{ ${
+            lib.concatMapStringsSep ", " (u: "${u}=ok") cfg.localRecipients
+          } } $alias_maps";
+        }
+        // lib.optionalAttrs (cfg.deniedSubmitUsers != [ ]) {
+          authorized_submit_users =
+            lib.concatMapStringsSep ", " (u: "!${u}") cfg.deniedSubmitUsers + ", static:all";
+        }
+        // lib.optionalAttrs (cfg.pinnedSenders != { }) {
+          local_login_sender_maps = "inline:{ ${
+            lib.concatStringsSep ", " (
+              lib.mapAttrsToList (u: ss: "${u}=${lib.concatStringsSep " " ss}") cfg.pinnedSenders
+            )
+          } }, static:*";
+        }
+        // {
+
+          # --- inbound TLS (opportunistic STARTTLS on :25) ---
+          smtpd_tls_cert_file = "/var/lib/acme/${certName}/fullchain.pem";
+          smtpd_tls_key_file = "/var/lib/acme/${certName}/key.pem";
+          smtpd_tls_security_level = "may";
+          smtpd_tls_loglevel = "1";
+
+          # --- never an open relay; basic recipient hygiene ---
+          smtpd_helo_required = "yes";
+          smtpd_relay_restrictions = "permit_mynetworks permit_sasl_authenticated reject_unauth_destination";
+          smtpd_recipient_restrictions = "permit_mynetworks reject_unauth_destination reject_unknown_recipient_domain reject_non_fqdn_recipient";
+
+          # --- rspamd milter (inbound spam scoring) ---
+          smtpd_milters = "inet:127.0.0.1:11332";
+          non_smtpd_milters = "inet:127.0.0.1:11332";
+          # tempfail, not accept: rspamd is what strips a forged X-Trusted-Sender,
+          # so while it is down (every restart) mail must wait, not bypass it.
+          milter_default_action = "tempfail";
+          milter_protocol = "6";
+          # And strip it here too, independently of rspamd: cleanup drops the
+          # client's copy, while the one rspamd adds afterwards is not re-checked.
+          header_checks = "regexp:${pkgs.writeText "header_checks" "/^X-Trusted-Sender:/ IGNORE\n"}";
+
+          # --- outbound: relay everything through the Mailjet smarthost ---
+          # (this is what the old mail-relay module did; Mailjet signs DKIM.)
+          relayhost = [ cfg.relayHost ];
+          smtp_address_preference = "ipv4";
+          smtp_tls_security_level = "encrypt";
+          smtp_tls_loglevel = "1";
+          smtp_sasl_auth_enable = "yes";
+          smtp_sasl_password_maps = "texthash:${cfg.saslPasswordFile}";
+          smtp_sasl_security_options = "noanonymous";
+        };
+      };
+
+      # Inbound spam scoring. Minimal self-scanning milter proxy; no redis yet
+      # (bayes/ratelimit can be added later by pointing rspamd at a redis).
+      services.rspamd = {
+        enable = true;
+        # Load the trusted-sender stamping rule (only when a list is configured).
+        localLuaRules = lib.mkIf (
+          cfg.trustedSenders != [ ] || cfg.trustedSendersFile != null
+        ) trustedSenderLua;
+        workers.rspamd_proxy = {
+          type = "rspamd_proxy";
+          bindSockets = [ "127.0.0.1:11332" ];
+          extraConfig = ''
+            milter = yes;
+            timeout = 120s;
+            upstream "local" {
+              default = yes;
+              self_scan = yes;
+            }
+          '';
+        };
+        workers.controller = {
+          type = "controller";
+          bindSockets = [ "127.0.0.1:11334" ];
+        };
+      };
+
+      # The router forwards external :25 here; open it on the host firewall.
+      # Submission/IMAP stay off the network — eva is local and posts via sendmail.
+      networking.firewall.allowedTCPPorts = [ 25 ];
     };
-
-    services.postfix = {
-      enable = true;
-
-      settings.main = {
-        myhostname = cfg.hostname;
-        myorigin = cfg.origin;
-        mydomain = cfg.origin;
-
-        # Receive on all interfaces (the router forwards WAN:25 here). IPv4 only:
-        # no AAAA is published for the MX, so senders reach us over v4.
-        inet_interfaces = "all";
-        inet_protocols = "ipv4";
-
-        # mailDomain is local: <user>@mailDomain delivers to that system user.
-        # (mailDomain must NOT also be a virtual domain, or Postfix rewrites the
-        # bare username to <user>@myorigin and relays it out — the apex isn't
-        # local, so it would leave via the smarthost instead of being delivered.)
-        mydestination = "localhost, localhost.localdomain, $myhostname, ${cfg.mailDomain}, ${config.networking.hostName}";
-        home_mailbox = "Maildir/";
-      } // lib.optionalAttrs (cfg.localRecipients != [ ]) {
-        local_recipient_maps = "inline:{ ${lib.concatMapStringsSep ", " (u: "${u}=ok") cfg.localRecipients} } $alias_maps";
-      } // lib.optionalAttrs (cfg.deniedSubmitUsers != [ ]) {
-        authorized_submit_users = lib.concatMapStringsSep ", " (u: "!${u}") cfg.deniedSubmitUsers + ", static:all";
-      } // lib.optionalAttrs (cfg.pinnedSenders != { }) {
-        local_login_sender_maps = "inline:{ ${lib.concatStringsSep ", " (lib.mapAttrsToList (u: ss: "${u}=${lib.concatStringsSep " " ss}") cfg.pinnedSenders)} }, static:*";
-      } // {
-
-        # --- inbound TLS (opportunistic STARTTLS on :25) ---
-        smtpd_tls_cert_file = "/var/lib/acme/${certName}/fullchain.pem";
-        smtpd_tls_key_file = "/var/lib/acme/${certName}/key.pem";
-        smtpd_tls_security_level = "may";
-        smtpd_tls_loglevel = "1";
-
-        # --- never an open relay; basic recipient hygiene ---
-        smtpd_helo_required = "yes";
-        smtpd_relay_restrictions =
-          "permit_mynetworks permit_sasl_authenticated reject_unauth_destination";
-        smtpd_recipient_restrictions =
-          "permit_mynetworks reject_unauth_destination reject_unknown_recipient_domain reject_non_fqdn_recipient";
-
-        # --- rspamd milter (inbound spam scoring) ---
-        smtpd_milters = "inet:127.0.0.1:11332";
-        non_smtpd_milters = "inet:127.0.0.1:11332";
-        # tempfail, not accept: rspamd is what strips a forged X-Trusted-Sender,
-        # so while it is down (every restart) mail must wait, not bypass it.
-        milter_default_action = "tempfail";
-        milter_protocol = "6";
-        # And strip it here too, independently of rspamd: cleanup drops the
-        # client's copy, while the one rspamd adds afterwards is not re-checked.
-        header_checks = "regexp:${pkgs.writeText "header_checks" "/^X-Trusted-Sender:/ IGNORE\n"}";
-
-        # --- outbound: relay everything through the Mailjet smarthost ---
-        # (this is what the old mail-relay module did; Mailjet signs DKIM.)
-        relayhost = [ cfg.relayHost ];
-        smtp_address_preference = "ipv4";
-        smtp_tls_security_level = "encrypt";
-        smtp_tls_loglevel = "1";
-        smtp_sasl_auth_enable = "yes";
-        smtp_sasl_password_maps = "texthash:${cfg.saslPasswordFile}";
-        smtp_sasl_security_options = "noanonymous";
-      };
-    };
-
-    # Inbound spam scoring. Minimal self-scanning milter proxy; no redis yet
-    # (bayes/ratelimit can be added later by pointing rspamd at a redis).
-    services.rspamd = {
-      enable = true;
-      # Load the trusted-sender stamping rule (only when a list is configured).
-      localLuaRules = lib.mkIf (cfg.trustedSenders != [ ] || cfg.trustedSendersFile != null) trustedSenderLua;
-      workers.rspamd_proxy = {
-        type = "rspamd_proxy";
-        bindSockets = [ "127.0.0.1:11332" ];
-        extraConfig = ''
-          milter = yes;
-          timeout = 120s;
-          upstream "local" {
-            default = yes;
-            self_scan = yes;
-          }
-        '';
-      };
-      workers.controller = {
-        type = "controller";
-        bindSockets = [ "127.0.0.1:11334" ];
-      };
-    };
-
-    # The router forwards external :25 here; open it on the host firewall.
-    # Submission/IMAP stay off the network — eva is local and posts via sendmail.
-    networking.firewall.allowedTCPPorts = [ 25 ];
-  };
 }

@@ -1,15 +1,23 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   # One accept rule per (network, protocol) for the plain-DNS port, emitted as
   # bare `nixos-fw …` specs so the caller prefixes -I (insert) or -D (delete)
   # and the two stay in sync by construction.
-  dnsFirewallRules = cfg:
-    lib.concatMap
-      (net: map
-        (proto: "nixos-fw -p ${proto} -s ${net} --dport ${toString cfg.dnsPort} -j nixos-fw-accept")
-        [ "udp" "tcp" ])
-      cfg.allowedClientNetworks;
+  dnsFirewallRules =
+    cfg:
+    lib.concatMap (
+      net:
+      map (proto: "nixos-fw -p ${proto} -s ${net} --dport ${toString cfg.dnsPort} -j nixos-fw-accept") [
+        "udp"
+        "tcp"
+      ]
+    ) cfg.allowedClientNetworks;
 in
 {
   options.my.dns-filtering = {
@@ -36,8 +44,8 @@ in
     upstreamServers = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [
-        "scaleway-fr"                     # Paris, maintained by dnscrypt-proxy's author
-        "dnscry.pt-madrid-ipv4"           # Madrid, lowest latency from here
+        "scaleway-fr" # Paris, maintained by dnscrypt-proxy's author
+        "dnscry.pt-madrid-ipv4" # Madrid, lowest latency from here
         "quad9-dnscrypt-ip4-nofilter-pri" # Swiss non-profit, anycast EU PoP
       ];
       description = ''
@@ -84,13 +92,13 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Restrict web interface access to these CIDR ranges (empty = unrestricted)";
     };
 
     allowedClientNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         CIDR ranges allowed to send plain DNS queries (port 53). Empty opens the
         port on every interface, which makes the box a public open resolver and
@@ -114,14 +122,19 @@ in
     };
 
     dnsRewrites = lib.mkOption {
-      type = lib.types.listOf (lib.types.submodule {
-        options = {
-          domain = lib.mkOption { type = lib.types.str; };
-          answer = lib.mkOption { type = lib.types.str; };
-          enabled = lib.mkOption { type = lib.types.bool; default = true; };
-        };
-      });
-      default = [];
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            domain = lib.mkOption { type = lib.types.str; };
+            answer = lib.mkOption { type = lib.types.str; };
+            enabled = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+            };
+          };
+        }
+      );
+      default = [ ];
       description = "DNS rewrites for AdGuard Home (domain → IP)";
     };
 
@@ -158,25 +171,26 @@ in
     # to the internet. DoT (853) stays global on purpose — it is meant to be
     # reached from off-LAN and its clients authenticate the server by cert.
     networking.firewall.allowedTCPPorts =
-      lib.optionals (config.my.dns-filtering.allowedClientNetworks == [])
-        [ config.my.dns-filtering.dnsPort ] ++
-      lib.optionals config.my.dns-filtering.tls.enable [ config.my.dns-filtering.tls.port ];
-    networking.firewall.allowedUDPPorts =
-      lib.optionals (config.my.dns-filtering.allowedClientNetworks == [])
-        [ config.my.dns-filtering.dnsPort ];
+      lib.optionals (config.my.dns-filtering.allowedClientNetworks == [ ]) [
+        config.my.dns-filtering.dnsPort
+      ]
+      ++ lib.optionals config.my.dns-filtering.tls.enable [ config.my.dns-filtering.tls.port ];
+    networking.firewall.allowedUDPPorts = lib.optionals (
+      config.my.dns-filtering.allowedClientNetworks == [ ]
+    ) [ config.my.dns-filtering.dnsPort ];
 
     # Accept DNS only from the configured client networks. Inserted at the top of
     # the nixos-fw chain so it precedes the default refuse rule (same pattern as
     # print-server/samba-server). VPN peers are covered the same way — the host
     # includes the wg prefixes in allowedClientNetworks, and a source rule
     # matches whatever interface the packet arrived on.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
-      (rule: "iptables -I ${rule}")
-      (dnsFirewallRules config.my.dns-filtering);
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (rule: "iptables -I ${rule}") (
+      dnsFirewallRules config.my.dns-filtering
+    );
 
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
-      (rule: "iptables -D ${rule} || true")
-      (dnsFirewallRules config.my.dns-filtering);
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
+      rule: "iptables -D ${rule} || true"
+    ) (dnsFirewallRules config.my.dns-filtering);
 
     # DNSCrypt proxy
     services.dnscrypt-proxy = {
@@ -209,7 +223,10 @@ in
           bind_host = "0.0.0.0";
           port = config.my.dns-filtering.dnsPort;
           upstream_dns = [ "127.0.0.1:${toString config.my.dns-filtering.dnsResolverPort}" ];
-          bootstrap_dns = [ "1.1.1.1" "1.0.0.1" ];
+          bootstrap_dns = [
+            "1.1.1.1"
+            "1.0.0.1"
+          ];
           ratelimit = config.my.dns-filtering.rateLimit;
         };
         filtering = {
@@ -217,10 +234,14 @@ in
           filtering_enabled = true;
           parental_enabled = false;
           safe_search.enabled = false;
-          filters = map(url: { enabled = true; url = url; }) config.my.dns-filtering.filterLists;
+          filters = map (url: {
+            enabled = true;
+            inherit url;
+          }) config.my.dns-filtering.filterLists;
           rewrites = config.my.dns-filtering.dnsRewrites;
         };
-      } // lib.optionalAttrs config.my.dns-filtering.tls.enable {
+      }
+      // lib.optionalAttrs config.my.dns-filtering.tls.enable {
         tls = {
           enabled = true;
           server_name = config.my.dns-filtering.tls.serverName;
@@ -235,14 +256,18 @@ in
     };
 
     services.caddy.virtualHosts = lib.mkIf (config.my.dns-filtering.virtualHost != null) {
-      ${config.my.dns-filtering.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.dns-filtering.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.dns-filtering.allowedNetworks}\nabort @denied")
-        (lib.optionalString (config.my.dns-filtering.basicAuthFile != null)
-          "import ${config.my.dns-filtering.basicAuthFile}")
-        "reverse_proxy http://127.0.0.1:${toString config.my.dns-filtering.adguardPort}"
-        "encode gzip"
-      ]);
+      ${config.my.dns-filtering.virtualHost}.extraConfig = lib.concatStringsSep "\n" (
+        lib.filter (s: s != "") [
+          (lib.optionalString (config.my.dns-filtering.allowedNetworks != [ ])
+            "@denied not remote_ip ${lib.concatStringsSep " " config.my.dns-filtering.allowedNetworks}\nabort @denied"
+          )
+          (lib.optionalString (
+            config.my.dns-filtering.basicAuthFile != null
+          ) "import ${config.my.dns-filtering.basicAuthFile}")
+          "reverse_proxy http://127.0.0.1:${toString config.my.dns-filtering.adguardPort}"
+          "encode gzip"
+        ]
+      );
     };
   };
 }

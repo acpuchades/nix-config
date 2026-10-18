@@ -229,7 +229,7 @@
   # Last checked: 2026-09-15.
   nixpkgs.overlays = [
     (
-      final: prev:
+      _final: prev:
       let
         # linux-firmware 20260810's yellow_carp_dmcub.bin, DMUB version 0x0400004C.
         dmcub = prev.fetchurl {

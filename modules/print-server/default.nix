@@ -9,7 +9,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         CIDR ranges allowed to reach CUPS (IPP, TCP 631). Enforced both at the
         firewall (source-restricted accept rules) and inside CUPS via
@@ -20,7 +20,7 @@ in
 
     drivers = lib.mkOption {
       type = lib.types.listOf lib.types.package;
-      default = [];
+      default = [ ];
       description = ''
         Extra CUPS driver packages. Leave empty for driverless printers that
         speak IPP Everywhere / AirPrint — CUPS auto-negotiates the format.
@@ -29,7 +29,7 @@ in
 
     printers = lib.mkOption {
       type = lib.types.listOf lib.types.attrs;
-      default = [];
+      default = [ ];
       example = lib.literalExpression ''
         [{
           name = "HomePrinter";
@@ -72,7 +72,7 @@ in
       browsing = true;
       # Newly added queues are shared (advertised over DNS-SD) by default.
       defaultShared = true;
-      drivers = cfg.drivers;
+      inherit (cfg) drivers;
       # cups-browsed (on by default with avahi) adds any IPP printer a LAN
       # device advertises — the CVE-2024-47176 path. The queues here are
       # declared, so it has nothing to discover. Sharing (above) is cupsd's own.
@@ -97,12 +97,12 @@ in
     # Allow IPP (TCP 631) only from the configured networks. Inserted at the top
     # of the nixos-fw chain so it precedes the default refuse rule. Covers VPN
     # peers too, by their source prefixes.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -I nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept")
-      cfg.allowedNetworks;
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
+      net: "iptables -I nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept"
+    ) cfg.allowedNetworks;
 
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -D nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept || true")
-      cfg.allowedNetworks;
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
+      net: "iptables -D nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept || true"
+    ) cfg.allowedNetworks;
   };
 }

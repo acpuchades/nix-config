@@ -14,7 +14,13 @@
 #
 # Platform-specific things stay in each machine: the sops and home-manager
 # platform modules (darwinModules vs nixosModules), packages, settings.
-{ host, homeDirectory, sops-nix, emacs-overlay, pkgsUnstable }:
+{
+  host,
+  homeDirectory,
+  sops-nix,
+  emacs-overlay,
+  pkgsUnstable,
+}:
 
 [
   ../modules/r-dev/system.nix

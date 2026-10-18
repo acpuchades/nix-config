@@ -4,9 +4,10 @@
   # Paquetes de Emacs
   programs.emacs = {
     enable = lib.mkDefault true;
-    extraPackages = epkgs: with epkgs; [
-      copilot
-    ];
+    extraPackages =
+      epkgs: with epkgs; [
+        copilot
+      ];
   };
 
   # Configuración de GitHub Copilot para Emacs

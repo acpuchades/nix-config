@@ -1,4 +1,10 @@
-{ config, lib, pkgs, host, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  host,
+  ...
+}:
 
 {
   imports = [
@@ -28,7 +34,8 @@
     ../../modules/emacs-rust
     ../../modules/emacs-golang
     ../../modules/emacs-copilot
-  ] ++ lib.optionals (host == "macbookpro") [
+  ]
+  ++ lib.optionals (host == "macbookpro") [
     ../../modules/android-dev
   ];
 
@@ -82,12 +89,12 @@
   '';
 
   home.activation.writePrefectProfiles = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-      set -euo pipefail
+    set -euo pipefail
 
-      mkdir -p "$HOME/.prefect"
-      install -C -m 600 \
-        "${config.sops.templates."prefect/profiles.toml".path}" \
-        "$HOME/.prefect/profiles.toml"
+    mkdir -p "$HOME/.prefect"
+    install -C -m 600 \
+      "${config.sops.templates."prefect/profiles.toml".path}" \
+      "$HOME/.prefect/profiles.toml"
   '';
 
   fonts.fontconfig.enable = true;
@@ -177,47 +184,48 @@
     gitignore
     tidyverse
     # Spreadsheets / tabular I/O
-    readxl      # read .xls/.xlsx
-    writexl     # fast, minimal .xlsx writer
-    openxlsx    # styled / multi-sheet .xlsx (formulas, formatting)
-    readODS     # LibreOffice/Collabora .ods
-    janitor     # clean_names(), tabyl(), remove_empty() — tidy messy imports
+    readxl # read .xls/.xlsx
+    writexl # fast, minimal .xlsx writer
+    openxlsx # styled / multi-sheet .xlsx (formulas, formatting)
+    readODS # LibreOffice/Collabora .ods
+    janitor # clean_names(), tabyl(), remove_empty() — tidy messy imports
     # Database (homeserver PostgreSQL; pairs with dbplyr in tidyverse)
     DBI
     RPostgres
     # Project / file utilities
-    fs          # tidy filesystem ops
-    here        # robust project-relative paths
-    scales      # axis/label formatting for ggplot2
+    fs # tidy filesystem ops
+    here # robust project-relative paths
+    scales # axis/label formatting for ggplot2
     # Statistics / modelling
-    lme4        # linear mixed-effects models
-    nlme        # linear/nonlinear mixed-effects models
-    survival    # survival analysis (Surv, coxph, survfit)
+    lme4 # linear mixed-effects models
+    nlme # linear/nonlinear mixed-effects models
+    survival # survival analysis (Surv, coxph, survfit)
     # Tables / summaries
-    gt          # publication-quality display tables
-    gtsummary   # summary & regression tables (built on gt)
+    gt # publication-quality display tables
+    gtsummary # summary & regression tables (built on gt)
     # Reporting (pairs with pandoc)
     knitr
     rmarkdown
-    quarto      # Quarto R interface — needs the `quarto` CLI (in home.packages)
+    quarto # Quarto R interface — needs the `quarto` CLI (in home.packages)
   ];
 
-  my.python-dev.extraPackages = ps: with ps; [
-    # Data science and analysis
-    datasets
-    numpy
-    pandas
-    polars
-    pyarrow
-    scipy
-    scikit-learn
-    statsmodels
+  my.python-dev.extraPackages =
+    ps: with ps; [
+      # Data science and analysis
+      datasets
+      numpy
+      pandas
+      polars
+      pyarrow
+      scipy
+      scikit-learn
+      statsmodels
 
-    # Visualization
-    matplotlib
-    seaborn
+      # Visualization
+      matplotlib
+      seaborn
 
-    # Machine learning
-    tensorflow
-  ];
+      # Machine learning
+      tensorflow
+    ];
 }

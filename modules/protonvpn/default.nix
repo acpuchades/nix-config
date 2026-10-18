@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # ProtonVPN egress, in independent tunnels that never share an exit IP:
 #
@@ -61,13 +66,13 @@ let
   # Kept here so the unit and the watchdog agree on the indices by construction.
   # This is the CONFIGURED order; the watchdog re-ranks it by each candidate's
   # failure history when it rotates (see `failover_order`).
-  candidatesOf = t:
+  candidatesOf =
+    t:
     map (e: {
       inherit (t.peer) publicKey;
       endpoint = e;
       label = if t.server != "" then t.server else e;
-    })
-      ([ t.peer.endpoint ] ++ t.peer.extraEndpoints)
+    }) ([ t.peer.endpoint ] ++ t.peer.extraEndpoints)
     ++ map (f: {
       inherit (f) publicKey endpoint;
       label = if f.server != null then f.server else f.endpoint;
@@ -92,9 +97,10 @@ let
   #
   # Note for anyone adding a tunnel: `in` is a Nix keyword, so a country code
   # like that has to be written as a quoted attribute (`"in" = { … }`).
-  clientTunnels =
-    map (name: { inherit name; t = cfg.clientTunnels.${name}; })
-      (lib.attrNames cfg.clientTunnels);
+  clientTunnels = map (name: {
+    inherit name;
+    t = cfg.clientTunnels.${name};
+  }) (lib.attrNames cfg.clientTunnels);
 
   activeTunnels = lib.filter (c: c.t.enable) clientTunnels;
 
@@ -138,32 +144,45 @@ let
   # through and the priority block they occupy. The LAN redirect, when enabled,
   # is simply another group pointed at a named tunnel.
   steeredGroups =
-    (map (c: { inherit (c) name prio; tunnel = c.t; sources = c.t.sourcePrefixes; })
-      indexedTunnels)
-    ++ lib.optional (cfg.lanRedirect.enable && cfg.lanRedirect.viaTunnel != null)
-      (let c = tunnelByName cfg.lanRedirect.viaTunnel; in {
+    (map (c: {
+      inherit (c) name prio;
+      tunnel = c.t;
+      sources = c.t.sourcePrefixes;
+    }) indexedTunnels)
+    ++ lib.optional (cfg.lanRedirect.enable && cfg.lanRedirect.viaTunnel != null) (
+      let
+        c = tunnelByName cfg.lanRedirect.viaTunnel;
+      in
+      {
         inherit (c) name;
         prio = prioOf (lib.length indexedTunnels);
         tunnel = c.t;
         sources = cfg.lanRedirect.sourcePrefixes;
-      });
+      }
+    );
 
-  ruleLines = lib.concatLists (map (g:
-    lib.concatLists (map (src:
-      # Local destinations first: LAN-to-LAN and client-to-server traffic must
-      # never be pushed through a tunnel. A prefix missing from localPrefixes
-      # becomes a silently tunneled local flow, which is why the option's
-      # description insists on enumerating all of them. With several tunnels it
-      # also covers traffic BETWEEN two tunneled prefixes, which must stay local
-      # rather than hairpin out through Proton and back.
-      (map (net:
-        "${ip} rule add from ${src} to ${net} lookup main priority ${toString g.prio.bypass}")
-        cfg.localPrefixes)
-      ++ [
-        "${ip} rule add from ${src} lookup ${toString g.tunnel.table} priority ${toString g.prio.steer}"
-      ]
-    ) g.sources)
-  ) steeredGroups);
+  ruleLines = lib.concatLists (
+    map (
+      g:
+      lib.concatLists (
+        map (
+          src:
+          # Local destinations first: LAN-to-LAN and client-to-server traffic must
+          # never be pushed through a tunnel. A prefix missing from localPrefixes
+          # becomes a silently tunneled local flow, which is why the option's
+          # description insists on enumerating all of them. With several tunnels it
+          # also covers traffic BETWEEN two tunneled prefixes, which must stay local
+          # rather than hairpin out through Proton and back.
+          (map (
+            net: "${ip} rule add from ${src} to ${net} lookup main priority ${toString g.prio.bypass}"
+          ) cfg.localPrefixes)
+          ++ [
+            "${ip} rule add from ${src} lookup ${toString g.tunnel.table} priority ${toString g.prio.steer}"
+          ]
+        ) g.sources
+      )
+    ) steeredGroups
+  );
 
   # Host traffic bound to a tunnel's DEVICE, matched by `oif` and not by source
   # address.
@@ -179,9 +198,10 @@ let
   # The duplicate addresses are otherwise harmless: the kernel accepts the same
   # /32 on several interfaces, and forwarded traffic is SNATted per outgoing
   # interface, so only locally-originated traffic ever needed disambiguating.
-  oifRuleLines = map (c:
-    "${ip} rule add oif ${c.t.interface} lookup ${toString c.t.table} priority ${toString c.prio.oif}")
-    indexedTunnels;
+  oifRuleLines = map (
+    c:
+    "${ip} rule add oif ${c.t.interface} lookup ${toString c.t.table} priority ${toString c.prio.oif}"
+  ) indexedTunnels;
 
   # Clear every rule whose priority falls in the block this module owns, read
   # back FROM THE KERNEL rather than re-derived from the configuration. A
@@ -213,9 +233,9 @@ let
     # The P2P tunnel has no equivalent here and needs none: it lives in a network
     # namespace whose only route is the tunnel, so there is nothing to fall
     # through to in the first place.
-    ${lib.concatMapStringsSep "\n    " (c:
-      "${ip} route replace blackhole default table ${toString c.t.table} metric 1000")
-      indexedTunnels}
+    ${lib.concatMapStringsSep "\n    " (
+      c: "${ip} route replace blackhole default table ${toString c.t.table} metric 1000"
+    ) indexedTunnels}
 
     ${lib.concatStringsSep "\n    " ruleLines}
 
@@ -263,9 +283,9 @@ let
 
   policyStop = pkgs.writeShellScript "protonvpn-policy-stop" ''
     ${clearPriorities}
-    ${lib.concatMapStringsSep "\n    " (c:
-      "${ip} route del blackhole default table ${toString c.t.table} metric 1000 || true")
-      indexedTunnels}
+    ${lib.concatMapStringsSep "\n    " (
+      c: "${ip} route del blackhole default table ${toString c.t.table} metric 1000 || true"
+    ) indexedTunnels}
   '';
 
   # The kill-switch chain. Read the ORDER, because the guarantee is structural:
@@ -288,14 +308,17 @@ let
   ksStart = ''
     ${lib.concatMapStringsSep "\n" (c: ''
       iptables -N ${ksChainOf c.name} 2>/dev/null || iptables -F ${ksChainOf c.name}
-      ${lib.concatMapStringsSep "\n      " (net:
-        "iptables -A ${ksChainOf c.name} -d ${net} -j RETURN") cfg.localPrefixes}
+      ${lib.concatMapStringsSep "\n      " (
+        net: "iptables -A ${ksChainOf c.name} -d ${net} -j RETURN"
+      ) cfg.localPrefixes}
       iptables -A ${ksChainOf c.name} -o ${c.t.interface} -j ACCEPT
       iptables -A ${ksChainOf c.name} -j DROP'') indexedTunnels}
-    ${lib.concatMapStringsSep "\n" (g:
+    ${lib.concatMapStringsSep "\n" (
+      g:
       lib.concatMapStringsSep "\n" (src: ''
         iptables -D FORWARD -s ${src} -j ${ksChainOf g.name} 2>/dev/null || true
-        iptables -I FORWARD 1 -s ${src} -j ${ksChainOf g.name}'') g.sources) steeredGroups}
+        iptables -I FORWARD 1 -s ${src} -j ${ksChainOf g.name}'') g.sources
+    ) steeredGroups}
 
     # IPv6 guard. This host has no IPv6 egress — no global address, no v6
     # default route — so peers have no routable v6 through us. wg0 may carry a
@@ -318,10 +341,12 @@ let
   # matches nothing — so it costs a stale name in `iptables -L` and nothing
   # else.
   ksStop = ''
-    ${lib.concatMapStringsSep "\n" (g:
-      lib.concatMapStringsSep "\n" (src:
-        "iptables -D FORWARD -s ${src} -j ${ksChainOf g.name} 2>/dev/null || true")
-        g.sources) steeredGroups}
+    ${lib.concatMapStringsSep "\n" (
+      g:
+      lib.concatMapStringsSep "\n" (
+        src: "iptables -D FORWARD -s ${src} -j ${ksChainOf g.name} 2>/dev/null || true"
+      ) g.sources
+    ) steeredGroups}
     ${lib.concatMapStringsSep "\n" (c: ''
       iptables -F ${ksChainOf c.name} 2>/dev/null || true
       iptables -X ${ksChainOf c.name} 2>/dev/null || true'') indexedTunnels}
@@ -334,19 +359,23 @@ let
   # path it is about to enter is narrower than anything its own PMTU discovery
   # can observe, and without the clamp large TCP transfers black-hole while small
   # requests succeed — which reads as "the VPN is up but the internet is broken".
-  natStart = lib.concatMapStringsSep "\n" (g:
+  natStart = lib.concatMapStringsSep "\n" (
+    g:
     lib.concatMapStringsSep "\n" (src: ''
       iptables -t nat -D POSTROUTING -s ${src} -o ${g.tunnel.interface} -j MASQUERADE 2>/dev/null || true
       iptables -t nat -A POSTROUTING -s ${src} -o ${g.tunnel.interface} -j MASQUERADE
       iptables -t mangle -D FORWARD -p tcp --syn -s ${src} -o ${g.tunnel.interface} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
       iptables -t mangle -A FORWARD -p tcp --syn -s ${src} -o ${g.tunnel.interface} -j TCPMSS --clamp-mss-to-pmtu
-    '') g.sources) steeredGroups;
+    '') g.sources
+  ) steeredGroups;
 
-  natStop = lib.concatMapStringsSep "\n" (g:
+  natStop = lib.concatMapStringsSep "\n" (
+    g:
     lib.concatMapStringsSep "\n" (src: ''
       iptables -t nat -D POSTROUTING -s ${src} -o ${g.tunnel.interface} -j MASQUERADE 2>/dev/null || true
       iptables -t mangle -D FORWARD -p tcp --syn -s ${src} -o ${g.tunnel.interface} -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
-    '') g.sources) steeredGroups;
+    '') g.sources
+  ) steeredGroups;
 
   # One watchdog timer per tunnel. The probe, the rotation and the restart are
   # deliberately three escalating steps rather than one: most failures are a
@@ -354,7 +383,15 @@ let
   # would take Transmission down with it (it is PartOf the P2P tunnel) for
   # something a live `wg set` fixes without dropping a single transfer.
 
-  mkWatchdog = { t, resetCmd, resetName, probePrefix, curlArgs, wgPrefix }:
+  mkWatchdog =
+    {
+      t,
+      resetCmd,
+      resetName,
+      probePrefix,
+      curlArgs,
+      wgPrefix,
+    }:
     let
       cands = candidatesOf t;
       failFile = "/run/protonvpn-${t.interface}.fails";
@@ -404,9 +441,14 @@ let
             # notify <priority> <tags> <title> <message> — best-effort; returns
             # whether the alert was delivered.
             notify() {
-              ${if notify.command == null then "return 1" else ''
-                ${notify.command} ${lib.escapeShellArg notify.topic} \
-                  "$3" "$1" "$2" "$4 ($(${pkgs.coreutils}/bin/date -Is))"''}
+              ${
+                if notify.command == null then
+                  "return 1"
+                else
+                  ''
+                    ${notify.command} ${lib.escapeShellArg notify.topic} \
+                      "$3" "$1" "$2" "$4 ($(${pkgs.coreutils}/bin/date -Is))"''
+              }
             }
 
             # Index of the candidate the interface is on right now, or -1 for
@@ -606,7 +648,7 @@ let
   clientWatchdogs = map (c: {
     name = "protonvpn-watchdog-${c.t.interface}";
     units = mkWatchdog {
-      t = c.t;
+      inherit (c) t;
       # There is no wireguard-<iface>.service to restart under networkd.
       # `networkctl reconfigure` re-applies the .network (addresses, routes)
       # but NOT the .netdev: an existing WireGuard device keeps its peers, so
@@ -740,24 +782,26 @@ let
       };
 
       fallbacks = lib.mkOption {
-        type = lib.types.listOf (lib.types.submodule {
-          options = {
-            publicKey = lib.mkOption {
-              type = lib.types.str;
-              description = "Fallback Proton server's WireGuard public key.";
+        type = lib.types.listOf (
+          lib.types.submodule {
+            options = {
+              publicKey = lib.mkOption {
+                type = lib.types.str;
+                description = "Fallback Proton server's WireGuard public key.";
+              };
+              endpoint = lib.mkOption {
+                type = lib.types.str;
+                description = "Fallback Proton endpoint as host:port.";
+              };
+              server = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                example = "ES#161";
+                description = "Human-readable server name, used in alerts.";
+              };
             };
-            endpoint = lib.mkOption {
-              type = lib.types.str;
-              description = "Fallback Proton endpoint as host:port.";
-            };
-            server = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
-              example = "ES#161";
-              description = "Human-readable server name, used in alerts.";
-            };
-          };
-        });
+          }
+        );
         default = [ ];
         description = ''
           Other Proton SERVERS the watchdog fails over to. With no failure
@@ -838,7 +882,11 @@ in
         client-to-server traffic is never pushed through a tunnel. Enumerate all
         of them; one missing prefix becomes a silently tunneled local flow.
       '';
-      example = [ "192.168.2.0/24" "10.0.0.0/24" "10.0.1.0/24" ];
+      example = [
+        "192.168.2.0/24"
+        "10.0.0.0/24"
+        "10.0.1.0/24"
+      ];
     };
 
     lanRedirect = {
@@ -1084,61 +1132,75 @@ in
           };
         }
       '';
-      type = lib.types.attrsOf (lib.types.submodule ({ name, ... }: {
-        options = (tunnelOptions { name = "proton-${name}"; defaultTable = null; }) // {
-          # No default: a table number silently shared with another tunnel would
-          # merge two exits into one, and the symptom (traffic leaving the wrong
-          # country) is not one anybody would think to look for. Make it
-          # explicit and let the assertion below catch collisions.
-          table = lib.mkOption {
-            type = lib.types.int;
-            description = ''
-              Dedicated routing table for this tunnel's default route and
-              blackhole fallback. Must be unique across tunnels, must not be
-              `main`, and must not collide with `resolver.table`.
-            '';
-          };
+      type = lib.types.attrsOf (
+        lib.types.submodule (
+          { name, ... }: {
+            options =
+              (tunnelOptions {
+                name = "proton-${name}";
+                defaultTable = null;
+              })
+              // {
+                # No default: a table number silently shared with another tunnel would
+                # merge two exits into one, and the symptom (traffic leaving the wrong
+                # country) is not one anybody would think to look for. Make it
+                # explicit and let the assertion below catch collisions.
+                table = lib.mkOption {
+                  type = lib.types.int;
+                  description = ''
+                    Dedicated routing table for this tunnel's default route and
+                    blackhole fallback. Must be unique across tunnels, must not be
+                    `main`, and must not collide with `resolver.table`.
+                  '';
+                };
 
-          sourcePrefixes = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            default = [ ];
-            example = [ "10.0.1.0/24" ];
-            description = ''
-              Sub-ranges of the WireGuard server's address space whose peers
-              egress via this tunnel. Every prefix listed here must also appear
-              in `localPrefixes`, or traffic from one tunneled prefix to another
-              hairpins out through Proton instead of staying local.
-            '';
-          };
+                sourcePrefixes = lib.mkOption {
+                  type = lib.types.listOf lib.types.str;
+                  default = [ ];
+                  example = [ "10.0.1.0/24" ];
+                  description = ''
+                    Sub-ranges of the WireGuard server's address space whose peers
+                    egress via this tunnel. Every prefix listed here must also appear
+                    in `localPrefixes`, or traffic from one tunneled prefix to another
+                    hairpins out through Proton instead of staying local.
+                  '';
+                };
 
-          gateway = lib.mkOption {
-            type = lib.types.str;
-            example = "10.0.1.1/24";
-            description = ''
-              Address added to `wgInterface` so it is on-link for this tunnel's
-              `sourcePrefixes`. Added ALONGSIDE the existing server address, not
-              in place of it.
-            '';
-          };
+                gateway = lib.mkOption {
+                  type = lib.types.str;
+                  example = "10.0.1.1/24";
+                  description = ''
+                    Address added to `wgInterface` so it is on-link for this tunnel's
+                    `sourcePrefixes`. Added ALONGSIDE the existing server address, not
+                    in place of it.
+                  '';
+                };
+              };
+          }
+        )
+      );
+    };
+
+    p2pTunnel =
+      tunnelOptions {
+        name = "proton-p2p";
+        defaultTable = 43;
+      }
+      // {
+        netns = lib.mkOption {
+          type = lib.types.str;
+          default = "torrent";
+          description = ''
+            Name of the network namespace the P2P tunnel and its consumer live in.
+            The tunnel is the only route inside it, so a dead tunnel leaves the
+            daemon with no network path at all.
+
+            Note that this makes the inherited `table` option INERT for this
+            tunnel: there is no policy routing here to need a table, because the
+            namespace has exactly one route and no alternative to choose between.
+          '';
         };
-      }));
-    };
-
-    p2pTunnel = tunnelOptions { name = "proton-p2p"; defaultTable = 43; } // {
-      netns = lib.mkOption {
-        type = lib.types.str;
-        default = "torrent";
-        description = ''
-          Name of the network namespace the P2P tunnel and its consumer live in.
-          The tunnel is the only route inside it, so a dead tunnel leaves the
-          daemon with no network path at all.
-
-          Note that this makes the inherited `table` option INERT for this
-          tunnel: there is no policy routing here to need a table, because the
-          namespace has exactly one route and no alternative to choose between.
-        '';
       };
-    };
 
     transmission = {
       enable = lib.mkOption {
@@ -1186,24 +1248,26 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable (lib.mkMerge [
+  config = lib.mkIf cfg.enable (
+    lib.mkMerge [
 
-    ##########################################################################
-    # Assertions.
-    #
-    # Every one of these guards a misconfiguration whose SYMPTOM is traffic
-    # quietly leaving by the wrong path — a wrong exit country, a local flow
-    # hairpinned through Proton, a watchdog reporting on a tunnel it is not
-    # probing. None of them announce themselves at runtime, so they are caught
-    # here instead.
-    ##########################################################################
-    {
-      assertions =
-        [
+      ##########################################################################
+      # Assertions.
+      #
+      # Every one of these guards a misconfiguration whose SYMPTOM is traffic
+      # quietly leaving by the wrong path — a wrong exit country, a local flow
+      # hairpinned through Proton, a watchdog reporting on a tunnel it is not
+      # probing. None of them announce themselves at runtime, so they are caught
+      # here instead.
+      ##########################################################################
+      {
+        assertions = [
           {
             assertion =
-              let tables = map (c: c.t.table) activeTunnels;
-              in lib.length (lib.unique tables) == lib.length tables;
+              let
+                tables = map (c: c.t.table) activeTunnels;
+              in
+              lib.length (lib.unique tables) == lib.length tables;
             message = ''
               my.protonvpn.clientTunnels: two tunnels share a routing table.
               Their default routes would land in the same table and one exit
@@ -1222,9 +1286,7 @@ in
             '';
           }
           {
-            assertion =
-              cfg.resolver.viaTunnel == null
-              || tunnelByName cfg.resolver.viaTunnel != null;
+            assertion = cfg.resolver.viaTunnel == null || tunnelByName cfg.resolver.viaTunnel != null;
             message = ''
               my.protonvpn.resolver.viaTunnel = "${toString cfg.resolver.viaTunnel}"
               names no enabled client tunnel.
@@ -1233,8 +1295,7 @@ in
           {
             assertion =
               !cfg.lanRedirect.enable
-              || (cfg.lanRedirect.viaTunnel != null
-                && tunnelByName cfg.lanRedirect.viaTunnel != null);
+              || (cfg.lanRedirect.viaTunnel != null && tunnelByName cfg.lanRedirect.viaTunnel != null);
             message = ''
               my.protonvpn.lanRedirect is enabled but viaTunnel does not name an
               enabled client tunnel. With several exits configured there is no
@@ -1242,8 +1303,7 @@ in
             '';
           }
           {
-            assertion = lib.length activeTunnels
-              <= (prioSweepHi - prioBase) / prioStep - 1;
+            assertion = lib.length activeTunnels <= (prioSweepHi - prioBase) / prioStep - 1;
             message = ''
               my.protonvpn.clientTunnels: too many tunnels for the priority
               range this module owns (${toString prioBase}..${toString prioSweepHi},
@@ -1262,571 +1322,581 @@ in
             staying on wg0.
           '';
         }) activeTunnels;
-    }
+      }
 
-    ##########################################################################
-    # Client tunnels — ordinary interfaces in the root namespace, carrying no
-    # routes of their own. Everything that steers traffic into them is policy
-    # routing, added separately.
-    ##########################################################################
-    (lib.mkIf (activeTunnels != [ ]) {
-      my.wireguard-client = {
-        enable = true;
-        interfaces = lib.listToAttrs (map (c: lib.nameValuePair c.t.interface {
-          privateKeyFile = c.t.privateKeyFile;
-          address = c.t.address;
-          mtu = c.t.mtu;
-          # No routes, no table: bringing this up must not change how a single
-          # packet is routed until a policy rule says so. This is the
-          # `table = "off"` of a wg-quick profile, expressed in the interface
-          # module this repo actually uses.
-          allowedIPsAsRoutes = false;
-          table = null;
-          peer = {
-            publicKey = c.t.peer.publicKey;
-            endpoint = c.t.peer.endpoint;
-            # IPv4 only, on purpose. This host has no IPv6 at all (no global
-            # address, no v6 default route) and neither does wg0, so a ::/0
-            # route here would be a black hole that dual-stack clients stall on
-            # during Happy Eyeballs before falling back. No routable IPv6
-            # anywhere beats silent dual-stack fallback.
-            allowedIPs = [ "0.0.0.0/0" ];
-            persistentKeepalive = c.t.peer.persistentKeepalive;
+      ##########################################################################
+      # Client tunnels — ordinary interfaces in the root namespace, carrying no
+      # routes of their own. Everything that steers traffic into them is policy
+      # routing, added separately.
+      ##########################################################################
+      (lib.mkIf (activeTunnels != [ ]) {
+        my.wireguard-client = {
+          enable = true;
+          interfaces = lib.listToAttrs (
+            map (
+              c:
+              lib.nameValuePair c.t.interface {
+                privateKeyFile = c.t.privateKeyFile;
+                address = c.t.address;
+                mtu = c.t.mtu;
+                # No routes, no table: bringing this up must not change how a single
+                # packet is routed until a policy rule says so. This is the
+                # `table = "off"` of a wg-quick profile, expressed in the interface
+                # module this repo actually uses.
+                allowedIPsAsRoutes = false;
+                table = null;
+                peer = {
+                  publicKey = c.t.peer.publicKey;
+                  endpoint = c.t.peer.endpoint;
+                  # IPv4 only, on purpose. This host has no IPv6 at all (no global
+                  # address, no v6 default route) and neither does wg0, so a ::/0
+                  # route here would be a black hole that dual-stack clients stall on
+                  # during Happy Eyeballs before falling back. No routable IPv6
+                  # anywhere beats silent dual-stack fallback.
+                  allowedIPs = [ "0.0.0.0/0" ];
+                  persistentKeepalive = c.t.peer.persistentKeepalive;
+                };
+              }
+            ) activeTunnels
+          );
+        };
+      })
+
+      ##########################################################################
+      # P2P tunnel — created in the ROOT namespace and then moved into `netns`.
+      #
+      # The move order matters and is the whole trick: a WireGuard device keeps its
+      # UDP socket in the namespace it was CREATED in, so after the move the
+      # encrypted underlay still leaves via the host's ordinary WAN route, while
+      # the cleartext side is only reachable from inside the namespace. That is why
+      # the namespace needs no route to Proton, no veth to the internet, and no
+      # second default route — the only thing in it is the tunnel.
+      #
+      # Written as a bespoke unit rather than through my.wireguard-client because
+      # that module (correctly) knows nothing about namespaces, and the interface
+      # has to be configured before it is moved.
+      ##########################################################################
+      (lib.mkIf cfg.p2pTunnel.enable (
+        let
+          t = cfg.p2pTunnel;
+          ns = t.netns;
+        in
+        {
+          systemd.services."netns-${ns}" = {
+            description = "Network namespace ${ns} (isolated ProtonVPN P2P egress)";
+            wantedBy = [ "multi-user.target" ];
+            before = [ "protonvpn-${t.interface}.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = pkgs.writeShellScript "netns-${ns}-start" ''
+                set -eu
+                ${ip} netns list | ${pkgs.gnugrep}/bin/grep -qx '${ns}' || ${ip} netns add ${ns}
+                ${ip} -n ${ns} link set lo up
+
+                # No IPv6 in here at all. The tunnel is IPv4-only and this host has
+                # no IPv6 anywhere, so a v6 address inside the namespace could only
+                # ever be a link-local that some future change turns into a leak.
+                # Disabling it outright makes "no routable IPv6" a property of the
+                # namespace rather than an accident of the current configuration.
+                ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.all.disable_ipv6=1
+                ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.default.disable_ipv6=1
+              '';
+              ExecStop = pkgs.writeShellScript "netns-${ns}-stop" ''
+                ${ip} netns del ${ns} || true
+              '';
+            };
           };
-        }) activeTunnels);
-      };
-    })
 
-    ##########################################################################
-    # P2P tunnel — created in the ROOT namespace and then moved into `netns`.
-    #
-    # The move order matters and is the whole trick: a WireGuard device keeps its
-    # UDP socket in the namespace it was CREATED in, so after the move the
-    # encrypted underlay still leaves via the host's ordinary WAN route, while
-    # the cleartext side is only reachable from inside the namespace. That is why
-    # the namespace needs no route to Proton, no veth to the internet, and no
-    # second default route — the only thing in it is the tunnel.
-    #
-    # Written as a bespoke unit rather than through my.wireguard-client because
-    # that module (correctly) knows nothing about namespaces, and the interface
-    # has to be configured before it is moved.
-    ##########################################################################
-    (lib.mkIf cfg.p2pTunnel.enable (
-      let
-        t = cfg.p2pTunnel;
-        ns = t.netns;
-      in
+          systemd.services."protonvpn-${t.interface}" = {
+            description = "ProtonVPN P2P tunnel ${t.interface} inside namespace ${ns}";
+            wantedBy = [ "multi-user.target" ];
+            after = [
+              "network-online.target"
+              "netns-${ns}.service"
+            ];
+            wants = [ "network-online.target" ];
+            requires = [ "netns-${ns}.service" ];
+            bindsTo = [ "netns-${ns}.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = pkgs.writeShellScript "protonvpn-${t.interface}-start" ''
+                set -eu
+
+                # Clear any leftover from an unclean stop, in either namespace.
+                ${ip} link del ${t.interface} 2>/dev/null || true
+                ${ip} -n ${ns} link del ${t.interface} 2>/dev/null || true
+
+                # Create and configure in the ROOT namespace, so the UDP socket
+                # binds here and uses the host's WAN route.
+                ${ip} link add ${t.interface} type wireguard
+                ${wg} set ${t.interface} \
+                  private-key ${t.privateKeyFile} \
+                  peer ${t.peer.publicKey} \
+                    endpoint ${t.peer.endpoint} \
+                    allowed-ips 0.0.0.0/0 \
+                    persistent-keepalive ${toString t.peer.persistentKeepalive}
+                ${ip} link set ${t.interface} mtu ${toString t.mtu}
+
+                # Move the cleartext side into the namespace and give it the only
+                # route that will exist in there.
+                ${ip} link set ${t.interface} netns ${ns}
+                ${lib.concatMapStringsSep "\n" (a: "${ip} -n ${ns} address add ${a} dev ${t.interface}") t.address}
+                ${ip} -n ${ns} link set ${t.interface} up
+                ${ip} -n ${ns} route add default dev ${t.interface}
+              '';
+              ExecStop = pkgs.writeShellScript "protonvpn-${t.interface}-stop" ''
+                ${ip} -n ${ns} link del ${t.interface} 2>/dev/null || true
+                ${ip} link del ${t.interface} 2>/dev/null || true
+              '';
+            };
+          };
+        }
+      ))
+
+      ##########################################################################
+      # Policy routing.
+      #
+      # Split deliberately across TWO units, and the split is the fail-closed
+      # guarantee rather than tidiness:
+      #
+      #   protonvpn-policy        permanent. Installs the `ip rule`s and the
+      #                           blackhole default in each table. Never bound to a
+      #                           tunnel, because if it were, stopping the tunnel
+      #                           would also remove the rules — and traffic would
+      #                           then fall through to `main` and leave via the
+      #                           ISP, which is the exact leak this exists to stop.
+      #
+      #   protonvpn-route-<ifc>   bound to its tunnel. Installs only the tunnel's
+      #                           default route, at the kernel's default metric so
+      #                           it wins over the blackhole at metric 1000. When
+      #                           the tunnel goes away the kernel drops this route
+      #                           with the device, the blackhole is what remains,
+      #                           and the lookup terminates there.
+      ##########################################################################
       {
-        systemd.services."netns-${ns}" = {
-          description = "Network namespace ${ns} (isolated ProtonVPN P2P egress)";
-          wantedBy = [ "multi-user.target" ];
-          before = [ "protonvpn-${t.interface}.service" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = pkgs.writeShellScript "netns-${ns}-start" ''
-              set -eu
-              ${ip} netns list | ${pkgs.gnugrep}/bin/grep -qx '${ns}' || ${ip} netns add ${ns}
-              ${ip} -n ${ns} link set lo up
+        # Loose reverse-path filtering. Strict rp_filter drops replies arriving on
+        # a Proton interface, because the route back to their internet source is
+        # the main-table default via the WAN — the asymmetry is the entire point of
+        # policy routing, so strict mode and this design are incompatible.
+        #
+        # `all` is a max() against each interface's own value, so setting it to 2
+        # makes every interface loose regardless of what `default` seeded them with.
+        boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" = 2;
+        networking.firewall.checkReversePath = lib.mkDefault "loose";
 
-              # No IPv6 in here at all. The tunnel is IPv4-only and this host has
-              # no IPv6 anywhere, so a v6 address inside the namespace could only
-              # ever be a link-local that some future change turns into a leak.
-              # Disabling it outright makes "no routable IPv6" a property of the
-              # namespace rather than an accident of the current configuration.
-              ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.all.disable_ipv6=1
-              ${ip} netns exec ${ns} ${pkgs.procps}/bin/sysctl -q -w net.ipv6.conf.default.disable_ipv6=1
-            '';
-            ExecStop = pkgs.writeShellScript "netns-${ns}-stop" ''
-              ${ip} netns del ${ns} || true
-            '';
-          };
+        # systemd-networkd deletes routing policy rules and routes it does not
+        # manage ("foreign") whenever it restarts. Everything below is added
+        # imperatively by the units in this module, so without these two settings
+        # networkd wipes the rules on every rebuild — steered traffic then falls
+        # through to the ISP route, which the firewall chain drops, and the symptom
+        # is tunneled clients losing the internet on an unrelated `nixos-rebuild`.
+        systemd.network.config.networkConfig = {
+          ManageForeignRoutingPolicyRules = false;
+          ManageForeignRoutes = false;
         };
 
-        systemd.services."protonvpn-${t.interface}" = {
-          description = "ProtonVPN P2P tunnel ${t.interface} inside namespace ${ns}";
+        # Put the tunneled range on-link on the WireGuard server interface, as a
+        # SECOND address beside the existing one (`ips` is a list option, so this
+        # concatenates). Existing peers keep their addresses, their keys and their
+        # ordering untouched; a tunneled peer is simply allocated out of the new
+        # prefix and picked up by the prefix rule below with no further change.
+        networking.wireguard.interfaces.${cfg.wgInterface}.ips = map (c: c.t.gateway) activeTunnels;
+
+        systemd.services.protonvpn-policy = {
+          description = "ProtonVPN policy routing rules and fail-closed blackholes";
           wantedBy = [ "multi-user.target" ];
-          after = [ "network-online.target" "netns-${ns}.service" ];
-          wants = [ "network-online.target" ];
-          requires = [ "netns-${ns}.service" ];
-          bindsTo = [ "netns-${ns}.service" ];
+          after = [ "network-pre.target" ];
           serviceConfig = {
             Type = "oneshot";
             RemainAfterExit = true;
-            ExecStart = pkgs.writeShellScript "protonvpn-${t.interface}-start" ''
-              set -eu
-
-              # Clear any leftover from an unclean stop, in either namespace.
-              ${ip} link del ${t.interface} 2>/dev/null || true
-              ${ip} -n ${ns} link del ${t.interface} 2>/dev/null || true
-
-              # Create and configure in the ROOT namespace, so the UDP socket
-              # binds here and uses the host's WAN route.
-              ${ip} link add ${t.interface} type wireguard
-              ${wg} set ${t.interface} \
-                private-key ${t.privateKeyFile} \
-                peer ${t.peer.publicKey} \
-                  endpoint ${t.peer.endpoint} \
-                  allowed-ips 0.0.0.0/0 \
-                  persistent-keepalive ${toString t.peer.persistentKeepalive}
-              ${ip} link set ${t.interface} mtu ${toString t.mtu}
-
-              # Move the cleartext side into the namespace and give it the only
-              # route that will exist in there.
-              ${ip} link set ${t.interface} netns ${ns}
-              ${lib.concatMapStringsSep "\n" (a:
-                "${ip} -n ${ns} address add ${a} dev ${t.interface}") t.address}
-              ${ip} -n ${ns} link set ${t.interface} up
-              ${ip} -n ${ns} route add default dev ${t.interface}
-            '';
-            ExecStop = pkgs.writeShellScript "protonvpn-${t.interface}-stop" ''
-              ${ip} -n ${ns} link del ${t.interface} 2>/dev/null || true
-              ${ip} link del ${t.interface} 2>/dev/null || true
-            '';
+            ExecStart = policyStart;
+            ExecStop = policyStop;
           };
         };
       }
-    ))
 
-    ##########################################################################
-    # Policy routing.
-    #
-    # Split deliberately across TWO units, and the split is the fail-closed
-    # guarantee rather than tidiness:
-    #
-    #   protonvpn-policy        permanent. Installs the `ip rule`s and the
-    #                           blackhole default in each table. Never bound to a
-    #                           tunnel, because if it were, stopping the tunnel
-    #                           would also remove the rules — and traffic would
-    #                           then fall through to `main` and leave via the
-    #                           ISP, which is the exact leak this exists to stop.
-    #
-    #   protonvpn-route-<ifc>   bound to its tunnel. Installs only the tunnel's
-    #                           default route, at the kernel's default metric so
-    #                           it wins over the blackhole at metric 1000. When
-    #                           the tunnel goes away the kernel drops this route
-    #                           with the device, the blackhole is what remains,
-    #                           and the lookup terminates there.
-    ##########################################################################
-    {
-      # Loose reverse-path filtering. Strict rp_filter drops replies arriving on
-      # a Proton interface, because the route back to their internet source is
-      # the main-table default via the WAN — the asymmetry is the entire point of
-      # policy routing, so strict mode and this design are incompatible.
+      (lib.mkIf (activeTunnels != [ ]) {
+        # The tunnels' routes are owned by NETWORKD, not by a oneshot unit.
+        #
+        # A oneshot was tried twice and is wrong both times. Anchored to
+        # multi-user.target it required a wireguard-<iface>.service that does not
+        # exist under networkd, so it never ran at all and the tunnel's table held
+        # nothing but its blackhole. Re-anchored to the interface's .device unit it
+        # started correctly at boot, but a .device unit tracks the device's
+        # EXISTENCE in sysfs, not whether it is UP — so `ip link set <iface> down`
+        # flushed these routes while the unit stayed `active` with RemainAfterExit,
+        # BindsTo never fired, and `systemctl start` was a no-op. The tunnel came
+        # back and its routes did not.
+        #
+        # networkd already owns this interface and re-applies its configuration
+        # whenever the link is reconfigured or regains carrier, which is exactly
+        # the event the oneshot had no way to observe. Declaring the routes here
+        # makes recovery automatic and deletes the unit and its failure modes.
+        #
+        # Neither route can touch `main`: both pin an explicit Table=. This is
+        # still consistent with allowedIPsAsRoutes = false — that keeps WireGuard
+        # from installing ITS notion of routes (0.0.0.0/0 into main); these are
+        # policy-table routes that only a policy rule can ever reach.
+        systemd.network.networks = lib.listToAttrs (
+          map (
+            c:
+            lib.nameValuePair "40-${c.t.interface}" {
+              routes = [
+                # Scope=link because a WireGuard device has no gateway to speak of;
+                # this reproduces `ip route add default dev <iface> scope link`.
+                {
+                  Destination = "0.0.0.0/0";
+                  Table = c.t.table;
+                  Scope = "link";
+                }
+              ]
+              ++ lib.optional (cfg.resolver.viaTunnel == c.name) {
+                # The resolver's table. Deliberately holds ONLY this route and no
+                # blackhole, which is what makes upstream DNS DEGRADE instead of
+                # dying: when the link goes, the kernel drops this route with it, the
+                # table is empty, rule 1002 matches nothing and the lookup falls
+                # through to `main` — queries leave over the ISP, still encrypted to
+                # the same no-log resolvers. That is this module's stated intent for
+                # DNS, and it is why the resolver does not share table
+                # ${toString c.t.table}, whose blackhole exists to keep
+                # PEER traffic fail-closed and once took the whole LAN's name
+                # resolution down with it.
+                #
+                # PreferredSource pins the source address rather than leaving it to
+                # selection, so the uid rule's whole purpose — a correct source at
+                # connect() time — cannot be quietly undone by a second address
+                # appearing on the interface.
+                Destination = "0.0.0.0/0";
+                Table = cfg.resolver.table;
+                Scope = "link";
+                PreferredSource = addrOf c.t;
+              };
+            }
+          ) activeTunnels
+        );
+      })
+
+      ##########################################################################
+      # Fail-closed forwarding, NAT and MSS clamping for the client tunnel.
       #
-      # `all` is a max() against each interface's own value, so setting it to 2
-      # makes every interface loose regardless of what `default` seeded them with.
-      boot.kernel.sysctl."net.ipv4.conf.all.rp_filter" = 2;
-      networking.firewall.checkReversePath = lib.mkDefault "loose";
-
-      # systemd-networkd deletes routing policy rules and routes it does not
-      # manage ("foreign") whenever it restarts. Everything below is added
-      # imperatively by the units in this module, so without these two settings
-      # networkd wipes the rules on every rebuild — steered traffic then falls
-      # through to the ISP route, which the firewall chain drops, and the symptom
-      # is tunneled clients losing the internet on an unrelated `nixos-rebuild`.
-      systemd.network.config.networkConfig = {
-        ManageForeignRoutingPolicyRules = false;
-        ManageForeignRoutes = false;
-      };
-
-      # Put the tunneled range on-link on the WireGuard server interface, as a
-      # SECOND address beside the existing one (`ips` is a list option, so this
-      # concatenates). Existing peers keep their addresses, their keys and their
-      # ordering untouched; a tunneled peer is simply allocated out of the new
-      # prefix and picked up by the prefix rule below with no further change.
-      networking.wireguard.interfaces.${cfg.wgInterface}.ips =
-        map (c: c.t.gateway) activeTunnels;
-
-      systemd.services.protonvpn-policy = {
-        description = "ProtonVPN policy routing rules and fail-closed blackholes";
-        wantedBy = [ "multi-user.target" ];
-        after = [ "network-pre.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-          RemainAfterExit = true;
-          ExecStart = policyStart;
-          ExecStop = policyStop;
-        };
-      };
-    }
-
-    (lib.mkIf (activeTunnels != [ ]) {
-      # The tunnels' routes are owned by NETWORKD, not by a oneshot unit.
-      #
-      # A oneshot was tried twice and is wrong both times. Anchored to
-      # multi-user.target it required a wireguard-<iface>.service that does not
-      # exist under networkd, so it never ran at all and the tunnel's table held
-      # nothing but its blackhole. Re-anchored to the interface's .device unit it
-      # started correctly at boot, but a .device unit tracks the device's
-      # EXISTENCE in sysfs, not whether it is UP — so `ip link set <iface> down`
-      # flushed these routes while the unit stayed `active` with RemainAfterExit,
-      # BindsTo never fired, and `systemctl start` was a no-op. The tunnel came
-      # back and its routes did not.
-      #
-      # networkd already owns this interface and re-applies its configuration
-      # whenever the link is reconfigured or regains carrier, which is exactly
-      # the event the oneshot had no way to observe. Declaring the routes here
-      # makes recovery automatic and deletes the unit and its failure modes.
-      #
-      # Neither route can touch `main`: both pin an explicit Table=. This is
-      # still consistent with allowedIPsAsRoutes = false — that keeps WireGuard
-      # from installing ITS notion of routes (0.0.0.0/0 into main); these are
-      # policy-table routes that only a policy rule can ever reach.
-      systemd.network.networks = lib.listToAttrs (map (c:
-        lib.nameValuePair "40-${c.t.interface}" {
-        routes =
-        [
-          # Scope=link because a WireGuard device has no gateway to speak of;
-          # this reproduces `ip route add default dev <iface> scope link`.
-          {
-            Destination = "0.0.0.0/0";
-            Table = c.t.table;
-            Scope = "link";
-          }
-        ]
-        ++ lib.optional (cfg.resolver.viaTunnel == c.name) {
-          # The resolver's table. Deliberately holds ONLY this route and no
-          # blackhole, which is what makes upstream DNS DEGRADE instead of
-          # dying: when the link goes, the kernel drops this route with it, the
-          # table is empty, rule 1002 matches nothing and the lookup falls
-          # through to `main` — queries leave over the ISP, still encrypted to
-          # the same no-log resolvers. That is this module's stated intent for
-          # DNS, and it is why the resolver does not share table
-          # ${toString c.t.table}, whose blackhole exists to keep
-          # PEER traffic fail-closed and once took the whole LAN's name
-          # resolution down with it.
-          #
-          # PreferredSource pins the source address rather than leaving it to
-          # selection, so the uid rule's whole purpose — a correct source at
-          # connect() time — cannot be quietly undone by a second address
-          # appearing on the interface.
-          Destination = "0.0.0.0/0";
-          Table = cfg.resolver.table;
-          Scope = "link";
-          PreferredSource = addrOf c.t;
-        };
-      }) activeTunnels);
-    })
-
-    ##########################################################################
-    # Fail-closed forwarding, NAT and MSS clamping for the client tunnel.
-    #
-    # These live in the firewall hooks rather than in a oneshot because the
-    # firewall service flushes and rebuilds its chains on every reload, which
-    # would silently wipe rules an external unit had added. The `ip rule`s and
-    # routes above are the opposite case — they are preserved by
-    # ManageForeignRoutingPolicyRules = false — which is why the two halves of
-    # this module are installed by different mechanisms.
-    ##########################################################################
-    (lib.mkIf (activeTunnels != [ ]) {
-      networking.firewall.extraCommands = lib.mkAfter ''
-        ${ksStart}
-        ${natStart}
-      '';
-      networking.firewall.extraStopCommands = ''
-        ${ksStop}
-        ${natStop}
-      '';
-    })
-
-    ##########################################################################
-    # Transmission inside the P2P namespace.
-    #
-    # This is the strongest isolation available here and the reason a namespace
-    # was chosen over policy routing: the daemon does not have a rule that sends
-    # its traffic down a tunnel, it has NO OTHER ROUTE IN EXISTENCE. A firewall
-    # kill switch drops packets the daemon can still form; this removes the path
-    # itself. If the tunnel dies the daemon cannot address the internet at all.
-    ##########################################################################
-    (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
-      let
-        t = cfg.p2pTunnel;
-        ns = t.netns;
-        v = cfg.transmission.veth;
-        nsPath = "/var/run/netns/${ns}";
-        # The tunnel address without its mask — what the daemon binds its peer
-        # sockets to. Never 0.0.0.0: an unbound daemon would happily use the veth
-        # if one ever gained a route.
-        tunnelAddr = lib.head (lib.splitString "/" (lib.head t.address));
-      in
-      {
-        # Proton's in-tunnel resolver, for the namespace only. Placed at the path
-        # `ip netns exec` looks for, so anything entered into this namespace by
-        # hand or by the NAT-PMP unit picks it up automatically, and bind-mounted
-        # into the daemon (which systemd's NetworkNamespacePath does NOT do — the
-        # /etc/netns convention belongs to iproute2, not systemd). Without this
-        # the daemon would inherit the host's `nameserver 127.0.0.1`, which
-        # inside the namespace is a loopback with nothing listening on it.
-        environment.etc."netns/${ns}/resolv.conf".text = ''
-          nameserver ${t.dns}
-          options edns0
-        '';
-
-        systemd.services."protonvpn-veth-${ns}" = {
-          description = "RPC veth link into namespace ${ns}";
-          wantedBy = [ "multi-user.target" ];
-          after = [ "netns-${ns}.service" ];
-          requires = [ "netns-${ns}.service" ];
-          bindsTo = [ "netns-${ns}.service" ];
-          serviceConfig = {
-            Type = "oneshot";
-            RemainAfterExit = true;
-            ExecStart = pkgs.writeShellScript "protonvpn-veth-${ns}-start" ''
-              set -eu
-              ${ip} link del ${v.hostInterface} 2>/dev/null || true
-
-              ${ip} link add ${v.hostInterface} type veth peer name ${v.namespaceInterface}
-              ${ip} link set ${v.namespaceInterface} netns ${ns}
-
-              ${ip} address add ${v.hostAddress}/${toString v.prefixLength} dev ${v.hostInterface}
-              ${ip} link set ${v.hostInterface} up
-
-              ${ip} -n ${ns} address add ${v.namespaceAddress}/${toString v.prefixLength} dev ${v.namespaceInterface}
-              ${ip} -n ${ns} link set ${v.namespaceInterface} up
-
-              # NOTE the absence of a default route via this link, on both ends.
-              # The only route it creates is the kernel's on-link /${toString v.prefixLength}, which reaches
-              # exactly one address. Adding a default here would quietly undo the
-              # entire isolation.
-            '';
-            ExecStop = pkgs.writeShellScript "protonvpn-veth-${ns}-stop" ''
-              ${ip} link del ${v.hostInterface} 2>/dev/null || true
-            '';
-          };
-        };
-
-        # Belt and braces for the veth: even if something inside the namespace
-        # acquired a default route via the host end, the host will not forward a
-        # packet off this link. Combined with the absent route and the absent
-        # SNAT rule, that is three independent reasons the namespace cannot reach
-        # the internet except through Proton.
+      # These live in the firewall hooks rather than in a oneshot because the
+      # firewall service flushes and rebuilds its chains on every reload, which
+      # would silently wipe rules an external unit had added. The `ip rule`s and
+      # routes above are the opposite case — they are preserved by
+      # ManageForeignRoutingPolicyRules = false — which is why the two halves of
+      # this module are installed by different mechanisms.
+      ##########################################################################
+      (lib.mkIf (activeTunnels != [ ]) {
         networking.firewall.extraCommands = lib.mkAfter ''
-          iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
-          iptables -I FORWARD 1 -i ${v.hostInterface} -j DROP
+          ${ksStart}
+          ${natStart}
         '';
         networking.firewall.extraStopCommands = ''
-          iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
+          ${ksStop}
+          ${natStop}
         '';
+      })
 
-        my.transmission-server = {
-          # The daemon binds its RPC to the namespace end; Caddy connects from
-          # the host end, which is what the whitelist has to name.
-          rpcAddress = v.namespaceAddress;
-          # Both ends of the link. Caddy reaches the daemon from the host end;
-          # the NAT-PMP renewal unit runs INSIDE the namespace and therefore
-          # reaches it from the namespace end, where source selection picks the
-          # local address. Omitting the second address makes every port update
-          # fail with a 403 that nothing surfaces.
-          rpcWhitelist = "${v.hostAddress},${v.namespaceAddress}";
-        };
-
-        services.transmission.settings = {
-          # Peer traffic is pinned to the tunnel address explicitly rather than
-          # left on 0.0.0.0. In this namespace that is belt and braces — the
-          # tunnel is the only route — but it means a misconfiguration shows up
-          # as a daemon that will not bind rather than as one quietly using
-          # another interface.
-          bind-address-ipv4 = tunnelAddr;
-          bind-address-ipv6 = "::1";
-
-          # Transmission's own port mapping stays OFF. The forwarded port comes
-          # from Proton's NAT-PMP, renewed by protonvpn-natpmp, and two things
-          # negotiating the same mapping would fight over it.
-          port-forwarding-enabled = false;
-
-          # LPD is already off in modules/transmission-server; it is restated
-          # here because it is an ISOLATION property, not a preference. LPD
-          # announces to the local link, which in this namespace means the tunnel
-          # — broadcasting our presence to whatever else Proton has on it.
-          lpd-enabled = false;
-
-          # DHT and PEX stay ON, deliberately and unchanged. Both are fine behind
-          # a VPN — they reveal the Proton exit address, not ours — and turning
-          # them off measurably hurts peer discovery on smaller swarms. Flagged
-          # rather than silently flipped: if the threat model is "no participation
-          # in any distributed tracker at all", these are the two to reconsider,
-          # and that is a decision to take on purpose.
-          dht-enabled = true;
-          pex-enabled = true;
-        };
-
-        systemd.services.transmission = {
-          after = [
-            "netns-${ns}.service"
-            "protonvpn-${t.interface}.service"
-            "protonvpn-veth-${ns}.service"
-          ];
-          requires = [
-            "netns-${ns}.service"
-            "protonvpn-veth-${ns}.service"
-          ];
-          # BindsTo the tunnel: if it stops, the daemon stops with it. PartOf so
-          # that a tunnel RESTART (the watchdog rotating an endpoint) takes the
-          # daemon with it — the interface is recreated, so the sockets bound to
-          # its address have to be as well.
-          bindsTo = [ "protonvpn-${t.interface}.service" ];
-          partOf = [ "protonvpn-${t.interface}.service" ];
-          serviceConfig = {
-            NetworkNamespacePath = nsPath;
-            # Upstream binds /etc read-only into RootDirectory; this lands on top
-            # of it. Both are lists, so this concatenates rather than replaces.
-            BindReadOnlyPaths = [ "/etc/netns/${ns}/resolv.conf:/etc/resolv.conf" ];
-          };
-        };
-      }
-    ))
-
-    ##########################################################################
-    # NAT-PMP port renewal.
-    #
-    # Proton's forwarded port is randomly assigned and the lease is ~60 seconds,
-    # so this is not a setup step that runs once — it is a permanent loop, and if
-    # it stops the port goes away within a minute. It renews on a 45s cadence,
-    # notices when the assigned port CHANGES, and pushes the new value into the
-    # running daemon over RPC. The daemon is never restarted for a port change:
-    # that would interrupt every transfer, repeatedly, for a routine event.
-    ##########################################################################
-    (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
-      let
-        t = cfg.p2pTunnel;
-        ns = t.netns;
-        v = cfg.transmission.veth;
-        rpc = "${v.namespaceAddress}:${toString config.my.transmission-server.rpcPort}";
-      in
-      {
-        systemd.services.protonvpn-natpmp = {
-          description = "ProtonVPN NAT-PMP forwarded-port renewal for transmission";
-          wantedBy = [ "multi-user.target" ];
-          after = [
-            "protonvpn-${t.interface}.service"
-            "protonvpn-veth-${ns}.service"
-            "transmission.service"
-          ];
-          requires = [ "protonvpn-veth-${ns}.service" ];
-          bindsTo = [ "protonvpn-${t.interface}.service" ];
-          partOf = [ "protonvpn-${t.interface}.service" ];
-          serviceConfig = {
-            Type = "simple";
-            User = "transmission";
-            Group = config.my.transmission-server.group;
-            # Same namespace as the daemon: the gateway it has to talk to exists
-            # nowhere else.
-            NetworkNamespacePath = "/var/run/netns/${ns}";
-            Restart = "always";
-            RestartSec = 10;
-            ExecStart = pkgs.writeShellScript "protonvpn-natpmp" ''
-              set -u
-              last=""
-              while :; do
-                # Both protocols are renewed every cycle. Proton returns the same
-                # public port for each, but the two leases expire independently,
-                # so renewing only one silently loses half the mapping.
-                ${pkgs.libnatpmp}/bin/natpmpc -a 1 0 udp 60 -g ${t.dns} >/dev/null 2>&1 || true
-                out=$(${pkgs.libnatpmp}/bin/natpmpc -a 1 0 tcp 60 -g ${t.dns} 2>/dev/null) || true
-                port=$(printf '%s\n' "$out" \
-                  | ${pkgs.gnused}/bin/sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' \
-                  | ${pkgs.coreutils}/bin/head -1)
-
-                if [ -z "$port" ]; then
-                  # No reply. Either the tunnel is down or this Proton server is
-                  # not servicing NAT-PMP — the request leaves either way, so
-                  # silence is all we get to distinguish them by. Keep retrying;
-                  # the loop is the whole mechanism.
-                  :
-                elif [ "$port" != "$last" ]; then
-                  if ${pkgs.transmission_4}/bin/transmission-remote ${rpc} --port "$port" >/dev/null 2>&1; then
-                    echo "natpmp: forwarded port changed ''${last:-none} -> $port, pushed to transmission"
-                    last="$port"
-                  else
-                    echo "natpmp: got forwarded port $port but the RPC update failed; will retry"
-                  fi
-                fi
-
-                ${pkgs.coreutils}/bin/sleep 45
-              done
-            '';
-          };
-        };
-      }
-    ))
-
-    ##########################################################################
-    # Resolver.
-    #
-    # The split-horizon answers and internal zones already live in
-    # my.dns-filtering (AdGuard rewrites pointing acpuchades.com and friends at
-    # the LAN address), and they are deliberately untouched here: they are what
-    # stops LAN and WireGuard clients hairpinning out through Proton and back to
-    # this host's WAN address to reach a service sitting three metres away.
-    #
-    # What this adds is where a query that genuinely has to leave goes out, plus
-    # the fallback that keeps the box resolving when it cannot.
-    ##########################################################################
-    {
-      # Fallback first, so the failure mode is covered before the thing that can
-      # fail is introduced. Ordering matters here in review, not just at runtime.
-      services.adguardhome.settings.dns.fallback_dns = cfg.resolver.fallbackServers;
-    }
-
-    (lib.mkIf (cfg.resolver.viaTunnel != null) {
-      # A STABLE uid is the entire mechanism here, so the resolver cannot keep
-      # nixpkgs' DynamicUser. An `ip rule` can match uidrange but has no notion
-      # of a cgroup, and cgroup matching was the previous approach precisely
-      # because a dynamic uid cannot be named — but it had to be done in mangle
-      # OUTPUT, which is too late to influence source selection (see the rule in
-      # protonvpn-policy). Trading DynamicUser for a declared user is what buys
-      # a correct source address, and it is the smaller loss: every other
-      # sandboxing directive nixpkgs sets on this unit is untouched, and the
-      # uid is still unprivileged and owns nothing but its own state.
+      ##########################################################################
+      # Transmission inside the P2P namespace.
       #
-      # No uid is written down. NixOS allocates one for a declared system user
-      # and records it in /var/lib/nixos, so it is stable across rebuilds and
-      # reboots without this module picking a number that could collide with
-      # another service on the host.
-      users.users.${resolverUser} = {
-        isSystemUser = true;
-        group = resolverUser;
-        description = "dnscrypt-proxy, with a stable uid so its upstream queries can be steered into the ProtonVPN tunnel";
-      };
-      users.groups.${resolverUser} = { };
+      # This is the strongest isolation available here and the reason a namespace
+      # was chosen over policy routing: the daemon does not have a rule that sends
+      # its traffic down a tunnel, it has NO OTHER ROUTE IN EXISTENCE. A firewall
+      # kill switch drops packets the daemon can still form; this removes the path
+      # itself. If the tunnel dies the daemon cannot address the internet at all.
+      ##########################################################################
+      (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
+        let
+          t = cfg.p2pTunnel;
+          ns = t.netns;
+          v = cfg.transmission.veth;
+          nsPath = "/var/run/netns/${ns}";
+          # The tunnel address without its mask — what the daemon binds its peer
+          # sockets to. Never 0.0.0.0: an unbound daemon would happily use the veth
+          # if one ever gained a route.
+          tunnelAddr = lib.head (lib.splitString "/" (lib.head t.address));
+        in
+        {
+          # Proton's in-tunnel resolver, for the namespace only. Placed at the path
+          # `ip netns exec` looks for, so anything entered into this namespace by
+          # hand or by the NAT-PMP unit picks it up automatically, and bind-mounted
+          # into the daemon (which systemd's NetworkNamespacePath does NOT do — the
+          # /etc/netns convention belongs to iproute2, not systemd). Without this
+          # the daemon would inherit the host's `nameserver 127.0.0.1`, which
+          # inside the namespace is a loopback with nothing listening on it.
+          environment.etc."netns/${ns}/resolv.conf".text = ''
+            nameserver ${t.dns}
+            options edns0
+          '';
 
-      # systemd migrates StateDirectory/CacheDirectory between
-      # /var/lib/private/<name> and /var/lib/<name> when DynamicUser flips, so
-      # the existing resolver state and cache move across on the first start
-      # rather than being abandoned.
-      systemd.services.dnscrypt-proxy.serviceConfig = {
-        DynamicUser = lib.mkForce false;
-        User = resolverUser;
-        Group = resolverUser;
-      };
+          systemd.services."protonvpn-veth-${ns}" = {
+            description = "RPC veth link into namespace ${ns}";
+            wantedBy = [ "multi-user.target" ];
+            after = [ "netns-${ns}.service" ];
+            requires = [ "netns-${ns}.service" ];
+            bindsTo = [ "netns-${ns}.service" ];
+            serviceConfig = {
+              Type = "oneshot";
+              RemainAfterExit = true;
+              ExecStart = pkgs.writeShellScript "protonvpn-veth-${ns}-start" ''
+                set -eu
+                ${ip} link del ${v.hostInterface} 2>/dev/null || true
 
-      # No ordering is added against user creation. systemd.sysusers is off on
-      # this host, so users.users is realised by the activation script into
-      # /etc/passwd before any unit is started, and at boot the file is simply
-      # already correct — there is no unit to order against. protonvpn-policy
-      # looks the uid up defensively regardless.
+                ${ip} link add ${v.hostInterface} type veth peer name ${v.namespaceInterface}
+                ${ip} link set ${v.namespaceInterface} netns ${ns}
 
-      # Nothing to add to the firewall. The old mark-66 MASQUERADE existed only
-      # to rewrite a source address that was wrong by construction; with the
-      # uid rule the socket is bound to the tunnel's own address from the start
-      # and
-      # there is nothing left to translate.
-    })
+                ${ip} address add ${v.hostAddress}/${toString v.prefixLength} dev ${v.hostInterface}
+                ${ip} link set ${v.hostInterface} up
 
-    ##########################################################################
-    # Watchdog and endpoint rotation.
-    ##########################################################################
-    (lib.mkIf cfg.watchdog.enable {
-      systemd.timers = lib.listToAttrs
-        (map (x: lib.nameValuePair x.name x.units.timer) clientWatchdogs);
-      systemd.services = lib.listToAttrs
-        (map (x: lib.nameValuePair x.name x.units.service) clientWatchdogs);
-    })
+                ${ip} -n ${ns} address add ${v.namespaceAddress}/${toString v.prefixLength} dev ${v.namespaceInterface}
+                ${ip} -n ${ns} link set ${v.namespaceInterface} up
 
-    (lib.mkIf (cfg.watchdog.enable && cfg.p2pTunnel.enable) {
-      systemd.timers."protonvpn-watchdog-${cfg.p2pTunnel.interface}" = p2pWatchdog.timer;
-      systemd.services."protonvpn-watchdog-${cfg.p2pTunnel.interface}" = p2pWatchdog.service;
-    })
-  ]);
+                # NOTE the absence of a default route via this link, on both ends.
+                # The only route it creates is the kernel's on-link /${toString v.prefixLength}, which reaches
+                # exactly one address. Adding a default here would quietly undo the
+                # entire isolation.
+              '';
+              ExecStop = pkgs.writeShellScript "protonvpn-veth-${ns}-stop" ''
+                ${ip} link del ${v.hostInterface} 2>/dev/null || true
+              '';
+            };
+          };
+
+          # Belt and braces for the veth: even if something inside the namespace
+          # acquired a default route via the host end, the host will not forward a
+          # packet off this link. Combined with the absent route and the absent
+          # SNAT rule, that is three independent reasons the namespace cannot reach
+          # the internet except through Proton.
+          networking.firewall.extraCommands = lib.mkAfter ''
+            iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
+            iptables -I FORWARD 1 -i ${v.hostInterface} -j DROP
+          '';
+          networking.firewall.extraStopCommands = ''
+            iptables -D FORWARD -i ${v.hostInterface} -j DROP 2>/dev/null || true
+          '';
+
+          my.transmission-server = {
+            # The daemon binds its RPC to the namespace end; Caddy connects from
+            # the host end, which is what the whitelist has to name.
+            rpcAddress = v.namespaceAddress;
+            # Both ends of the link. Caddy reaches the daemon from the host end;
+            # the NAT-PMP renewal unit runs INSIDE the namespace and therefore
+            # reaches it from the namespace end, where source selection picks the
+            # local address. Omitting the second address makes every port update
+            # fail with a 403 that nothing surfaces.
+            rpcWhitelist = "${v.hostAddress},${v.namespaceAddress}";
+          };
+
+          services.transmission.settings = {
+            # Peer traffic is pinned to the tunnel address explicitly rather than
+            # left on 0.0.0.0. In this namespace that is belt and braces — the
+            # tunnel is the only route — but it means a misconfiguration shows up
+            # as a daemon that will not bind rather than as one quietly using
+            # another interface.
+            bind-address-ipv4 = tunnelAddr;
+            bind-address-ipv6 = "::1";
+
+            # Transmission's own port mapping stays OFF. The forwarded port comes
+            # from Proton's NAT-PMP, renewed by protonvpn-natpmp, and two things
+            # negotiating the same mapping would fight over it.
+            port-forwarding-enabled = false;
+
+            # LPD is already off in modules/transmission-server; it is restated
+            # here because it is an ISOLATION property, not a preference. LPD
+            # announces to the local link, which in this namespace means the tunnel
+            # — broadcasting our presence to whatever else Proton has on it.
+            lpd-enabled = false;
+
+            # DHT and PEX stay ON, deliberately and unchanged. Both are fine behind
+            # a VPN — they reveal the Proton exit address, not ours — and turning
+            # them off measurably hurts peer discovery on smaller swarms. Flagged
+            # rather than silently flipped: if the threat model is "no participation
+            # in any distributed tracker at all", these are the two to reconsider,
+            # and that is a decision to take on purpose.
+            dht-enabled = true;
+            pex-enabled = true;
+          };
+
+          systemd.services.transmission = {
+            after = [
+              "netns-${ns}.service"
+              "protonvpn-${t.interface}.service"
+              "protonvpn-veth-${ns}.service"
+            ];
+            requires = [
+              "netns-${ns}.service"
+              "protonvpn-veth-${ns}.service"
+            ];
+            # BindsTo the tunnel: if it stops, the daemon stops with it. PartOf so
+            # that a tunnel RESTART (the watchdog rotating an endpoint) takes the
+            # daemon with it — the interface is recreated, so the sockets bound to
+            # its address have to be as well.
+            bindsTo = [ "protonvpn-${t.interface}.service" ];
+            partOf = [ "protonvpn-${t.interface}.service" ];
+            serviceConfig = {
+              NetworkNamespacePath = nsPath;
+              # Upstream binds /etc read-only into RootDirectory; this lands on top
+              # of it. Both are lists, so this concatenates rather than replaces.
+              BindReadOnlyPaths = [ "/etc/netns/${ns}/resolv.conf:/etc/resolv.conf" ];
+            };
+          };
+        }
+      ))
+
+      ##########################################################################
+      # NAT-PMP port renewal.
+      #
+      # Proton's forwarded port is randomly assigned and the lease is ~60 seconds,
+      # so this is not a setup step that runs once — it is a permanent loop, and if
+      # it stops the port goes away within a minute. It renews on a 45s cadence,
+      # notices when the assigned port CHANGES, and pushes the new value into the
+      # running daemon over RPC. The daemon is never restarted for a port change:
+      # that would interrupt every transfer, repeatedly, for a routine event.
+      ##########################################################################
+      (lib.mkIf (cfg.p2pTunnel.enable && cfg.transmission.enable) (
+        let
+          t = cfg.p2pTunnel;
+          ns = t.netns;
+          v = cfg.transmission.veth;
+          rpc = "${v.namespaceAddress}:${toString config.my.transmission-server.rpcPort}";
+        in
+        {
+          systemd.services.protonvpn-natpmp = {
+            description = "ProtonVPN NAT-PMP forwarded-port renewal for transmission";
+            wantedBy = [ "multi-user.target" ];
+            after = [
+              "protonvpn-${t.interface}.service"
+              "protonvpn-veth-${ns}.service"
+              "transmission.service"
+            ];
+            requires = [ "protonvpn-veth-${ns}.service" ];
+            bindsTo = [ "protonvpn-${t.interface}.service" ];
+            partOf = [ "protonvpn-${t.interface}.service" ];
+            serviceConfig = {
+              Type = "simple";
+              User = "transmission";
+              Group = config.my.transmission-server.group;
+              # Same namespace as the daemon: the gateway it has to talk to exists
+              # nowhere else.
+              NetworkNamespacePath = "/var/run/netns/${ns}";
+              Restart = "always";
+              RestartSec = 10;
+              ExecStart = pkgs.writeShellScript "protonvpn-natpmp" ''
+                set -u
+                last=""
+                while :; do
+                  # Both protocols are renewed every cycle. Proton returns the same
+                  # public port for each, but the two leases expire independently,
+                  # so renewing only one silently loses half the mapping.
+                  ${pkgs.libnatpmp}/bin/natpmpc -a 1 0 udp 60 -g ${t.dns} >/dev/null 2>&1 || true
+                  out=$(${pkgs.libnatpmp}/bin/natpmpc -a 1 0 tcp 60 -g ${t.dns} 2>/dev/null) || true
+                  port=$(printf '%s\n' "$out" \
+                    | ${pkgs.gnused}/bin/sed -n 's/.*Mapped public port \([0-9]\{1,\}\).*/\1/p' \
+                    | ${pkgs.coreutils}/bin/head -1)
+
+                  if [ -z "$port" ]; then
+                    # No reply. Either the tunnel is down or this Proton server is
+                    # not servicing NAT-PMP — the request leaves either way, so
+                    # silence is all we get to distinguish them by. Keep retrying;
+                    # the loop is the whole mechanism.
+                    :
+                  elif [ "$port" != "$last" ]; then
+                    if ${pkgs.transmission_4}/bin/transmission-remote ${rpc} --port "$port" >/dev/null 2>&1; then
+                      echo "natpmp: forwarded port changed ''${last:-none} -> $port, pushed to transmission"
+                      last="$port"
+                    else
+                      echo "natpmp: got forwarded port $port but the RPC update failed; will retry"
+                    fi
+                  fi
+
+                  ${pkgs.coreutils}/bin/sleep 45
+                done
+              '';
+            };
+          };
+        }
+      ))
+
+      ##########################################################################
+      # Resolver.
+      #
+      # The split-horizon answers and internal zones already live in
+      # my.dns-filtering (AdGuard rewrites pointing acpuchades.com and friends at
+      # the LAN address), and they are deliberately untouched here: they are what
+      # stops LAN and WireGuard clients hairpinning out through Proton and back to
+      # this host's WAN address to reach a service sitting three metres away.
+      #
+      # What this adds is where a query that genuinely has to leave goes out, plus
+      # the fallback that keeps the box resolving when it cannot.
+      ##########################################################################
+      {
+        # Fallback first, so the failure mode is covered before the thing that can
+        # fail is introduced. Ordering matters here in review, not just at runtime.
+        services.adguardhome.settings.dns.fallback_dns = cfg.resolver.fallbackServers;
+      }
+
+      (lib.mkIf (cfg.resolver.viaTunnel != null) {
+        # A STABLE uid is the entire mechanism here, so the resolver cannot keep
+        # nixpkgs' DynamicUser. An `ip rule` can match uidrange but has no notion
+        # of a cgroup, and cgroup matching was the previous approach precisely
+        # because a dynamic uid cannot be named — but it had to be done in mangle
+        # OUTPUT, which is too late to influence source selection (see the rule in
+        # protonvpn-policy). Trading DynamicUser for a declared user is what buys
+        # a correct source address, and it is the smaller loss: every other
+        # sandboxing directive nixpkgs sets on this unit is untouched, and the
+        # uid is still unprivileged and owns nothing but its own state.
+        #
+        # No uid is written down. NixOS allocates one for a declared system user
+        # and records it in /var/lib/nixos, so it is stable across rebuilds and
+        # reboots without this module picking a number that could collide with
+        # another service on the host.
+        users.users.${resolverUser} = {
+          isSystemUser = true;
+          group = resolverUser;
+          description = "dnscrypt-proxy, with a stable uid so its upstream queries can be steered into the ProtonVPN tunnel";
+        };
+        users.groups.${resolverUser} = { };
+
+        # systemd migrates StateDirectory/CacheDirectory between
+        # /var/lib/private/<name> and /var/lib/<name> when DynamicUser flips, so
+        # the existing resolver state and cache move across on the first start
+        # rather than being abandoned.
+        systemd.services.dnscrypt-proxy.serviceConfig = {
+          DynamicUser = lib.mkForce false;
+          User = resolverUser;
+          Group = resolverUser;
+        };
+
+        # No ordering is added against user creation. systemd.sysusers is off on
+        # this host, so users.users is realised by the activation script into
+        # /etc/passwd before any unit is started, and at boot the file is simply
+        # already correct — there is no unit to order against. protonvpn-policy
+        # looks the uid up defensively regardless.
+
+        # Nothing to add to the firewall. The old mark-66 MASQUERADE existed only
+        # to rewrite a source address that was wrong by construction; with the
+        # uid rule the socket is bound to the tunnel's own address from the start
+        # and
+        # there is nothing left to translate.
+      })
+
+      ##########################################################################
+      # Watchdog and endpoint rotation.
+      ##########################################################################
+      (lib.mkIf cfg.watchdog.enable {
+        systemd.timers = lib.listToAttrs (map (x: lib.nameValuePair x.name x.units.timer) clientWatchdogs);
+        systemd.services = lib.listToAttrs (
+          map (x: lib.nameValuePair x.name x.units.service) clientWatchdogs
+        );
+      })
+
+      (lib.mkIf (cfg.watchdog.enable && cfg.p2pTunnel.enable) {
+        systemd.timers."protonvpn-watchdog-${cfg.p2pTunnel.interface}" = p2pWatchdog.timer;
+        systemd.services."protonvpn-watchdog-${cfg.p2pTunnel.interface}" = p2pWatchdog.service;
+      })
+    ]
+  );
 }

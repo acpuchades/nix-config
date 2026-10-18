@@ -23,7 +23,11 @@
     "sd_mod"
   ];
   boot.initrd.kernelModules = [ ];
-  boot.kernelModules = [ "kvm-amd" "tpm_crb" "tpm_tis" ];
+  boot.kernelModules = [
+    "kvm-amd"
+    "tpm_crb"
+    "tpm_tis"
+  ];
   boot.extraModulePackages = [ ];
 
   fileSystems = {
@@ -65,13 +69,23 @@
     "/srv" = {
       device = "/dev/disk/by-uuid/20240caa-cc06-4e97-8537-1a1ae9e617ba";
       fsType = "btrfs";
-      options = [ "compress=zstd" "noatime" "nofail" "x-systemd.before=systemd-tmpfiles-setup.service" ];
+      options = [
+        "compress=zstd"
+        "noatime"
+        "nofail"
+        "x-systemd.before=systemd-tmpfiles-setup.service"
+      ];
     };
 
     "/srv/encrypted" = {
       device = "/dev/mapper/srv-encrypted";
       fsType = "btrfs";
-      options = [ "compress=zstd" "noatime" "nofail" "x-systemd.before=systemd-tmpfiles-setup.service" ];
+      options = [
+        "compress=zstd"
+        "noatime"
+        "nofail"
+        "x-systemd.before=systemd-tmpfiles-setup.service"
+      ];
     };
 
   };

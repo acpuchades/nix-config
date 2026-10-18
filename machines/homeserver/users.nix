@@ -6,14 +6,14 @@
     mutableUsers = false;
 
     # Groups
-    groups.prefect = {};
-    groups.share = {}; # members get read/write on the Samba file share
+    groups.prefect = { };
+    groups.share = { }; # members get read/write on the Samba file share
 
     # Owns /var/www/acpuchades.com. The site's GitHub Actions runner
     # (services.github-runners.acpuchades-site) runs as this user and rsyncs the
     # built tree into the web root; alex is a member so a manual `make deploy`
     # over ssh still works against the same directory.
-    groups.acpuchades-site = {};
+    groups.acpuchades-site = { };
 
     # Disable root login
     users.root.hashedPassword = "!";

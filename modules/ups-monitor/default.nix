@@ -65,7 +65,17 @@ in
 
       events = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ "ONLINE" "ONBATT" "LOWBATT" "FSD" "COMMOK" "COMMBAD" "SHUTDOWN" "REPLBATT" "NOCOMM" ];
+        default = [
+          "ONLINE"
+          "ONBATT"
+          "LOWBATT"
+          "FSD"
+          "COMMOK"
+          "COMMBAD"
+          "SHUTDOWN"
+          "REPLBATT"
+          "NOCOMM"
+        ];
         description = "UPS event classes whose NOTIFYFLAG gets EXEC (so NOTIFYCMD fires).";
       };
     };
@@ -109,9 +119,9 @@ in
       mode = "standalone";
 
       ups.${cfg.name} = {
-        driver = cfg.driver;
-        port = cfg.port;
-        description = cfg.description;
+        inherit (cfg) driver;
+        inherit (cfg) port;
+        inherit (cfg) description;
       };
 
       users.${cfg.monitorUser} = {
@@ -126,8 +136,12 @@ in
         type = "primary";
       };
 
-      upsd.listen = lib.mkIf cfg.network.enable
-        [ { address = cfg.network.listenAddress; port = cfg.network.port; } ];
+      upsd.listen = lib.mkIf cfg.network.enable [
+        {
+          address = cfg.network.listenAddress;
+          port = cfg.network.port;
+        }
+      ];
 
       # Route power events to NOTIFYCMD (default upssched has no EXEC flags, so
       # it is dormant; overriding is safe — clean shutdown is FSD/SHUTDOWNCMD
@@ -135,23 +149,30 @@ in
       # the command in addition to its usual logging.
       upsmon.settings = lib.mkIf (cfg.notify.command != null) {
         NOTIFYCMD = lib.mkForce cfg.notify.command;
-        NOTIFYFLAG = map (e: [ e "SYSLOG+WALL+EXEC" ]) cfg.notify.events;
+        NOTIFYFLAG = map (e: [
+          e
+          "SYSLOG+WALL+EXEC"
+        ]) cfg.notify.events;
       };
     };
 
-    systemd.services.upsmon.serviceConfig.EnvironmentFile =
-      lib.mkIf (cfg.notify.environmentFile != null) [ cfg.notify.environmentFile ];
+    systemd.services.upsmon.serviceConfig.EnvironmentFile = lib.mkIf (
+      cfg.notify.environmentFile != null
+    ) [ cfg.notify.environmentFile ];
 
     # Source-restricted accepts (same pattern as samba/print/dns-filtering)
     # rather than allowedTCPPorts, which would open 3493 to every source —
     # including the internet — for a plaintext-authenticated protocol.
-    networking.firewall.extraCommands = lib.mkIf cfg.network.enable
-      (lib.concatMapStringsSep "\n"
-        (net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept")
-        cfg.network.allowedNetworks);
-    networking.firewall.extraStopCommands = lib.mkIf cfg.network.enable
-      (lib.concatMapStringsSep "\n"
-        (net: "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept || true")
-        cfg.network.allowedNetworks);
+    networking.firewall.extraCommands = lib.mkIf cfg.network.enable (
+      lib.concatMapStringsSep "\n" (
+        net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept"
+      ) cfg.network.allowedNetworks
+    );
+    networking.firewall.extraStopCommands = lib.mkIf cfg.network.enable (
+      lib.concatMapStringsSep "\n" (
+        net:
+        "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept || true"
+      ) cfg.network.allowedNetworks
+    );
   };
 }

@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 # fugazi-web (github.com/acpuchades/fugazi-web) — a multi-user web service for
 # live fugazi backtest stats. A React/Vite SPA served as static files by Caddy,
@@ -113,7 +118,7 @@ let
 
       aliases = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = ''
           Additional names served by the same site block (legacy or vanity
           domains). They serve the app directly rather than redirecting, so
@@ -226,7 +231,7 @@ let
 
       allowedNetworks = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
 
@@ -247,7 +252,10 @@ let
 
       trustedProxies = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [ "127.0.0.1/32" "::1/128" ];
+        default = [
+          "127.0.0.1/32"
+          "::1/128"
+        ];
         description = ''
           Peers whose X-Forwarded-For the backend may believe, and the hops it skips
           when walking that header right-to-left looking for the caller. Every
@@ -290,7 +298,7 @@ in
 {
   options.my.fugazi-web.instances = lib.mkOption {
     type = lib.types.attrsOf (lib.types.submodule instanceModule);
-    default = {};
+    default = { };
     description = ''
       fugazi-web deployments on this host, keyed by name. Defining an entry
       enables it. Each gets its own Postgres database and role, its own service
@@ -304,8 +312,14 @@ in
 
   config = {
     assertions = lib.mapAttrsToList (name: i: {
-      assertion = i.packages == null
-        || builtins.all (k: i.packages ? ${k}) [ "default" "maintenance" "deployment-tick" "frontend" ];
+      assertion =
+        i.packages == null
+        || builtins.all (k: i.packages ? ${k}) [
+          "default"
+          "maintenance"
+          "deployment-tick"
+          "frontend"
+        ];
       message = ''
         my.fugazi-web.instances.${name}.packages must be a fugazi-web flake's whole
         `packages` output — it needs `default`, `maintenance`, `deployment-tick`
@@ -316,13 +330,15 @@ in
     # Upstream only auto-provisions a user when the name is left at its default;
     # we run as the role name instead so the Postgres connection can use peer auth,
     # which means creating it here.
-    users.users = overInstances (_: i: {
-      ${i.databaseName} = {
-        isSystemUser = true;
-        group = i.databaseName;
-      };
-    });
-    users.groups = overInstances (_: i: { ${i.databaseName} = {}; });
+    users.users = overInstances (
+      _: i: {
+        ${i.databaseName} = {
+          isSystemUser = true;
+          group = i.databaseName;
+        };
+      }
+    );
+    users.groups = overInstances (_: i: { ${i.databaseName} = { }; });
 
     # DB + role, one per instance. The role is LOGIN with no password — the service
     # connects over the Unix socket and is identified by peer auth (default
@@ -340,100 +356,106 @@ in
     # (*.acpuchades.com) still validates on STARTTLS. Computed across all
     # instances rather than per instance — `networking.hosts.<ip>` is a list, so
     # emitting it once per instance would put the same name in it N times.
-    networking.hosts = lib.mkIf
-      (lib.any (i: i.smtpHost == "mail.acpuchades.com") (lib.attrValues cfg.instances))
-      { "127.0.0.1" = [ "mail.acpuchades.com" ]; };
+    networking.hosts = lib.mkIf (lib.any (i: i.smtpHost == "mail.acpuchades.com") (
+      lib.attrValues cfg.instances
+    )) { "127.0.0.1" = [ "mail.acpuchades.com" ]; };
 
-    services.fugazi-web.instances = overInstances (name: i: {
-      ${name} = {
-        host = "127.0.0.1";
-        inherit (i) port;
-        user = i.databaseName;
-        group = i.databaseName;
-        # Peer auth over the Unix socket (the OS user == the Postgres role).
-        databaseUrl =
-          "postgresql+psycopg://${i.databaseName}@/${i.databaseName}?host=/run/postgresql";
-        environmentFile = i.environmentFile;
-        # Who may be believed about the caller's address (see the option). Without
-        # it every request reads as coming from 127.0.0.1, which collapses all users
-        # into ONE rate-limit bucket: the login/register/reset budgets are shared,
-        # so one person fumbling a password locks everyone out.
-        inherit (i) trustedProxies;
-        # Reaches the API, the maintenance job and every deployment tick — the mail
-        # settings matter to all three, since the outbox is drained from both the
-        # API's in-process loop and the maintenance timer.
-        environment = {
-          # WHICH deployment this is, as opposed to what kind it is:
-          # FUGAZI_SERVICE_ENVIRONMENT is "production" on every instance, so
-          # without this the admin panel's badge falls back to a word that cannot
-          # tell `testing` from a second instance beside it — which is exactly the
-          # pair somebody has open in two tabs while changing a runtime control.
-          #
-          # Taken from the attribute name rather than asked for again: the name is
-          # already the whole of an instance's identity here (the unit, the state
-          # directory, the database and role, the Caddy vhost), so a second
-          # spelling would be one more thing to keep in step, and the badge could
-          # end up contradicting the unit whose logs are open beside it.
-          #
-          # Upstream sets this same variable from the same name — but on a branch
-          # whose MODULE this host does not import (see the `packages` option), and
-          # on the API unit alone, the API being the only reader (`/v1/admin/status`
-          # serves it). Keeping it here stays correct once the input catches up:
-          # `environment` is `attrsOf str`, so two definitions of one key merge
-          # while they are equal, and both are this same `name`. The whole cost of
-          # the overlap is that the crons carry a variable nothing there opens.
-          FUGAZI_SERVICE_INSTANCE_NAME = name;
-          # Turns on the startup preflight (refuse to boot without a JWT secret, a
-          # database URL or a real mailer — each of which otherwise fails silently)
-          # and takes /docs, /redoc and /openapi.json off the air. All four
-          # preflight conditions are satisfied here; it exists to keep them that
-          # way, loudly, if one ever regresses. It is also what makes a branch
-          # pinned through `packages` fail visibly rather than quietly when it
-          # wants configuration the imported module cannot express.
-          FUGAZI_SERVICE_ENVIRONMENT = "production";
-          FUGAZI_SERVICE_MAILER = "smtp";
-          FUGAZI_SERVICE_SMTP_HOST = i.smtpHost;
-          FUGAZI_SERVICE_SMTP_PORT = toString i.smtpPort;
-          FUGAZI_SERVICE_MAIL_FROM = i.mailFrom;
-          FUGAZI_SERVICE_REQUIRE_VERIFIED_EMAIL = if i.requireVerifiedEmail then "1" else "0";
-          # Verification / reset links land on the SPA's public routes.
-          FUGAZI_SERVICE_VERIFY_URL = "https://${i.hostName}/verify-email";
-          FUGAZI_SERVICE_RESET_URL = "https://${i.hostName}/reset-password";
+    services.fugazi-web.instances = overInstances (
+      name: i: {
+        ${name} = {
+          host = "127.0.0.1";
+          inherit (i) port;
+          user = i.databaseName;
+          group = i.databaseName;
+          # Peer auth over the Unix socket (the OS user == the Postgres role).
+          databaseUrl = "postgresql+psycopg://${i.databaseName}@/${i.databaseName}?host=/run/postgresql";
+          inherit (i) environmentFile;
+          # Who may be believed about the caller's address (see the option). Without
+          # it every request reads as coming from 127.0.0.1, which collapses all users
+          # into ONE rate-limit bucket: the login/register/reset budgets are shared,
+          # so one person fumbling a password locks everyone out.
+          inherit (i) trustedProxies;
+          # Reaches the API, the maintenance job and every deployment tick — the mail
+          # settings matter to all three, since the outbox is drained from both the
+          # API's in-process loop and the maintenance timer.
+          environment = {
+            # WHICH deployment this is, as opposed to what kind it is:
+            # FUGAZI_SERVICE_ENVIRONMENT is "production" on every instance, so
+            # without this the admin panel's badge falls back to a word that cannot
+            # tell `testing` from a second instance beside it — which is exactly the
+            # pair somebody has open in two tabs while changing a runtime control.
+            #
+            # Taken from the attribute name rather than asked for again: the name is
+            # already the whole of an instance's identity here (the unit, the state
+            # directory, the database and role, the Caddy vhost), so a second
+            # spelling would be one more thing to keep in step, and the badge could
+            # end up contradicting the unit whose logs are open beside it.
+            #
+            # Upstream sets this same variable from the same name — but on a branch
+            # whose MODULE this host does not import (see the `packages` option), and
+            # on the API unit alone, the API being the only reader (`/v1/admin/status`
+            # serves it). Keeping it here stays correct once the input catches up:
+            # `environment` is `attrsOf str`, so two definitions of one key merge
+            # while they are equal, and both are this same `name`. The whole cost of
+            # the overlap is that the crons carry a variable nothing there opens.
+            FUGAZI_SERVICE_INSTANCE_NAME = name;
+            # Turns on the startup preflight (refuse to boot without a JWT secret, a
+            # database URL or a real mailer — each of which otherwise fails silently)
+            # and takes /docs, /redoc and /openapi.json off the air. All four
+            # preflight conditions are satisfied here; it exists to keep them that
+            # way, loudly, if one ever regresses. It is also what makes a branch
+            # pinned through `packages` fail visibly rather than quietly when it
+            # wants configuration the imported module cannot express.
+            FUGAZI_SERVICE_ENVIRONMENT = "production";
+            FUGAZI_SERVICE_MAILER = "smtp";
+            FUGAZI_SERVICE_SMTP_HOST = i.smtpHost;
+            FUGAZI_SERVICE_SMTP_PORT = toString i.smtpPort;
+            FUGAZI_SERVICE_MAIL_FROM = i.mailFrom;
+            FUGAZI_SERVICE_REQUIRE_VERIFIED_EMAIL = if i.requireVerifiedEmail then "1" else "0";
+            # Verification / reset links land on the SPA's public routes.
+            FUGAZI_SERVICE_VERIFY_URL = "https://${i.hostName}/verify-email";
+            FUGAZI_SERVICE_RESET_URL = "https://${i.hostName}/reset-password";
+          };
+        }
+        # All four together or none — see the `packages` option for why the whole
+        # attrset is taken rather than four picks from it.
+        // lib.optionalAttrs (i.packages != null) {
+          package = i.packages.default;
+          maintenancePackage = i.packages.maintenance;
+          deploymentTickPackage = i.packages."deployment-tick";
+          frontendPackage = i.packages.frontend;
         };
       }
-      # All four together or none — see the `packages` option for why the whole
-      # attrset is taken rather than four picks from it.
-      // lib.optionalAttrs (i.packages != null) {
-        package = i.packages.default;
-        maintenancePackage = i.packages.maintenance;
-        deploymentTickPackage = i.packages."deployment-tick";
-        frontendPackage = i.packages.frontend;
-      };
-    });
+    );
 
     # Host-side additions to upstream's units. They order themselves after
     # postgresql.service, but on NixOS the database and role are created by
     # postgresql-setup.service — and the API runs Alembic to head on startup, so
     # it must not win that race on a first boot. `after`/`requires` are
     # list-merged with upstream's, not replaced.
-    systemd.services = overInstances (name: _: {
-      "fugazi-web-${name}" = {
-        after = [ "postgresql-setup.service" "postfix.service" ];
-        requires = [ "postgresql-setup.service" ];
-        serviceConfig = {
-          RestartSec = 5;
-          WorkingDirectory = "/var/lib/fugazi-web-${name}";
-          # No hardening here any more: upstream applies one shared sandbox to
-          # all three unit families (API, maintenance, every deployment tick) of
-          # every instance, which supersedes the two settings this used to add. It
-          # is stricter than what ran before — a seccomp filter, no AF_NETLINK,
-          # ProtectProc — and the backend forks a native process pool for runs, so
-          # if a backtest or an SMTP send starts failing after an input bump, look
-          # here first:
-          # `journalctl -u fugazi-web-${name} | grep -i 'signal\|denied'`.
+    systemd.services = overInstances (
+      name: _: {
+        "fugazi-web-${name}" = {
+          after = [
+            "postgresql-setup.service"
+            "postfix.service"
+          ];
+          requires = [ "postgresql-setup.service" ];
+          serviceConfig = {
+            RestartSec = 5;
+            WorkingDirectory = "/var/lib/fugazi-web-${name}";
+            # No hardening here any more: upstream applies one shared sandbox to
+            # all three unit families (API, maintenance, every deployment tick) of
+            # every instance, which supersedes the two settings this used to add. It
+            # is stricter than what ran before — a seccomp filter, no AF_NETLINK,
+            # ProtectProc — and the backend forks a native process pool for runs, so
+            # if a backtest or an SMTP send starts failing after an input bump, look
+            # here first:
+            # `journalctl -u fugazi-web-${name} | grep -i 'signal\|denied'`.
+          };
         };
-      };
-    });
+      }
+    );
 
     # Edge rate limiting is the half `adapters/rate_limit` structurally cannot do:
     # it counts per process, so behind N workers an attacker gets N times the
@@ -444,152 +466,156 @@ in
     # Pinned rather than tracked: v0.1.0 is the only tag and it is from 2024, so a
     # bump is a deliberate act. Verified to build and to register
     # `http.handlers.rate_limit` against Caddy 2.11.4.
-    my.caddy-plugins.plugins =
-      lib.optional (cfg.instances != { }) "github.com/mholt/caddy-ratelimit@v0.1.0";
+    my.caddy-plugins.plugins = lib.optional (
+      cfg.instances != { }
+    ) "github.com/mholt/caddy-ratelimit@v0.1.0";
 
-    services.caddy.virtualHosts = overInstances (_: i: {
-      ${i.hostName} = {
-        serverAliases = i.aliases;
+    services.caddy.virtualHosts = overInstances (
+      _: i: {
+        ${i.hostName} = {
+          serverAliases = i.aliases;
 
-        extraConfig = ''
-          ${lib.optionalString (i.allowedNetworks != [])
-            "@denied not remote_ip ${lib.concatStringsSep " " i.allowedNetworks}"}
-          # Vite fingerprints everything under /assets, so it may be cached
-          # forever; index.html must not be, or a deploy is invisible until the
-          # browser gives up its copy. Two matchers rather than two bare `header`
-          # lines because directives inside a handle are sorted by Caddy's own
-          # order, not the order written — mutually exclusive matchers make that
-          # sort irrelevant.
-          @assets path /assets/*
-          @nocache not path /assets/*
-          route {
-            ${lib.optionalString (i.allowedNetworks != []) "abort @denied"}
+          extraConfig = ''
+            ${lib.optionalString (
+              i.allowedNetworks != [ ]
+            ) "@denied not remote_ip ${lib.concatStringsSep " " i.allowedNetworks}"}
+            # Vite fingerprints everything under /assets, so it may be cached
+            # forever; index.html must not be, or a deploy is invisible until the
+            # browser gives up its copy. Two matchers rather than two bare `header`
+            # lines because directives inside a handle are sorted by Caddy's own
+            # order, not the order written — mutually exclusive matchers make that
+            # sort irrelevant.
+            @assets path /assets/*
+            @nocache not path /assets/*
+            route {
+              ${lib.optionalString (i.allowedNetworks != [ ]) "abort @denied"}
 
-            # The SPA's real Content-Security-Policy. The build-time <meta> one
-            # that Vite injects is a stopgap: a meta CSP cannot express
-            # frame-ancestors at all, and has to allow any https connect-src. This
-            # is the same policy upstream's `enableNginx` branch serves, minus the
-            # Sentry ingest origin (no DSN is compiled into our bundle — add it to
-            # connect-src here if that changes, or the reports are blocked).
-            #
-            # 'unsafe-inline' on style-src is not slack: React writes style
-            # attributes and recharts computes its layout that way, and there is no
-            # nonce path for an attribute.
-            #
-            # 'wasm-unsafe-eval' and `data:` on connect-src are not slack either, and
-            # they are not the meta policy's stopgaps repeated -- a served policy owes
-            # both or it breaks a shipped feature. @react-pdf lays out through
-            # yoga-layout, an emscripten module carrying its WebAssembly inlined as
-            # base64: it fetches that base64 as a `data:` URL for
-            # `instantiateStreaming` and falls back to instantiating the buffer it
-            # already holds. There is no .wasm request to allow and no script to hash.
-            # Without the token every PDF report dies as `RuntimeError:
-            # Aborted(CompileError: call to WebAssembly.instantiate() blocked by CSP)`,
-            # which names neither the directive nor the dependency; without `data:` the
-            # report still renders but leaves two CSP errors per run in the console.
-            # 'wasm-unsafe-eval' admits WebAssembly and nothing else -- `eval` and
-            # `new Function` stay refused, which is why it exists apart from
-            # 'unsafe-eval'. Keep this in step with SPA_CSP in
-            # frontend/vite.config.ts.
-            header {
-              Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
-              X-Content-Type-Options "nosniff"
-              X-Frame-Options "DENY"
-              Referrer-Policy "no-referrer"
-              Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
-              # The SPA keeps its session token in localStorage, so a single
-              # plaintext request hands it to anyone on the path.
-              Strict-Transport-Security "max-age=63072000; includeSubDomains"
-              ${lib.optionalString i.noIndex ''X-Robots-Tag "noindex, nofollow"''}
-            }
-
-            # Bounds an upload at the edge as well as in the app. The app's own
-            # caps — per tier, with FUGAZI_SERVICE_MAX_UPLOAD_BYTES as the backstop
-            # — are the real ones, and they also cover a chunked body; this just
-            # stops a large one being buffered here first. See the option for why
-            # it sits a megabyte above the archive cap and why the unit is MiB.
-            request_body {
-              max_size ${i.maxRequestBodySize}
-            }
-
-            # Two budgets, keyed on {client_ip} — the real visitor when the
-            # host declares the CDN's edges in my.web-server.trustedProxies,
-            # and the TCP peer otherwise. `/v1/auth` is the one that matters:
-            # register, login and reset each burn an argon2 hash, so an unbudgeted
-            # one is a CPU amplifier pointed at this box, and forgot-password also
-            # sends mail to an address the caller names.
-            #
-            # These are the nginx zones this replaced (10r/m + burst 20; 30r/s +
-            # burst 60), translated rather than copied: caddy-ratelimit is a
-            # sliding window with no separate burst, so `events` is what the burst
-            # allowance used to be. Nothing that worked before is refused now, and
-            # the sustained ceiling tightens from "refills forever" to that same
-            # number per window.
-            #
-            # Inside the `route`, so it runs after `abort @denied` and before the
-            # handlers -- directives in a route apply as written, which is also
-            # why no global `order rate_limit` line is needed.
-            rate_limit {
-              zone auth {
-                match {
-                  path /v1/auth/*
-                }
-                key {client_ip}
-                events 20
-                window 1m
-              }
-              zone api {
-                match {
-                  # Exclusive of the auth zone, because nginx's `location` blocks
-                  # were: it picks the most specific one, so an auth request spent
-                  # one budget. Both zones of a `rate_limit` handler are evaluated,
-                  # so without this an auth request spends both.
-                  path /v1/*
-                  not path /v1/auth/*
-                }
-                key {client_ip}
-                events 60
-                window 1s
-              }
-            }
-
-            handle /v1/* {
-              reverse_proxy 127.0.0.1:${toString i.port}
-            }
-            handle /health {
-              reverse_proxy 127.0.0.1:${toString i.port}
-            }
-            handle {
-              root * ${frontendOf i}
-              header @assets Cache-Control "public, max-age=31536000, immutable"
-              header @nocache Cache-Control "no-cache"
-              try_files {path} /index.html
-              # Serve the .br/.gz siblings the frontend derivation builds rather
-              # than compressing each response here. Caddy has no brotli
-              # *encoder* — `caddy list-modules` offers only gzip and zstd — so
-              # for the SPA this is not a saving on `encode`, it is the only way
-              # brotli is served at all. It is also a better one: quality 11 at
-              # build against whatever level a per-request encoder can afford.
-              # Measured on the entry chunk, 89,181 B on-the-fly gzip against
-              # 74,440 B precompressed brotli, and the gzip path improves too
-              # (85,360 B), because that sibling is level 9.
+              # The SPA's real Content-Security-Policy. The build-time <meta> one
+              # that Vite injects is a stopgap: a meta CSP cannot express
+              # frame-ancestors at all, and has to allow any https connect-src. This
+              # is the same policy upstream's `enableNginx` branch serves, minus the
+              # Sentry ingest origin (no DSN is compiled into our bundle — add it to
+              # connect-src here if that changes, or the reports are blocked).
               #
-              # `br` first: the list is a preference order, and every browser
-              # that accepts brotli accepts gzip. A client sending neither gets
-              # the plain file, so nothing depends on the siblings existing.
-              file_server {
-                precompressed br gzip
+              # 'unsafe-inline' on style-src is not slack: React writes style
+              # attributes and recharts computes its layout that way, and there is no
+              # nonce path for an attribute.
+              #
+              # 'wasm-unsafe-eval' and `data:` on connect-src are not slack either, and
+              # they are not the meta policy's stopgaps repeated -- a served policy owes
+              # both or it breaks a shipped feature. @react-pdf lays out through
+              # yoga-layout, an emscripten module carrying its WebAssembly inlined as
+              # base64: it fetches that base64 as a `data:` URL for
+              # `instantiateStreaming` and falls back to instantiating the buffer it
+              # already holds. There is no .wasm request to allow and no script to hash.
+              # Without the token every PDF report dies as `RuntimeError:
+              # Aborted(CompileError: call to WebAssembly.instantiate() blocked by CSP)`,
+              # which names neither the directive nor the dependency; without `data:` the
+              # report still renders but leaves two CSP errors per run in the console.
+              # 'wasm-unsafe-eval' admits WebAssembly and nothing else -- `eval` and
+              # `new Function` stay refused, which is why it exists apart from
+              # 'unsafe-eval'. Keep this in step with SPA_CSP in
+              # frontend/vite.config.ts.
+              header {
+                Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+                X-Content-Type-Options "nosniff"
+                X-Frame-Options "DENY"
+                Referrer-Policy "no-referrer"
+                Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
+                # The SPA keeps its session token in localStorage, so a single
+                # plaintext request hands it to anyone on the path.
+                Strict-Transport-Security "max-age=63072000; includeSubDomains"
+                ${lib.optionalString i.noIndex ''X-Robots-Tag "noindex, nofollow"''}
+              }
+
+              # Bounds an upload at the edge as well as in the app. The app's own
+              # caps — per tier, with FUGAZI_SERVICE_MAX_UPLOAD_BYTES as the backstop
+              # — are the real ones, and they also cover a chunked body; this just
+              # stops a large one being buffered here first. See the option for why
+              # it sits a megabyte above the archive cap and why the unit is MiB.
+              request_body {
+                max_size ${i.maxRequestBodySize}
+              }
+
+              # Two budgets, keyed on {client_ip} — the real visitor when the
+              # host declares the CDN's edges in my.web-server.trustedProxies,
+              # and the TCP peer otherwise. `/v1/auth` is the one that matters:
+              # register, login and reset each burn an argon2 hash, so an unbudgeted
+              # one is a CPU amplifier pointed at this box, and forgot-password also
+              # sends mail to an address the caller names.
+              #
+              # These are the nginx zones this replaced (10r/m + burst 20; 30r/s +
+              # burst 60), translated rather than copied: caddy-ratelimit is a
+              # sliding window with no separate burst, so `events` is what the burst
+              # allowance used to be. Nothing that worked before is refused now, and
+              # the sustained ceiling tightens from "refills forever" to that same
+              # number per window.
+              #
+              # Inside the `route`, so it runs after `abort @denied` and before the
+              # handlers -- directives in a route apply as written, which is also
+              # why no global `order rate_limit` line is needed.
+              rate_limit {
+                zone auth {
+                  match {
+                    path /v1/auth/*
+                  }
+                  key {client_ip}
+                  events 20
+                  window 1m
+                }
+                zone api {
+                  match {
+                    # Exclusive of the auth zone, because nginx's `location` blocks
+                    # were: it picks the most specific one, so an auth request spent
+                    # one budget. Both zones of a `rate_limit` handler are evaluated,
+                    # so without this an auth request spends both.
+                    path /v1/*
+                    not path /v1/auth/*
+                  }
+                  key {client_ip}
+                  events 60
+                  window 1s
+                }
+              }
+
+              handle /v1/* {
+                reverse_proxy 127.0.0.1:${toString i.port}
+              }
+              handle /health {
+                reverse_proxy 127.0.0.1:${toString i.port}
+              }
+              handle {
+                root * ${frontendOf i}
+                header @assets Cache-Control "public, max-age=31536000, immutable"
+                header @nocache Cache-Control "no-cache"
+                try_files {path} /index.html
+                # Serve the .br/.gz siblings the frontend derivation builds rather
+                # than compressing each response here. Caddy has no brotli
+                # *encoder* — `caddy list-modules` offers only gzip and zstd — so
+                # for the SPA this is not a saving on `encode`, it is the only way
+                # brotli is served at all. It is also a better one: quality 11 at
+                # build against whatever level a per-request encoder can afford.
+                # Measured on the entry chunk, 89,181 B on-the-fly gzip against
+                # 74,440 B precompressed brotli, and the gzip path improves too
+                # (85,360 B), because that sibling is level 9.
+                #
+                # `br` first: the list is a preference order, and every browser
+                # that accepts brotli accepts gzip. A client sending neither gets
+                # the plain file, so nothing depends on the siblings existing.
+                file_server {
+                  precompressed br gzip
+                }
               }
             }
-          }
-          # Still here for the proxied JSON, which has no sibling to serve and is
-          # generated per request. zstd ahead of gzip for the clients that take
-          # it; the static half no longer passes through this at all, since
-          # `precompressed` sets Content-Encoding and `encode` leaves an already
-          # encoded response alone.
-          encode zstd gzip
-        '';
-      };
-    });
+            # Still here for the proxied JSON, which has no sibling to serve and is
+            # generated per request. zstd ahead of gzip for the clients that take
+            # it; the static half no longer passes through this at all, since
+            # `precompressed` sets Content-Encoding and `encode` leaves an already
+            # encoded response alone.
+            encode zstd gzip
+          '';
+        };
+      }
+    );
   };
 }

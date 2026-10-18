@@ -1,0 +1,5 @@
+disabled = [
+  # repeated_keys: dotted paths like `systemd.services.x = …; systemd.tmpfiles…`
+  # read better than one merged attrset per top-level key.
+  "repeated_keys",
+]

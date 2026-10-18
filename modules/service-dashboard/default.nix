@@ -64,10 +64,15 @@ let
   }) cfg.groups;
 
   # Per-group row layout (columns/style). Keys are group names.
-  layout = lib.listToAttrs (map (g: {
-    name = g.name;
-    value = { style = "row"; columns = g.columns; };
-  }) cfg.groups);
+  layout = lib.listToAttrs (
+    map (g: {
+      inherit (g) name;
+      value = {
+        style = "row";
+        inherit (g) columns;
+      };
+    }) cfg.groups
+  );
 in
 {
   options.my.service-dashboard = {
@@ -86,7 +91,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Restrict access to these CIDR ranges (empty = unrestricted)";
     };
 
@@ -98,7 +103,7 @@ in
 
     groups = lib.mkOption {
       type = lib.types.listOf groupType;
-      default = [];
+      default = [ ];
       description = "Service tile groups, rendered in order.";
     };
   };
@@ -147,16 +152,19 @@ in
     # DNS-01 issuer, so the cert works even though the name never resolves
     # publicly.
     services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      if cfg.allowedNetworks != [] then ''
-        @allowed remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}
-        handle @allowed {
+      if cfg.allowedNetworks != [ ] then
+        ''
+          @allowed remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}
+          handle @allowed {
+            reverse_proxy http://127.0.0.1:${toString cfg.port}
+            encode gzip
+          }
+          respond 403
+        ''
+      else
+        ''
           reverse_proxy http://127.0.0.1:${toString cfg.port}
           encode gzip
-        }
-        respond 403
-      '' else ''
-        reverse_proxy http://127.0.0.1:${toString cfg.port}
-        encode gzip
-      '';
+        '';
   };
 }

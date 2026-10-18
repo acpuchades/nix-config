@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 #
 # geocoding — self-hosted OpenStreetMap geocoding / reverse geocoding
@@ -68,11 +73,16 @@ let
   tablespaceSettings = lib.optionalAttrs cfg.tablespace.enable (
     lib.listToAttrs (
       map (n: lib.nameValuePair "NOMINATIM_TABLESPACE_${n}" cfg.tablespace.name) [
-        "SEARCH_DATA"  "SEARCH_INDEX"
-        "OSM_DATA"     "OSM_INDEX"
-        "PLACE_DATA"   "PLACE_INDEX"
-        "ADDRESS_DATA" "ADDRESS_INDEX"
-        "AUX_DATA"     "AUX_INDEX"
+        "SEARCH_DATA"
+        "SEARCH_INDEX"
+        "OSM_DATA"
+        "OSM_INDEX"
+        "PLACE_DATA"
+        "PLACE_INDEX"
+        "ADDRESS_DATA"
+        "ADDRESS_INDEX"
+        "AUX_DATA"
+        "AUX_INDEX"
       ]
     )
   );
@@ -93,7 +103,7 @@ let
   # (nominatim-update). pyosmium comes from the same python3Packages set the
   # package is built with, so the interpreter versions match.
   nominatimPkg = pkgs.nominatim.overridePythonAttrs (old: {
-    dependencies = (old.dependencies or []) ++ [ pkgs.python3Packages.pyosmium ];
+    dependencies = (old.dependencies or [ ]) ++ [ pkgs.python3Packages.pyosmium ];
   });
 
   # The settings above only reach the systemd units. The initial import is run
@@ -138,7 +148,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Restrict access to these CIDR ranges (empty = unrestricted). A public
         Nominatim instance attracts scrapers, so prefer to keep this closed
@@ -261,8 +271,9 @@ in
     # server — CREATE TABLESPACE then fails with "Read-only file system". Grant
     # the server write access to the location. (systemd list-valued serviceConfig
     # options concatenate across modules, so this merges with the dataDir entry.)
-    systemd.services.postgresql.serviceConfig.ReadWritePaths =
-      lib.mkIf cfg.tablespace.enable [ cfg.tablespace.location ];
+    systemd.services.postgresql.serviceConfig.ReadWritePaths = lib.mkIf cfg.tablespace.enable [
+      cfg.tablespace.location
+    ];
 
     # NixOS has no declarative tablespace equivalent to `ensureDatabases`, so
     # create it here — before nominatim-init runs `import --prepare-database`,
@@ -306,7 +317,13 @@ in
     };
 
     services.nginx.virtualHosts."${cfg.hostName}" = {
-      listen = [{ addr = "127.0.0.1"; port = cfg.port; ssl = false; }];
+      listen = [
+        {
+          addr = "127.0.0.1";
+          inherit (cfg) port;
+          ssl = false;
+        }
+      ];
       forceSSL = false;
       enableACME = false;
 
@@ -317,18 +334,19 @@ in
       # hardcoding the scheme is both correct and cheaper. mkForce because
       # upstream sets this location's extraConfig unconditionally.
       locations."= /".extraConfig = lib.mkForce (
-        lib.optionalString cfg.ui.enable
-          "return 301 https://$http_host/ui/search.html;"
+        lib.optionalString cfg.ui.enable "return 301 https://$http_host/ui/search.html;"
       );
     };
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (cfg.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
+      lib.filter (s: s != "") [
+        (lib.optionalString (
+          cfg.allowedNetworks != [ ]
+        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
         "reverse_proxy http://127.0.0.1:${toString cfg.port}"
         "encode gzip"
-      ]);
+      ]
+    );
 
     # The replication timer upstream leaves as a TODO. `--once` applies every
     # diff published since the last run and exits, so the timer controls the
@@ -338,7 +356,10 @@ in
     # fails, which is the intended loud signal rather than silent staleness.
     systemd.services.nominatim-update = lib.mkIf cfg.updates.enable {
       description = "Apply OSM replication updates to the Nominatim database";
-      after = [ "postgresql.service" "nominatim-init.service" ];
+      after = [
+        "postgresql.service"
+        "nominatim-init.service"
+      ];
       requires = [ "postgresql.service" ];
       serviceConfig = {
         Type = "oneshot";

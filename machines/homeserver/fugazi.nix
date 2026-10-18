@@ -21,7 +21,12 @@
 #
 { fugazi-web, fugazi-web-testing }:
 
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   # LAN + WireGuard prefixes and the Cloudflare edges, shared with default.nix.
@@ -40,26 +45,71 @@ let
   # the whole table once means offering a finer one later is moving a floor rather
   # than inventing an OnCalendar under time pressure.
   fugaziAvailableCadences = [
-    { freq = "1m"; onCalendar = "minutely"; }
-    { freq = "3m"; onCalendar = "*:0/3"; }
-    { freq = "5m"; onCalendar = "*:0/5"; }
-    { freq = "15m"; onCalendar = "*:0/15"; }
-    { freq = "30m"; onCalendar = "*:0/30"; }
-    { freq = "1h"; onCalendar = "hourly"; }
-    { freq = "2h"; onCalendar = "0/2:00"; }
-    { freq = "4h"; onCalendar = "0/4:00"; }
-    { freq = "6h"; onCalendar = "0/6:00"; }
-    { freq = "8h"; onCalendar = "0/8:00"; }
-    { freq = "12h"; onCalendar = "0/12:00"; }
-    { freq = "1d"; onCalendar = "daily"; }
+    {
+      freq = "1m";
+      onCalendar = "minutely";
+    }
+    {
+      freq = "3m";
+      onCalendar = "*:0/3";
+    }
+    {
+      freq = "5m";
+      onCalendar = "*:0/5";
+    }
+    {
+      freq = "15m";
+      onCalendar = "*:0/15";
+    }
+    {
+      freq = "30m";
+      onCalendar = "*:0/30";
+    }
+    {
+      freq = "1h";
+      onCalendar = "hourly";
+    }
+    {
+      freq = "2h";
+      onCalendar = "0/2:00";
+    }
+    {
+      freq = "4h";
+      onCalendar = "0/4:00";
+    }
+    {
+      freq = "6h";
+      onCalendar = "0/6:00";
+    }
+    {
+      freq = "8h";
+      onCalendar = "0/8:00";
+    }
+    {
+      freq = "12h";
+      onCalendar = "0/12:00";
+    }
+    {
+      freq = "1d";
+      onCalendar = "daily";
+    }
     # Every third day OF THE MONTH, not every third day: systemd steps day-of-month,
     # so the sequence restarts at each month boundary (…, 28, 31, then the 1st).
     # Every gap that produces is three days or SHORTER, so the error is an extra tick
     # that finds no closed bar rather than a bar nobody traded — the direction to be
     # wrong in, and the reason this is not written as a 72-hour OnUnitActiveSec.
-    { freq = "3d"; onCalendar = "*-*-01/3"; }
-    { freq = "1w"; onCalendar = "weekly"; }
-    { freq = "1M"; onCalendar = "monthly"; }
+    {
+      freq = "3d";
+      onCalendar = "*-*-01/3";
+    }
+    {
+      freq = "1w";
+      onCalendar = "weekly";
+    }
+    {
+      freq = "1M";
+      onCalendar = "monthly";
+    }
   ];
 
   # The finest cadence a KIND schedules — everything from here up is enabled, since
@@ -98,19 +148,19 @@ let
   # error, ever, and an empty ledger for as long as anybody leaves it there. An
   # assertion below re-checks that the two still agree, since deriving both from one
   # list only helps until somebody sets one of them by hand.
-  fugaziTickCadences = kind:
+  fugaziTickCadences =
+    kind:
     let
       floor = fugaziTickFloor kind;
-      index = lib.lists.findFirstIndex (c: c.freq == floor)
-        (throw "fugaziTickFloor: ${floor} is not in fugaziAvailableCadences")
-        fugaziAvailableCadences;
+      index = lib.lists.findFirstIndex (
+        c: c.freq == floor
+      ) (throw "fugaziTickFloor: ${floor} is not in fugaziAvailableCadences") fugaziAvailableCadences;
     in
     lib.drop index fugaziAvailableCadences;
 
   # The same table in the shape upstream's option wants: frequency → OnCalendar.
-  fugaziTickFrequencies = kind:
-    lib.listToAttrs
-      (map (c: lib.nameValuePair c.freq c.onCalendar) (fugaziTickCadences kind));
+  fugaziTickFrequencies =
+    kind: lib.listToAttrs (map (c: lib.nameValuePair c.freq c.onCalendar) (fugaziTickCadences kind));
 
   # fugazi-web's policy surface, as ONE table with a column per deployment KIND.
   # Both columns are written here even though only `testing` is instantiated
@@ -158,7 +208,8 @@ let
   #                      events would arrive tagged "production".
   #   LOG_FORMAT         text, not json. This lands in journald and is read with
   #                      journalctl.
-  fugaziEnvironment = kind:
+  fugaziEnvironment =
+    kind:
     let
       isProd = kind == "prod";
       mib = n: toString (n * 1024 * 1024);
@@ -343,8 +394,9 @@ let
       # setting simply never opens the variable, so it can be unread but never
       # wrong. Note this decides which cadences EXIST here, for every account
       # including the operator's own — no plan buys a timer nobody scheduled.
-      FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES =
-        lib.concatMapStringsSep "," (c: c.freq) (fugaziTickCadences kind);
+      FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES = lib.concatMapStringsSep "," (c: c.freq) (
+        fugaziTickCadences kind
+      );
 
       # --- what advances a live deployment -----------------------------------
       # The runtime the tick composes. Upstream defaults it to `null` — a runtime
@@ -582,7 +634,11 @@ in
     # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
     # loopback would make that edge the rate-limit bucket and every visitor
     # routed through it would share one register/login budget.
-    trustedProxies = [ "127.0.0.1/32" "::1/128" ] ++ cloudflareNetworks;
+    trustedProxies = [
+      "127.0.0.1/32"
+      "::1/128"
+    ]
+    ++ cloudflareNetworks;
 
     # Not launched, so not indexed. Signup is gated to @fugazitrade.com (see
     # below) and the app is perfectly usable by anyone holding such an address
@@ -628,8 +684,7 @@ in
   # 2026-08-28 and no longer does — upstream's arithmetic was byte-identical.
   # It applies to the timed cadences only — a resident unit is not started per
   # bar, so it has no start deadline to size.
-  services.fugazi-web.instances.testing.deploymentTickFrequencies =
-    fugaziTickFrequencies "testing";
+  services.fugazi-web.instances.testing.deploymentTickFrequencies = fugaziTickFrequencies "testing";
 
   # The three finest cadences advanced by a long-running unit each instead of a
   # timer plus a fresh process per bar. Both drivers tick on the same grid and
@@ -656,7 +711,11 @@ in
   # ordinary crash, so what the alert catches is the case that outlasts it —
   # systemd giving up after the start-limit burst, which is silent and
   # indefinite.
-  services.fugazi-web.instances.testing.deploymentTickResident = [ "1m" "3m" "5m" ];
+  services.fugazi-web.instances.testing.deploymentTickResident = [
+    "1m"
+    "3m"
+    "5m"
+  ];
 
   # How many deployments one tick advances at once, and it stays at upstream's
   # serial default DELIBERATELY — this is not a knob left unread.
@@ -731,8 +790,8 @@ in
   assertions = [
     {
       assertion =
-        (fugaziEnvironment "prod").FUGAZI_SERVICE_MAX_UPLOAD_BYTES
-          == (fugaziEnvironment "testing").FUGAZI_SERVICE_MAX_UPLOAD_BYTES;
+        (fugaziEnvironment "prod").FUGAZI_SERVICE_MAX_UPLOAD_BYTES == (fugaziEnvironment "testing")
+        .FUGAZI_SERVICE_MAX_UPLOAD_BYTES;
       message = ''
         fugaziEnvironment: the prod and testing columns disagree about
         FUGAZI_SERVICE_MAX_UPLOAD_BYTES. Both are tracked by one edge cap
@@ -753,10 +812,8 @@ in
       assertion =
         let
           sorted = lib.sort (a: b: a < b);
-          scheduled = lib.attrNames
-            config.services.fugazi-web.instances.testing.deploymentTickFrequencies;
-          offered = lib.splitString ","
-            (fugaziEnvironment "testing").FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES;
+          scheduled = lib.attrNames config.services.fugazi-web.instances.testing.deploymentTickFrequencies;
+          offered = lib.splitString "," (fugaziEnvironment "testing").FUGAZI_SERVICE_DEPLOYMENT_FREQUENCIES;
         in
         sorted scheduled == sorted offered;
       message = ''

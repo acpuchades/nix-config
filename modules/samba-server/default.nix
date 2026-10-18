@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.my.samba-server;
@@ -15,7 +20,7 @@ in
 
     users = lib.mkOption {
       type = lib.types.attrsOf lib.types.path;
-      default = {};
+      default = { };
       example = lib.literalExpression ''
         {
           alex = config.sops.secrets."samba/alex".path;
@@ -38,7 +43,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         CIDR ranges allowed to reach the SMB port. Enforced both at the
         firewall (source-restricted accept rules) and inside Samba via
@@ -48,10 +53,16 @@ in
     };
 
     shares = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.attrsOf (
-        lib.types.oneOf [ lib.types.str lib.types.int lib.types.bool ]
-      ));
-      default = {};
+      type = lib.types.attrsOf (
+        lib.types.attrsOf (
+          lib.types.oneOf [
+            lib.types.str
+            lib.types.int
+            lib.types.bool
+          ]
+        )
+      );
+      default = { };
       example = lib.literalExpression ''
         {
           shared = {
@@ -104,16 +115,17 @@ in
           "fruit:wipe_intentionally_left_blank_rfork" = "yes";
           "fruit:delete_empty_adfiles" = "yes";
         };
-      } // cfg.shares;
+      }
+      // cfg.shares;
     };
 
     # Create directories for shares that declare a path. Owned root:<group>,
     # mode 2770: the share group gets full access and the setgid bit makes new
     # files/dirs inherit that group, so all group members can read/write each
     # other's uploads.
-    systemd.tmpfiles.rules = lib.mapAttrsToList
-      (_: share: "d ${share.path} 2770 root ${cfg.group} -")
-      (lib.filterAttrs (_: share: share ? path) cfg.shares);
+    systemd.tmpfiles.rules = lib.mapAttrsToList (_: share: "d ${share.path} 2770 root ${cfg.group} -") (
+      lib.filterAttrs (_: share: share ? path) cfg.shares
+    );
 
     # Samba's passdb is separate from the system password database, so load each
     # user's SMB password into it before smbd starts.
@@ -126,28 +138,29 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
       };
-      script = lib.concatStringsSep "\n" ([ "set -eu" ] ++ lib.mapAttrsToList
-        (user: file: ''
+      script = lib.concatStringsSep "\n" (
+        [ "set -eu" ]
+        ++ lib.mapAttrsToList (user: file: ''
           pass="$(cat ${file})"
           if pdbedit -L 2>/dev/null | cut -d: -f1 | grep -qx ${user}; then
             printf '%s\n%s\n' "$pass" "$pass" | smbpasswd -s ${user}
           else
             printf '%s\n%s\n' "$pass" "$pass" | smbpasswd -s -a ${user}
           fi
-        '')
-        cfg.users);
+        '') cfg.users
+      );
     };
 
     # Allow SMB (TCP 445) only from the configured networks. Inserted at the top
     # of the nixos-fw chain so it precedes the default refuse rule. VPN peers
     # are covered the same way: allowedNetworks includes the wg prefixes, and a
     # source rule matches whatever interface the packet arrived on.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -I nixos-fw -p tcp -s ${net} --dport 445 -j nixos-fw-accept")
-      cfg.allowedNetworks;
+    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
+      net: "iptables -I nixos-fw -p tcp -s ${net} --dport 445 -j nixos-fw-accept"
+    ) cfg.allowedNetworks;
 
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n"
-      (net: "iptables -D nixos-fw -p tcp -s ${net} --dport 445 -j nixos-fw-accept || true")
-      cfg.allowedNetworks;
+    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
+      net: "iptables -D nixos-fw -p tcp -s ${net} --dport 445 -j nixos-fw-accept || true"
+    ) cfg.allowedNetworks;
   };
 }

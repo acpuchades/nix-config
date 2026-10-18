@@ -1,5 +1,4 @@
-{ ... }:
-{
+_: {
   enable = true;
   # Keep Homebrew updates out of the rebuild path: a `darwin-rebuild switch`
   # only installs missing casks, never updates Homebrew or upgrades existing

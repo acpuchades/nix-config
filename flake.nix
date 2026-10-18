@@ -135,12 +135,17 @@
       fugazi-web,
       fugazi-web-testing,
       emacs-overlay,
-      nix-caddy-withplugins
+      nix-caddy-withplugins,
     }:
-  {
-    # Build darwin flake using:
-    # $ sudo darwin-rebuild switch --flake .#MacBook-Pro-de-Alejandro
-    darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./machines/macbookpro outputs;
-    nixosConfigurations."homeserver" = import ./machines/homeserver outputs;
-  };
+    {
+      # Build darwin flake using:
+      # $ sudo darwin-rebuild switch --flake .#MacBook-Pro-de-Alejandro
+      darwinConfigurations."MacBook-Pro-de-Alejandro" = import ./machines/macbookpro outputs;
+      nixosConfigurations."homeserver" = import ./machines/homeserver outputs;
+
+      # `nix fmt` — the formatter CI enforces (.github/workflows/eval.yml).
+      formatter = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" ] (
+        system: nixpkgs.legacyPackages.${system}.nixfmt
+      );
+    };
 }

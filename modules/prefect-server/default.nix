@@ -56,7 +56,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Restrict the vhost to these CIDR ranges (empty = unrestricted). Behind
         it is an unauthenticated API that runs code, so basic auth alone makes
@@ -66,7 +66,7 @@ in
 
     workerPools = lib.mkOption {
       type = lib.types.attrs;
-      default = {};
+      default = { };
       description = "Worker pool definitions";
     };
   };
@@ -76,7 +76,7 @@ in
       isSystemUser = true;
       group = "prefect";
     };
-    users.groups.prefect = {};
+    users.groups.prefect = { };
 
     systemd.tmpfiles.rules = [
       "d ${cfg.dataDir} 0750 prefect prefect -"
@@ -84,16 +84,16 @@ in
 
     services.prefect = {
       enable = true;
-      host = cfg.host;
-      port = cfg.port;
+      inherit (cfg) host;
+      inherit (cfg) port;
       database = "postgres";
       databaseHost = "";
       databasePort = 0;
-      databaseUser = cfg.databaseUser;
-      databaseName = cfg.databaseName;
-      dataDir = cfg.dataDir;
-      baseUrl = cfg.baseUrl;
-      workerPools = cfg.workerPools;
+      inherit (cfg) databaseUser;
+      inherit (cfg) databaseName;
+      inherit (cfg) dataDir;
+      inherit (cfg) baseUrl;
+      inherit (cfg) workerPools;
     };
 
     systemd.services = lib.mkMerge [
@@ -117,8 +117,9 @@ in
       # one — the upstream (public) URL — so a top-level override is silently
       # ignored. Force-replace the whole list instead, keeping the PREFECT_HOME
       # entry upstream also sets (StateDirectory = prefect-worker-${name}).
-      (lib.mapAttrs'
-        (name: _: lib.nameValuePair "prefect-worker-${name}" {
+      (lib.mapAttrs' (
+        name: _:
+        lib.nameValuePair "prefect-worker-${name}" {
           # A static account rather than upstream's DynamicUser, so a firewall
           # owner match (my.host-security.localPortGuards) can name it.
           serviceConfig.DynamicUser = lib.mkForce false;
@@ -128,18 +129,21 @@ in
             "PREFECT_HOME=%S/prefect-worker-${name}"
             "PREFECT_API_URL=http://127.0.0.1:${toString cfg.port}/api"
           ];
-        })
-        cfg.workerPools)
+        }
+      ) cfg.workerPools)
     ];
 
     services.caddy.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
-      ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (cfg.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
-        "reverse_proxy http://127.0.0.1:${toString cfg.port}"
-        "encode gzip"
-      ]);
+      ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (
+        lib.filter (s: s != "") [
+          (lib.optionalString (
+            cfg.allowedNetworks != [ ]
+          ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+          (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
+          "reverse_proxy http://127.0.0.1:${toString cfg.port}"
+          "encode gzip"
+        ]
+      );
     };
   };
 }

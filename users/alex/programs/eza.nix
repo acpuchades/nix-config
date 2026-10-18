@@ -1,10 +1,8 @@
-{ ... }:
-{
-  programs.eza =
-    {
-      enable = true;
-      enableZshIntegration = true;
-      git = true;
-      icons = "auto";
-    };
+_: {
+  programs.eza = {
+    enable = true;
+    enableZshIntegration = true;
+    git = true;
+    icons = "auto";
+  };
 }

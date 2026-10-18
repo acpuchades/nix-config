@@ -29,7 +29,7 @@ in
 
     allowedNetworks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = ''
         Restrict access to these CIDR ranges (empty = unrestricted).
         Note: leaving this empty is required if the tracker script must
@@ -56,12 +56,14 @@ in
       };
     };
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (cfg.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
+    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
+      lib.filter (s: s != "") [
+        (lib.optionalString (
+          cfg.allowedNetworks != [ ]
+        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
         "reverse_proxy http://127.0.0.1:${toString cfg.port}"
         "encode gzip"
-      ]);
+      ]
+    );
   };
 }

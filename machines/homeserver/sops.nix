@@ -31,8 +31,12 @@ in
 
     secrets = {
 
-      "mailjet/token" = { key = "mailjet/token"; };
-      "mailjet/secret" = { key = "mailjet/secret"; };
+      "mailjet/token" = {
+        key = "mailjet/token";
+      };
+      "mailjet/secret" = {
+        key = "mailjet/secret";
+      };
 
       "nextcloud/admin" = {
         owner = config.users.users.nextcloud.name;
@@ -92,29 +96,41 @@ in
       # Get a registration token from the repo's Settings → Actions → Runners →
       # New self-hosted runner (it expires in ~1h, but is only needed at the
       # first registration; the module then persists the runner credentials).
-      "github-runner/acpuchades-site" = { mode = "0400"; };
+      "github-runner/acpuchades-site" = {
+        mode = "0400";
+      };
 
       "passwd/alex" = {
         key = "passwd/alex";
         neededForUsers = true;
       };
 
-      "wireguard/private-key" = { key = "wireguard/private-key"; };
+      "wireguard/private-key" = {
+        key = "wireguard/private-key";
+      };
 
       # One Proton profile per client tunnel, named for the exit country, plus
       # the P2P tunnel's. These track my.protonvpn.clientTunnels.<name> in
       # ./default.nix — a name here that the vault does not carry evaluates fine
       # and then fails at ACTIVATION, which is a worse place to find out.
-      "wireguard-client/wgproton-es" = { key = "wireguard-client/wgproton-es"; };
+      "wireguard-client/wgproton-es" = {
+        key = "wireguard-client/wgproton-es";
+      };
 
-      "wireguard-client/wgproton-in" = { key = "wireguard-client/wgproton-in"; };
+      "wireguard-client/wgproton-in" = {
+        key = "wireguard-client/wgproton-in";
+      };
 
-      "wireguard-client/wgproton-us" = { key = "wireguard-client/wgproton-us"; };
+      "wireguard-client/wgproton-us" = {
+        key = "wireguard-client/wgproton-us";
+      };
 
       # The P2P tunnel's, formerly wgproton-bt — renamed with the others so every
       # profile is wgproton-<role>, role being the exit country for the client
       # tunnels and p2p for the one Transmission lives in.
-      "wireguard-client/wgproton-p2p" = { key = "wireguard-client/wgproton-p2p"; };
+      "wireguard-client/wgproton-p2p" = {
+        key = "wireguard-client/wgproton-p2p";
+      };
 
       # htpasswd hash for the torrent.acpuchades.com basic-auth (rendered into the
       # caddy/torrent-auth template). Generate with: caddy hash-password
@@ -125,32 +141,60 @@ in
       };
 
       # Per-peer preshared keys for wg0 (declarative peers in my.vpn-server.peers)
-      "wireguard/psk/alex-laptop" = { mode = "0400"; };
-      "wireguard/psk/alex-ipad" = { mode = "0400"; };
-      "wireguard/psk/alex-phone-owner" = { mode = "0400"; };
-      "wireguard/psk/alex-phone-personal" = { mode = "0400"; };
-      "wireguard/psk/alex-phone-work" = { mode = "0400"; };
-      "wireguard/psk/mubin-laptop-personal" = { mode = "0400"; };
-      "wireguard/psk/mubin-laptop-work" = { mode = "0400"; };
-      "wireguard/psk/mubin-phone-personal" = { mode = "0400"; };
-      "wireguard/psk/mubin-phone-work" = { mode = "0400"; };
+      "wireguard/psk/alex-laptop" = {
+        mode = "0400";
+      };
+      "wireguard/psk/alex-ipad" = {
+        mode = "0400";
+      };
+      "wireguard/psk/alex-phone-owner" = {
+        mode = "0400";
+      };
+      "wireguard/psk/alex-phone-personal" = {
+        mode = "0400";
+      };
+      "wireguard/psk/alex-phone-work" = {
+        mode = "0400";
+      };
+      "wireguard/psk/mubin-laptop-personal" = {
+        mode = "0400";
+      };
+      "wireguard/psk/mubin-laptop-work" = {
+        mode = "0400";
+      };
+      "wireguard/psk/mubin-phone-personal" = {
+        mode = "0400";
+      };
+      "wireguard/psk/mubin-phone-work" = {
+        mode = "0400";
+      };
 
       "nut/monitor" = {
         mode = "0400";
       };
 
-      "wifi/network" = { key = "wifi/network"; };
-      "wifi/password" = { key = "wifi/password"; };
+      "wifi/network" = {
+        key = "wifi/network";
+      };
+      "wifi/password" = {
+        key = "wifi/password";
+      };
 
       # restic backup: repository password + Backblaze B2 credentials. Read at
       # runtime by the restic-backups-homeserver service, which runs as root, so
       # default ownership (root 0400) is correct. The repo password ALSO lives
       # off this server (it is the only thing that decrypts the snapshots).
       #   Generate the password with: head -c 36 /dev/urandom | base64
-      "backup/restic-password" = { mode = "0400"; };
+      "backup/restic-password" = {
+        mode = "0400";
+      };
       # From the Backblaze B2 Application Key you create for the backup bucket.
-      "backup/b2-account-id" = { mode = "0400"; };   # keyID
-      "backup/b2-account-key" = { mode = "0400"; };  # applicationKey
+      "backup/b2-account-id" = {
+        mode = "0400";
+      }; # keyID
+      "backup/b2-account-key" = {
+        mode = "0400";
+      }; # applicationKey
       # Shared HOMESERVER ntfy publisher token (Bearer auth), reused by every
       # local alert source: the restic backup, my.ntfy-alert's unit-failure
       # notifier, and the UPS NOTIFYCMD. Rendered into ntfy/env below and injected
@@ -159,12 +203,16 @@ in
       #   sudo <ntfy-sh>/bin/ntfy user add --role=user homeserver
       #   sudo <ntfy-sh>/bin/ntfy access homeserver "alerts-*" write-only
       #   sudo <ntfy-sh>/bin/ntfy token add homeserver
-      "ntfy/token" = { mode = "0400"; };
+      "ntfy/token" = {
+        mode = "0400";
+      };
 
       # One SMB password per user (nested samba/<user> branch). Add a line here
       # for each additional user, then store the value with:
       #   sops machines/homeserver/secrets/default.yml
-      "samba/alex" = { mode = "0400"; };
+      "samba/alex" = {
+        mode = "0400";
+      };
 
       # JWT signing key for the `testing` instance (rendered into the
       # fugazi-web/testing/env template below, injected as
@@ -177,7 +225,9 @@ in
       # accept each other's session tokens and an account on staging is an account
       # on the deployment beside it. `prod` gets `fugazi-web/prod/jwt-secret` when
       # it launches, which is a sibling to add rather than a prefix to negotiate.
-      "fugazi-web/testing/jwt-secret" = { mode = "0400"; };
+      "fugazi-web/testing/jwt-secret" = {
+        mode = "0400";
+      };
 
       # Fernet key for the broker-credential vault (FUGAZI_SERVICE_SECRET_KEY),
       # rendered into the same env template. Without it the backend composes a
@@ -199,7 +249,9 @@ in
       # deployments means staging can decrypt the credentials of the one beside
       # it, which is a worse leak than a shared session because it is the
       # venue's secret rather than ours.
-      "fugazi-web/testing/secret-key" = { mode = "0400"; };
+      "fugazi-web/testing/secret-key" = {
+        mode = "0400";
+      };
 
       # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
       # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
@@ -218,7 +270,9 @@ in
       # (NixOS/nixpkgs#321481, the same reason fetchFromGitHub needs
       # forceFetchGit). Only api.github.com and git-over-HTTPS take them, and
       # neither is what the tarball fetcher hits.
-      "github/token" = { mode = "0400"; };
+      "github/token" = {
+        mode = "0400";
+      };
 
       # Agent-IDENTITY secrets (the Telegram bot token + allowlisted ID) go under
       # openclaw/<agent>/ — each agent is its OWN bot, so a second agent is added
@@ -366,43 +420,52 @@ in
       #     record in the zone logs "no 'A' record at Cloudflare" and is skipped,
       #     which looks like a no-op rather than an error.
       "ddclient/config".content = ''
-          cache=/var/cache/ddclient/ddclient.cache
-          usev4=webv4, webv4=checkip.amazonaws.com
-          protocol=cloudflare
-          ttl=120
-          login=token
-          password=${config.sops.placeholder."cloudflare/token"}
+        cache=/var/cache/ddclient/ddclient.cache
+        usev4=webv4, webv4=checkip.amazonaws.com
+        protocol=cloudflare
+        ttl=120
+        login=token
+        password=${config.sops.placeholder."cloudflare/token"}
 
-          # The apex is absent here for the same reason it is absent below:
-          # acpuchades.com is a CNAME to www.acpuchades.com in Cloudflare, so it
-          # follows www's address on its own. It IS still served — Caddy has a
-          # vhost for it that redirects to www — but what it resolves to is no
-          # longer this file's business, and listing a name with no A record just
-          # logs a skip on every run.
-          #
-          # mail.acpuchades.com stays, and stays DNS-only (grey cloud) while these
-          # others are proxied: Cloudflare's proxy does not carry SMTP, so an
-          # orange cloud here would take inbound mail off the air. It is also the
-          # name the fugazi backend STARTTLSes to, matched against the wildcard
-          # cert — see my.fugazi-web's smtpHost.
-          ${ddnsZone "acpuchades.com" [ "analytics" "blog" "mail" "vpn" "www" ]}
+        # The apex is absent here for the same reason it is absent below:
+        # acpuchades.com is a CNAME to www.acpuchades.com in Cloudflare, so it
+        # follows www's address on its own. It IS still served — Caddy has a
+        # vhost for it that redirects to www — but what it resolves to is no
+        # longer this file's business, and listing a name with no A record just
+        # logs a skip on every run.
+        #
+        # mail.acpuchades.com stays, and stays DNS-only (grey cloud) while these
+        # others are proxied: Cloudflare's proxy does not carry SMTP, so an
+        # orange cloud here would take inbound mail off the air. It is also the
+        # name the fugazi backend STARTTLSes to, matched against the wildcard
+        # cert — see my.fugazi-web's smtpHost.
+        ${ddnsZone "acpuchades.com" [
+          "analytics"
+          "blog"
+          "mail"
+          "vpn"
+          "www"
+        ]}
 
-          # fugazi-web's origin is this box's dynamic address, so every name that
-          # resolves to it needs the same DDNS treatment the zone above gets —
-          # otherwise the Cloudflare origin record is static against an address
-          # that moves. www is here despite nothing serving it yet (it is reserved
-          # for `prod`) precisely so its record is current on the day it is: a name
-          # that has been drifting for months is not one to launch on.
-          #
-          # The APEX IS DELIBERATELY ABSENT. fugazitrade.com is a CNAME to
-          # www.fugazitrade.com in Cloudflare, so it follows www's address on its
-          # own and there is nothing here to keep fresh. Listing it would be worse
-          # than redundant: this protocol PATCHes an A record, and the apex has
-          # none, so every run would log "no 'A' record at Cloudflare" and skip —
-          # noise that looks exactly like the real failure mode below.
-          # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
-          # the same prerequisite Caddy's DNS-01 already has for these names.
-          ${ddnsZone "fugazitrade.com" [ "www" "testing" ]}
+        # fugazi-web's origin is this box's dynamic address, so every name that
+        # resolves to it needs the same DDNS treatment the zone above gets —
+        # otherwise the Cloudflare origin record is static against an address
+        # that moves. www is here despite nothing serving it yet (it is reserved
+        # for `prod`) precisely so its record is current on the day it is: a name
+        # that has been drifting for months is not one to launch on.
+        #
+        # The APEX IS DELIBERATELY ABSENT. fugazitrade.com is a CNAME to
+        # www.fugazitrade.com in Cloudflare, so it follows www's address on its
+        # own and there is nothing here to keep fresh. Listing it would be worse
+        # than redundant: this protocol PATCHes an A record, and the apex has
+        # none, so every run would log "no 'A' record at Cloudflare" and skip —
+        # noise that looks exactly like the real failure mode below.
+        # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
+        # the same prerequisite Caddy's DNS-01 already has for these names.
+        ${ddnsZone "fugazitrade.com" [
+          "www"
+          "testing"
+        ]}
       '';
 
       "postfix/sasl_passwd" = {
@@ -410,7 +473,9 @@ in
         group = "postfix";
         mode = "0400";
         content = ''
-          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${config.sops.placeholder."mailjet/secret"}
+          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${
+            config.sops.placeholder."mailjet/secret"
+          }
         '';
       };
 

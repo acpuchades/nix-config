@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 {
   services = {
     # Enable the X11 windowing system.
@@ -120,7 +125,13 @@
         hugo
         go
         rsync
-        (python3.withPackages (ps: with ps; [ weasyprint pyyaml pypdf ]))
+        (python3.withPackages (
+          ps: with ps; [
+            weasyprint
+            pyyaml
+            pypdf
+          ]
+        ))
       ];
 
       # Take over an existing GitHub-side runner of the same name instead of
@@ -223,8 +234,9 @@
   # laying down a fresh one on the parent filesystem, under the mountpoint, where
   # it is both invisible afterwards and a genuine risk of filling the root disk.
   # Read from the option so it follows wherever dataDir is set above.
-  systemd.services.bitcoind-main.unitConfig.RequiresMountsFor =
-    [ config.services.bitcoind.main.dataDir ];
+  systemd.services.bitcoind-main.unitConfig.RequiresMountsFor = [
+    config.services.bitcoind.main.dataDir
+  ];
 
   # Tighter than upstream's ProtectSystem=full: bitcoind parses untrusted P2P
   # traffic from the internet (8333 is open), so a parser bug should land in a
@@ -234,7 +246,11 @@
     ReadWritePaths = [ config.services.bitcoind.main.dataDir ];
     ProtectHome = true;
     CapabilityBoundingSet = "";
-    RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+    RestrictAddressFamilies = [
+      "AF_UNIX"
+      "AF_INET"
+      "AF_INET6"
+    ];
     RestrictNamespaces = true;
     SystemCallFilter = [ "@system-service" ];
     SystemCallArchitectures = "native";

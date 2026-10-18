@@ -1,4 +1,9 @@
-inputs@{ config, lib, host, ...}:
+{
+  config,
+  lib,
+  host,
+  ...
+}:
 {
   sops =
     let
@@ -10,7 +15,8 @@ inputs@{ config, lib, host, ...}:
       gitCryptKeys =
         let
           lines = lib.splitString "\n" (builtins.readFile defaultSopsFile);
-          step = acc: line:
+          step =
+            acc: line:
             let
               entry = builtins.match "( *)([^:]+): *(.*)" line;
               indent = builtins.stringLength (builtins.elemAt entry 0);
@@ -18,17 +24,25 @@ inputs@{ config, lib, host, ...}:
               value = builtins.elemAt entry 2;
               parents = builtins.filter (p: p.indent < indent) acc.stack;
             in
-            if !acc.inside then acc // { inside = line == "git-crypt:"; }
-            else if entry == null || indent == 0 then acc // { inside = false; }
-            else {
-              inside = true;
-              stack = parents ++ [ { inherit indent name; } ];
-              # A leaf carries an inline value (ENC[...]); a group does not.
-              keys = acc.keys ++ lib.optional (value != "")
-                (lib.concatStringsSep "/" (map (p: p.name) parents ++ [ name ]));
-            };
+            if !acc.inside then
+              acc // { inside = line == "git-crypt:"; }
+            else if entry == null || indent == 0 then
+              acc // { inside = false; }
+            else
+              {
+                inside = true;
+                stack = parents ++ [ { inherit indent name; } ];
+                # A leaf carries an inline value (ENC[...]); a group does not.
+                keys =
+                  acc.keys
+                  ++ lib.optional (value != "") (lib.concatStringsSep "/" (map (p: p.name) parents ++ [ name ]));
+              };
         in
-        (builtins.foldl' step { inside = false; stack = [ ]; keys = [ ]; } lines).keys;
+        (builtins.foldl' step {
+          inside = false;
+          stack = [ ];
+          keys = [ ];
+        } lines).keys;
 
       gitCryptSecrets = lib.genAttrs (map (k: "git-crypt/${k}") gitCryptKeys) (name: {
         sopsFile = defaultSopsFile;
@@ -119,7 +133,9 @@ inputs@{ config, lib, host, ...}:
 
           [profiles.homeserver]
           PREFECT_API_URL = "https://prefect.acpuchades.com/api"
-          PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${config.sops.placeholder."prefect/password"}"
+          PREFECT_API_AUTH_STRING = "${config.sops.placeholder."prefect/user"}:${
+            config.sops.placeholder."prefect/password"
+          }"
         '';
       };
 

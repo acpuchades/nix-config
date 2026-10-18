@@ -2,9 +2,7 @@
 {
   programs.ghostty =
     let
-      ghosttyPackage =
-        if pkgs.stdenv.isDarwin then pkgs.ghostty-bin
-        else pkgs.ghostty;
+      ghosttyPackage = if pkgs.stdenv.isDarwin then pkgs.ghostty-bin else pkgs.ghostty;
     in
     {
       enable = true;

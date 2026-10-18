@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.my.vpn-server;
@@ -33,21 +38,26 @@ let
       PUBLIC_KEY=$(echo "$PRIVATE_KEY" | wg pubkey)
       PSK=$(wg genpsk)
 
-      ${if cfg.ula6Prefix == null then ''
-        # IPv4-only AllowedIPs: the server has no IPv6 address on the tunnel and
-        # no IPv6 egress, so advertising ::/0 would install a default v6 route
-        # into a tunnel that black-holes it.
-        ADDRESS="$PEER_IP/32"
-        ALLOWED="0.0.0.0/0"
-      '' else ''
-        # ::/0 too, so a dual-stack client cannot send IPv6 around the tunnel
-        # (its real address to every v6 site). The client gets only a ULA, which
-        # it ranks below IPv4 for global destinations (RFC 6724), and the server
-        # REJECTs v6 forwarding — so v6 fails fast instead of leaking or stalling.
-        IFS=. read -r _ _ net host <<<"$PEER_IP"
-        ADDRESS="$PEER_IP/32, ${cfg.ula6Prefix}:$net::$host/128"
-        ALLOWED="0.0.0.0/0, ::/0"
-      ''}
+      ${
+        if cfg.ula6Prefix == null then
+          ''
+            # IPv4-only AllowedIPs: the server has no IPv6 address on the tunnel and
+            # no IPv6 egress, so advertising ::/0 would install a default v6 route
+            # into a tunnel that black-holes it.
+            ADDRESS="$PEER_IP/32"
+            ALLOWED="0.0.0.0/0"
+          ''
+        else
+          ''
+            # ::/0 too, so a dual-stack client cannot send IPv6 around the tunnel
+            # (its real address to every v6 site). The client gets only a ULA, which
+            # it ranks below IPv4 for global destinations (RFC 6724), and the server
+            # REJECTs v6 forwarding — so v6 fails fast instead of leaking or stalling.
+            IFS=. read -r _ _ net host <<<"$PEER_IP"
+            ADDRESS="$PEER_IP/32, ${cfg.ula6Prefix}:$net::$host/128"
+            ALLOWED="0.0.0.0/0, ::/0"
+          ''
+      }
       umask 077
       cat > "$PEER_SLUG.conf" <<EOF
       [Interface]
@@ -91,7 +101,8 @@ let
   };
 
   # 10.0.N.M/32 -> <ula6Prefix>:N::M/128, the peer's IPv6 twin.
-  ula6Of = cidr:
+  ula6Of =
+    cidr:
     let
       octets = lib.splitString "." (lib.head (lib.splitString "/" cidr));
     in
@@ -110,11 +121,15 @@ let
       iptables -A ${fwdIn} -s ${src} -o ${cfg.interface} -j ACCEPT
     '') cfg.peerToPeerFrom}
     iptables -A ${fwdIn} -o ${cfg.interface} -j DROP
-    ${lib.concatMapStrings (dst: lib.concatMapStrings (src: ''
-      iptables -A ${fwdIn} -s ${src} -d ${dst} -j ACCEPT
-    '') cfg.lanAccessFrom + ''
-      iptables -A ${fwdIn} -d ${dst} -j DROP
-    '') cfg.lanNetworks}
+    ${lib.concatMapStrings (
+      dst:
+      lib.concatMapStrings (src: ''
+        iptables -A ${fwdIn} -s ${src} -d ${dst} -j ACCEPT
+      '') cfg.lanAccessFrom
+      + ''
+        iptables -A ${fwdIn} -d ${dst} -j DROP
+      ''
+    ) cfg.lanNetworks}
     iptables -A ${fwdIn} -j ACCEPT
 
     iptables -N ${fwdOut} 2>/dev/null || iptables -F ${fwdOut}
@@ -226,28 +241,30 @@ in
     };
 
     peers = lib.mkOption {
-      type = lib.types.attrsOf (lib.types.submodule {
-        options = {
-          publicKey = lib.mkOption {
-            type = lib.types.str;
-            description = "The peer's WireGuard public key.";
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            publicKey = lib.mkOption {
+              type = lib.types.str;
+              description = "The peer's WireGuard public key.";
+            };
+            allowedIPs = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              description = ''
+                Tunnel addresses routed to this peer, e.g. [ "10.0.0.2/32" ].
+              '';
+            };
+            presharedKeyFile = lib.mkOption {
+              type = lib.types.nullOr lib.types.path;
+              default = null;
+              description = ''
+                Path to this peer's preshared-key file (typically a sops secret).
+                Null for no preshared key.
+              '';
+            };
           };
-          allowedIPs = lib.mkOption {
-            type = lib.types.listOf lib.types.str;
-            description = ''
-              Tunnel addresses routed to this peer, e.g. [ "10.0.0.2/32" ].
-            '';
-          };
-          presharedKeyFile = lib.mkOption {
-            type = lib.types.nullOr lib.types.path;
-            default = null;
-            description = ''
-              Path to this peer's preshared-key file (typically a sops secret).
-              Null for no preshared key.
-            '';
-          };
-        };
-      });
+        }
+      );
       default = { };
       description = ''
         Declarative WireGuard peers, keyed by a label. These are managed by
@@ -261,8 +278,8 @@ in
   config = lib.mkIf cfg.enable {
     networking.wireguard.interfaces.${cfg.interface} = {
       ips = [ cfg.serverIp ] ++ lib.optional (cfg.ula6Prefix != null) "${cfg.ula6Prefix}::1/48";
-      listenPort = cfg.listenPort;
-      privateKeyFile = cfg.privateKeyFile;
+      inherit (cfg) listenPort;
+      inherit (cfg) privateKeyFile;
       peers = lib.mapAttrsToList (_: peer: {
         inherit (peer) publicKey presharedKeyFile;
         allowedIPs = peer.allowedIPs ++ lib.optionals (cfg.ula6Prefix != null) (map ula6Of peer.allowedIPs);

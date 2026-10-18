@@ -22,7 +22,7 @@ let
   ];
 in
 {
-  home.file = builtins.listToAttrs (map
-    (p: lib.nameValuePair "${zenDir}/${p}/user.js" { source = userJs; })
-    profilePaths);
+  home.file = builtins.listToAttrs (
+    map (p: lib.nameValuePair "${zenDir}/${p}/user.js" { source = userJs; }) profilePaths
+  );
 }

@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 {
   options.my.cloud-suite = {
@@ -46,14 +51,18 @@
 
       allowedNetworks = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
 
       extraApps = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [
-          "calendar" "contacts" "notes" "richdocuments" "tasks"
+          "calendar"
+          "contacts"
+          "notes"
+          "richdocuments"
+          "tasks"
         ];
         description = "Extra NextCloud apps to install from the appstore";
       };
@@ -100,7 +109,7 @@
 
       allowedNetworks = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
     };
@@ -143,7 +152,7 @@
 
       accelerationDevices = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "GPU/render devices for hardware acceleration (e.g. [ \"/dev/dri/renderD128\" ])";
       };
 
@@ -185,7 +194,7 @@
 
       allowedNetworks = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         description = "Restrict access to these CIDR ranges (empty = unrestricted)";
       };
     };
@@ -228,256 +237,279 @@
     };
   };
 
-  config = lib.mkIf config.my.cloud-suite.enable (let
-    emailParts = lib.splitString "@" config.my.cloud-suite.email.from;
-    emailLocalPart = lib.elemAt emailParts 0;
-    emailDomain = lib.elemAt emailParts 1;
-    smtpAuth = config.my.cloud-suite.email.username != null
-      && config.my.cloud-suite.email.passwordFile != null;
-  in {
+  config = lib.mkIf config.my.cloud-suite.enable (
+    let
+      emailParts = lib.splitString "@" config.my.cloud-suite.email.from;
+      emailLocalPart = lib.elemAt emailParts 0;
+      emailDomain = lib.elemAt emailParts 1;
+      smtpAuth =
+        config.my.cloud-suite.email.username != null && config.my.cloud-suite.email.passwordFile != null;
+    in
+    {
 
-    # Postgres databases/users for cloud-suite services
-    services.postgresql = {
-      ensureDatabases = [ "vaultwarden" ];
-      ensureUsers = [
-        {
-          name = "vaultwarden";
-          ensureDBOwnership = true;
-        }
+      # Postgres databases/users for cloud-suite services
+      services.postgresql = {
+        ensureDatabases = [ "vaultwarden" ];
+        ensureUsers = [
+          {
+            name = "vaultwarden";
+            ensureDBOwnership = true;
+          }
+        ];
+      };
+
+      systemd.services.immich-server.environment = {
+        XDG_CACHE_HOME = "/var/cache/immich";
+      };
+
+      systemd.tmpfiles.rules = [
+        "d ${config.my.cloud-suite.nextcloud.dataDir} 0750 nextcloud nextcloud -"
+        "d ${config.my.cloud-suite.bitwarden.dataDir} 0700 vaultwarden vaultwarden -"
+        "d ${config.my.cloud-suite.immich.cacheLocation} 0750 immich immich -"
+        "d ${config.my.cloud-suite.immich.mediaLocation} 0750 immich immich -"
       ];
-    };
 
-    systemd.services.immich-server.environment = {
-      XDG_CACHE_HOME = "/var/cache/immich";
-    };
-
-    systemd.tmpfiles.rules = [
-      "d ${config.my.cloud-suite.nextcloud.dataDir} 0750 nextcloud nextcloud -"
-      "d ${config.my.cloud-suite.bitwarden.dataDir} 0700 vaultwarden vaultwarden -"
-      "d ${config.my.cloud-suite.immich.cacheLocation} 0750 immich immich -"
-      "d ${config.my.cloud-suite.immich.mediaLocation} 0750 immich immich -"
-    ];
-
-    # Order every unit after the filesystem holding the data dir it writes to.
-    #
-    # These dirs are options, so they may well sit on a separate disk (they all
-    # do here). Without this a unit can start while that filesystem is still
-    # mounting and operate on the empty stub directory *underneath* the
-    # mountpoint — the tmpfiles rules above will even have created it. Two
-    # distinct failure modes, depending on how the unit is sandboxed:
-    #
-    #   * With RootDirectory= (a constructed root), the sandbox sees only what
-    #     was explicitly bound in, and the bind is a one-time snapshot: the real
-    #     filesystem arriving later is invisible for the lifetime of the process.
-    #   * Without it (the case here — vaultwarden et al. inherit the host mount
-    #     tree), the real mount does propagate in and shadows the stale bind, so
-    #     the path self-heals. What does NOT heal is whatever the unit wrote to
-    #     the stub during the startup window; it is stranded on the parent
-    #     filesystem, invisible under the mountpoint.
-    #
-    # systemd derives an implicit mount dependency only from RootDirectory=,
-    # WorkingDirectory= and RootImage= — never from BindPaths=/ReadWritePaths=,
-    # which is what vaultwarden's DATA_FOLDER exception below uses. So it has to
-    # be declared. RequiresMountsFor takes a path and resolves it to whichever
-    # mount unit actually provides it, so it stays correct if these options are
-    # pointed somewhere else (and is a harmless no-op when they are on /).
-    systemd.services.vaultwarden.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.bitwarden.dataDir ];
-
-    systemd.services.immich-server.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.immich.mediaLocation config.my.cloud-suite.immich.cacheLocation ];
-
-    systemd.services.immich-machine-learning.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.immich.cacheLocation ];
-
-    systemd.services.nextcloud-setup.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.nextcloud.dataDir ];
-
-    systemd.services.nextcloud-cron.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.nextcloud.dataDir ];
-
-    systemd.services.phpfpm-nextcloud.unitConfig.RequiresMountsFor =
-      [ config.my.cloud-suite.nextcloud.dataDir ];
-
-    # NextCloud
-    services.nextcloud = {
-      enable = true;
-      hostName = config.my.cloud-suite.nextcloud.hostName;
-      datadir = config.my.cloud-suite.nextcloud.dataDir;
-      package = config.my.cloud-suite.nextcloud.package;
-      database.createLocally = true;
-      configureRedis = true;
-      maxUploadSize = config.my.cloud-suite.nextcloud.maxUploadSize;
-      https = true;
-      config = {
-        dbtype = "pgsql";
-        adminuser = "admin";
-        adminpassFile = config.my.cloud-suite.nextcloud.adminPasswordFile;
-      };
-      # Apps are pinned declaratively via extraApps (updated on nixpkgs bumps),
-      # so the App Store is redundant and actively harmful: it pulls a second
-      # copy of a declaratively-managed app into the mutable store-apps dir,
-      # colliding with the /nix/store copy and killing occ upgrade on a
-      # duplicate-class redeclare. Disabling autoUpdateApps alone was not
-      # enough (it bit contacts, then richdocuments): `occ upgrade` runs its
-      # own app-store update pass, gated on appstoreEnable rather than on the
-      # auto-updater. That failure leaves maintenance mode latched on, so the
-      # whole site stays down until the stray store-apps copy is removed by
-      # hand. Cost of false: no in-UI app browser, so adding an app is an
-      # extraApps edit plus a rebuild.
+      # Order every unit after the filesystem holding the data dir it writes to.
       #
-      # Related trap, in the STATEFUL config.php this time (bit us 2026-09-19):
-      # Nextcloud writes its merged in-memory config back to config.php on some
-      # setValue paths, so the generated apps_paths entries get copied there and
-      # ride along across upgrades — including a store path that GC later
-      # removes. The 503 then appears when nix-collect-garbage runs, not when
-      # the package is bumped, and occ cannot repair it because occ itself
-      # refuses to start on the broken config. Fix by editing config.php
-      # directly: delete the whole apps_paths key so override.config.php is its
-      # only source. (trusted_domains being absent from config.php is fine — it
-      # comes from the declarative settings via override.config.php.)
-      appstoreEnable = false;
-      autoUpdateApps.enable = false;
-      extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps
-        (name: config.services.nextcloud.package.packages.apps.${name});
-      extraAppsEnable = true;
-      phpOptions = {
-        "opcache.interned_strings_buffer" = "32";
-        "opcache.memory_consumption" = "256";
-        "opcache.max_accelerated_files" = "10000";
-        "opcache.revalidate_freq" = "1";
-        "opcache.save_comments" = "1";
-        "opcache.jit" = "tracing";
-        "opcache.jit_buffer_size" = "128M";
-      };
-      secrets = lib.optionalAttrs smtpAuth {
-        mail_smtppassword = config.my.cloud-suite.email.passwordFile;
-      };
-      settings = {
-        overwriteprotocol = "https";
-        default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
-        trusted_proxies = [ "127.0.0.1" "::1" ];
-        "integrity.check.disabled" = lib.mkForce false;
-        mail_smtpmode = "smtp";
-        mail_sendmailmode = "smtp";
-        mail_from_address = emailLocalPart;
-        mail_domain = emailDomain;
-        mail_smtphost = config.my.cloud-suite.email.host;
-        mail_smtpport = config.my.cloud-suite.email.port;
-        mail_smtpsecure = if config.my.cloud-suite.email.ssl then "ssl" else "";
-        mail_smtpauth = smtpAuth;
-      } // lib.optionalAttrs smtpAuth {
-        mail_smtpname = config.my.cloud-suite.email.username;
-      } // lib.optionalAttrs (config.my.cloud-suite.nextcloud.maintenanceWindowStart != null) {
-        maintenance_window_start = config.my.cloud-suite.nextcloud.maintenanceWindowStart;
-      };
-    };
+      # These dirs are options, so they may well sit on a separate disk (they all
+      # do here). Without this a unit can start while that filesystem is still
+      # mounting and operate on the empty stub directory *underneath* the
+      # mountpoint — the tmpfiles rules above will even have created it. Two
+      # distinct failure modes, depending on how the unit is sandboxed:
+      #
+      #   * With RootDirectory= (a constructed root), the sandbox sees only what
+      #     was explicitly bound in, and the bind is a one-time snapshot: the real
+      #     filesystem arriving later is invisible for the lifetime of the process.
+      #   * Without it (the case here — vaultwarden et al. inherit the host mount
+      #     tree), the real mount does propagate in and shadows the stale bind, so
+      #     the path self-heals. What does NOT heal is whatever the unit wrote to
+      #     the stub during the startup window; it is stranded on the parent
+      #     filesystem, invisible under the mountpoint.
+      #
+      # systemd derives an implicit mount dependency only from RootDirectory=,
+      # WorkingDirectory= and RootImage= — never from BindPaths=/ReadWritePaths=,
+      # which is what vaultwarden's DATA_FOLDER exception below uses. So it has to
+      # be declared. RequiresMountsFor takes a path and resolves it to whichever
+      # mount unit actually provides it, so it stays correct if these options are
+      # pointed somewhere else (and is a harmless no-op when they are on /).
+      systemd.services.vaultwarden.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.bitwarden.dataDir
+      ];
 
-    # Collabora Online
-    services.collabora-online = {
-      enable = true;
-      port = config.my.cloud-suite.collabora.port;
-      settings = {
-        # Rely on reverse proxy for SSL
-        ssl = {
-          enable = false;
-          termination = true;
-        };
-        # Listen on loopback interface only, and accept requests from ::1
-        net = {
-          listen = "loopback";
-          post_allow.host = ["::1"];
-        };
-        # Restrict loading documents from WOPI Host
-        storage.wopi = {
-          "@allow" = true;
-          host = [config.my.cloud-suite.nextcloud.hostName];
-        };
-        # Set FQDN of server
-        server_name = config.my.cloud-suite.collabora.hostName;
-      };
-    };
+      systemd.services.immich-server.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.immich.mediaLocation
+        config.my.cloud-suite.immich.cacheLocation
+      ];
 
-    # Immich
-    services.immich = {
-      enable = true;
-      host = "127.0.0.1";
-      port = config.my.cloud-suite.immich.port;
-      mediaLocation = config.my.cloud-suite.immich.mediaLocation;
-      package = config.my.cloud-suite.immich.package;
-      accelerationDevices = config.my.cloud-suite.immich.accelerationDevices;
-      database.enable = true;
-      machine-learning.enable = true;
-      openFirewall = false;
-      settings = {
-        server.externalDomain = "https://${config.my.cloud-suite.immich.hostName}";
-        notifications.smtp = {
-          enabled = true;
-          from = config.my.cloud-suite.email.from;
-          transport = {
-            host = config.my.cloud-suite.email.host;
-            port = config.my.cloud-suite.email.port;
-            ignoreCert = !config.my.cloud-suite.email.ssl;
-            username = "";
-            password = "";
+      systemd.services.immich-machine-learning.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.immich.cacheLocation
+      ];
+
+      systemd.services.nextcloud-setup.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.nextcloud.dataDir
+      ];
+
+      systemd.services.nextcloud-cron.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.nextcloud.dataDir
+      ];
+
+      systemd.services.phpfpm-nextcloud.unitConfig.RequiresMountsFor = [
+        config.my.cloud-suite.nextcloud.dataDir
+      ];
+
+      # NextCloud
+      services.nextcloud = {
+        enable = true;
+        hostName = config.my.cloud-suite.nextcloud.hostName;
+        datadir = config.my.cloud-suite.nextcloud.dataDir;
+        package = config.my.cloud-suite.nextcloud.package;
+        database.createLocally = true;
+        configureRedis = true;
+        maxUploadSize = config.my.cloud-suite.nextcloud.maxUploadSize;
+        https = true;
+        config = {
+          dbtype = "pgsql";
+          adminuser = "admin";
+          adminpassFile = config.my.cloud-suite.nextcloud.adminPasswordFile;
+        };
+        # Apps are pinned declaratively via extraApps (updated on nixpkgs bumps),
+        # so the App Store is redundant and actively harmful: it pulls a second
+        # copy of a declaratively-managed app into the mutable store-apps dir,
+        # colliding with the /nix/store copy and killing occ upgrade on a
+        # duplicate-class redeclare. Disabling autoUpdateApps alone was not
+        # enough (it bit contacts, then richdocuments): `occ upgrade` runs its
+        # own app-store update pass, gated on appstoreEnable rather than on the
+        # auto-updater. That failure leaves maintenance mode latched on, so the
+        # whole site stays down until the stray store-apps copy is removed by
+        # hand. Cost of false: no in-UI app browser, so adding an app is an
+        # extraApps edit plus a rebuild.
+        #
+        # Related trap, in the STATEFUL config.php this time (bit us 2026-09-19):
+        # Nextcloud writes its merged in-memory config back to config.php on some
+        # setValue paths, so the generated apps_paths entries get copied there and
+        # ride along across upgrades — including a store path that GC later
+        # removes. The 503 then appears when nix-collect-garbage runs, not when
+        # the package is bumped, and occ cannot repair it because occ itself
+        # refuses to start on the broken config. Fix by editing config.php
+        # directly: delete the whole apps_paths key so override.config.php is its
+        # only source. (trusted_domains being absent from config.php is fine — it
+        # comes from the declarative settings via override.config.php.)
+        appstoreEnable = false;
+        autoUpdateApps.enable = false;
+        extraApps = lib.genAttrs config.my.cloud-suite.nextcloud.extraApps (
+          name: config.services.nextcloud.package.packages.apps.${name}
+        );
+        extraAppsEnable = true;
+        phpOptions = {
+          "opcache.interned_strings_buffer" = "32";
+          "opcache.memory_consumption" = "256";
+          "opcache.max_accelerated_files" = "10000";
+          "opcache.revalidate_freq" = "1";
+          "opcache.save_comments" = "1";
+          "opcache.jit" = "tracing";
+          "opcache.jit_buffer_size" = "128M";
+        };
+        secrets = lib.optionalAttrs smtpAuth {
+          mail_smtppassword = config.my.cloud-suite.email.passwordFile;
+        };
+        settings = {
+          overwriteprotocol = "https";
+          default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
+          trusted_proxies = [
+            "127.0.0.1"
+            "::1"
+          ];
+          "integrity.check.disabled" = lib.mkForce false;
+          mail_smtpmode = "smtp";
+          mail_sendmailmode = "smtp";
+          mail_from_address = emailLocalPart;
+          mail_domain = emailDomain;
+          mail_smtphost = config.my.cloud-suite.email.host;
+          mail_smtpport = config.my.cloud-suite.email.port;
+          mail_smtpsecure = if config.my.cloud-suite.email.ssl then "ssl" else "";
+          mail_smtpauth = smtpAuth;
+        }
+        // lib.optionalAttrs smtpAuth {
+          mail_smtpname = config.my.cloud-suite.email.username;
+        }
+        // lib.optionalAttrs (config.my.cloud-suite.nextcloud.maintenanceWindowStart != null) {
+          maintenance_window_start = config.my.cloud-suite.nextcloud.maintenanceWindowStart;
+        };
+      };
+
+      # Collabora Online
+      services.collabora-online = {
+        enable = true;
+        port = config.my.cloud-suite.collabora.port;
+        settings = {
+          # Rely on reverse proxy for SSL
+          ssl = {
+            enable = false;
+            termination = true;
+          };
+          # Listen on loopback interface only, and accept requests from ::1
+          net = {
+            listen = "loopback";
+            post_allow.host = [ "::1" ];
+          };
+          # Restrict loading documents from WOPI Host
+          storage.wopi = {
+            "@allow" = true;
+            host = [ config.my.cloud-suite.nextcloud.hostName ];
+          };
+          # Set FQDN of server
+          server_name = config.my.cloud-suite.collabora.hostName;
+        };
+      };
+
+      # Immich
+      services.immich = {
+        enable = true;
+        host = "127.0.0.1";
+        port = config.my.cloud-suite.immich.port;
+        mediaLocation = config.my.cloud-suite.immich.mediaLocation;
+        package = config.my.cloud-suite.immich.package;
+        accelerationDevices = config.my.cloud-suite.immich.accelerationDevices;
+        database.enable = true;
+        machine-learning.enable = true;
+        openFirewall = false;
+        settings = {
+          server.externalDomain = "https://${config.my.cloud-suite.immich.hostName}";
+          notifications.smtp = {
+            enabled = true;
+            from = config.my.cloud-suite.email.from;
+            transport = {
+              host = config.my.cloud-suite.email.host;
+              port = config.my.cloud-suite.email.port;
+              ignoreCert = !config.my.cloud-suite.email.ssl;
+              username = "";
+              password = "";
+            };
+          };
+          backup.database = {
+            enabled = true;
+            cronExpression = "0 2 * * *";
+            keepLastAmount = 14;
+          };
+        }
+        // lib.optionalAttrs (config.my.cloud-suite.immich.accelerationDevices != [ ]) {
+          ffmpeg = {
+            accel = "vaapi";
+            accelDecode = true;
           };
         };
-        backup.database = {
-          enabled = true;
-          cronExpression = "0 2 * * *";
-          keepLastAmount = 14;
-        };
-      } // lib.optionalAttrs (config.my.cloud-suite.immich.accelerationDevices != []) {
-        ffmpeg = {
-          accel = "vaapi";
-          accelDecode = true;
-        };
       };
-    };
 
-    services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
-      request_body {
-        max_size ${config.my.cloud-suite.immich.maxUploadSize}
-      }
-      reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port} {
-        transport http {
-          read_timeout ${config.my.cloud-suite.immich.uploadTimeout}
-          write_timeout ${config.my.cloud-suite.immich.uploadTimeout}
-          versions 1.1
-          keepalive off
+      services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
+        request_body {
+          max_size ${config.my.cloud-suite.immich.maxUploadSize}
         }
-        flush_interval -1
-      }
-    '';
+        reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port} {
+          transport http {
+            read_timeout ${config.my.cloud-suite.immich.uploadTimeout}
+            write_timeout ${config.my.cloud-suite.immich.uploadTimeout}
+            versions 1.1
+            keepalive off
+          }
+          flush_interval -1
+        }
+      '';
 
-    services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.cloud-suite.bitwarden.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.bitwarden.allowedNetworks}\nabort @denied")
-        # Vaultwarden takes the client IP (login rate limit, failed-login log)
-        # from X-Real-IP, which Caddy would otherwise pass through as the
-        # client sent it.
-        "reverse_proxy http://127.0.0.1:8000 {\n  header_up X-Real-IP {client_ip}\n}"
-        "encode gzip"
-      ]);
+      services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
+        lib.concatStringsSep "\n"
+          (
+            lib.filter (s: s != "") [
+              (lib.optionalString (config.my.cloud-suite.bitwarden.allowedNetworks != [ ])
+                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.bitwarden.allowedNetworks}\nabort @denied"
+              )
+              # Vaultwarden takes the client IP (login rate limit, failed-login log)
+              # from X-Real-IP, which Caddy would otherwise pass through as the
+              # client sent it.
+              "reverse_proxy http://127.0.0.1:8000 {\n  header_up X-Real-IP {client_ip}\n}"
+              "encode gzip"
+            ]
+          );
 
-    services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.cloud-suite.collabora.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.collabora.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}"
-        "encode gzip"
-      ]);
+      services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig =
+        lib.concatStringsSep "\n"
+          (
+            lib.filter (s: s != "") [
+              (lib.optionalString (config.my.cloud-suite.collabora.allowedNetworks != [ ])
+                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.collabora.allowedNetworks}\nabort @denied"
+              )
+              "reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}"
+              "encode gzip"
+            ]
+          );
 
-    # Periodic HTTP probe of Nextcloud, because unit state alone cannot see the
-    # failure mode that already happened once (2026-09-19): a broken stateful
-    # config.php 503s every request while phpfpm-nextcloud, nextcloud-cron and
-    # nextcloud-setup all stay green. The probe goes through loopback nginx
-    # (the Host header selects the vhost), so it exercises nginx → php-fpm →
-    # config.php without depending on Caddy or the LAN gate. Maintenance mode
-    # is treated as healthy: the nightly backup quiesce is expected state.
-    systemd.services.nextcloud-health =
-      lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
+      # Periodic HTTP probe of Nextcloud, because unit state alone cannot see the
+      # failure mode that already happened once (2026-09-19): a broken stateful
+      # config.php 503s every request while phpfpm-nextcloud, nextcloud-cron and
+      # nextcloud-setup all stay green. The probe goes through loopback nginx
+      # (the Host header selects the vhost), so it exercises nginx → php-fpm →
+      # config.php without depending on Caddy or the LAN gate. Maintenance mode
+      # is treated as healthy: the nightly backup quiesce is expected state.
+      systemd.services.nextcloud-health = lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
         description = "Nextcloud HTTP health probe (status.php)";
         serviceConfig = {
           Type = "oneshot";
@@ -493,8 +525,7 @@
             || { echo "unhealthy status.php: $body" >&2; exit 1; }
         '';
       };
-    systemd.timers.nextcloud-health =
-      lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
+      systemd.timers.nextcloud-health = lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnCalendar = config.my.cloud-suite.nextcloud.healthCheck.interval;
@@ -502,52 +533,64 @@
         };
       };
 
-    # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
-    services.nginx = {
-      enable = true;
-      recommendedProxySettings = true;
-    };
-    services.nginx.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}" = {
-      listen = [{ addr = "127.0.0.1"; port = 8080; ssl = false; }];
-      forceSSL = lib.mkForce false;
-      enableACME = lib.mkForce false;
-    };
-    services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig =
-      lib.concatStringsSep "\n" (lib.filter (s: s != "") [
-        (lib.optionalString (config.my.cloud-suite.nextcloud.allowedNetworks != [])
-          "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.nextcloud.allowedNetworks}\nabort @denied")
-        ''
-          reverse_proxy http://127.0.0.1:8080 {
-            transport http {
-              versions 1.1
-            }
-          }
-          encode gzip''
-      ]);
-
-    # Bitwarden (Vaultwarden)
-    services.vaultwarden = {
-      enable = true;
-      dbBackend = "postgresql";
-      config = {
-        DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
-        # Setting `config` replaces the module's loopback default; pin it so
-        # the port Caddy proxies to never ends up on every interface.
-        ROCKET_ADDRESS = "127.0.0.1";
-        ROCKET_PORT = 8000;
-        DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
-        SIGNUPS_ALLOWED = config.my.cloud-suite.bitwarden.signupsAllowed;
-        DATA_FOLDER = config.my.cloud-suite.bitwarden.dataDir;
-        SMTP_HOST = config.my.cloud-suite.email.host;
-        SMTP_PORT = config.my.cloud-suite.email.port;
-        SMTP_SSL = config.my.cloud-suite.email.ssl;
-        SMTP_FROM = config.my.cloud-suite.email.from;
+      # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
+      services.nginx = {
+        enable = true;
+        recommendedProxySettings = true;
       };
-    };
+      services.nginx.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}" = {
+        listen = [
+          {
+            addr = "127.0.0.1";
+            port = 8080;
+            ssl = false;
+          }
+        ];
+        forceSSL = lib.mkForce false;
+        enableACME = lib.mkForce false;
+      };
+      services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig =
+        lib.concatStringsSep "\n"
+          (
+            lib.filter (s: s != "") [
+              (lib.optionalString (config.my.cloud-suite.nextcloud.allowedNetworks != [ ])
+                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.nextcloud.allowedNetworks}\nabort @denied"
+              )
+              ''
+                reverse_proxy http://127.0.0.1:8080 {
+                  transport http {
+                    versions 1.1
+                  }
+                }
+                encode gzip''
+            ]
+          );
 
-    # vaultwarden runs with ProtectSystem=strict; allow writes to a custom DATA_FOLDER
-    systemd.services.vaultwarden.serviceConfig.ReadWritePaths =
-      [ config.my.cloud-suite.bitwarden.dataDir ];
+      # Bitwarden (Vaultwarden)
+      services.vaultwarden = {
+        enable = true;
+        dbBackend = "postgresql";
+        config = {
+          DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
+          # Setting `config` replaces the module's loopback default; pin it so
+          # the port Caddy proxies to never ends up on every interface.
+          ROCKET_ADDRESS = "127.0.0.1";
+          ROCKET_PORT = 8000;
+          DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";
+          SIGNUPS_ALLOWED = config.my.cloud-suite.bitwarden.signupsAllowed;
+          DATA_FOLDER = config.my.cloud-suite.bitwarden.dataDir;
+          SMTP_HOST = config.my.cloud-suite.email.host;
+          SMTP_PORT = config.my.cloud-suite.email.port;
+          SMTP_SSL = config.my.cloud-suite.email.ssl;
+          SMTP_FROM = config.my.cloud-suite.email.from;
+        };
+      };
 
-  });
+      # vaultwarden runs with ProtectSystem=strict; allow writes to a custom DATA_FOLDER
+      systemd.services.vaultwarden.serviceConfig.ReadWritePaths = [
+        config.my.cloud-suite.bitwarden.dataDir
+      ];
+
+    }
+  );
 }

@@ -33,7 +33,6 @@
       '';
     };
 
-    systemd.services.caddy.serviceConfig.EnvironmentFile =
-      config.my.acme-cloudflare.credentialsFile;
+    systemd.services.caddy.serviceConfig.EnvironmentFile = config.my.acme-cloudflare.credentialsFile;
   };
 }

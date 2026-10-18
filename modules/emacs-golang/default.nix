@@ -1,4 +1,4 @@
-{ ... }:
+_:
 
 {
   # The toolchain (gopls, gotools) comes from modules/golang-dev — the

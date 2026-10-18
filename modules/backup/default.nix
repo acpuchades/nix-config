@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 #
 # backup — encrypted off-site backups with restic.
@@ -55,12 +60,17 @@ let
   # `postgres` system user, so this is how we authenticate without a password.
   asPostgres = c: "${pkgs.util-linux}/bin/runuser -u postgres -- ${c}";
 
-  excludeArg = lib.concatStringsSep " "
-    (map (e: "'${lib.escape [ "'" ] e}'") cfg.postgres.excludeDatabases);
+  excludeArg = lib.concatStringsSep " " (
+    map (e: "'${lib.escape [ "'" ] e}'") cfg.postgres.excludeDatabases
+  );
 
   prepareScript = pkgs.writeShellApplication {
     name = "backup-prepare";
-    runtimeInputs = [ pkgs.coreutils pkgs.util-linux pkgs.sqlite ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.util-linux
+      pkgs.sqlite
+    ];
     text = ''
       umask 077
       rm -rf ${staging}
@@ -85,7 +95,9 @@ let
         dbs=$(${asPostgres psql} -tAc \
           "SELECT datname FROM pg_database \
              WHERE datistemplate = false AND datallowconn \
-               AND datname NOT IN ('postgres'${lib.optionalString (cfg.postgres.excludeDatabases != []) ", ${excludeArg}"});")
+               AND datname NOT IN ('postgres'${
+                 lib.optionalString (cfg.postgres.excludeDatabases != [ ]) ", ${excludeArg}"
+               });")
         # Write via a root shell redirect (not pg_dump --file), so the output
         # file is created by root: the postgres process only writes to the
         # already-open fd, and can't otherwise write into the 0700 staging dir.
@@ -126,8 +138,7 @@ let
 
   # Paths restic actually uploads: the caller's file paths, plus the staging
   # dir whenever we produced dumps there.
-  backupPaths = cfg.paths
-    ++ lib.optional (cfg.postgres.enable || cfg.sqliteDatabases != []) staging;
+  backupPaths = cfg.paths ++ lib.optional (cfg.postgres.enable || cfg.sqliteDatabases != [ ]) staging;
 in
 {
   options.my.backup = {
@@ -159,13 +170,13 @@ in
 
     paths = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "Filesystem paths to back up (in addition to DB dumps).";
     };
 
     exclude = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [];
+      default = [ ];
       description = "restic exclude patterns applied to the backed-up paths.";
     };
 
@@ -190,26 +201,28 @@ in
       };
       excludeDatabases = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [];
+        default = [ ];
         example = [ "nominatim" ];
         description = "Databases to skip (large and/or reproducible from source).";
       };
     };
 
     sqliteDatabases = lib.mkOption {
-      type = lib.types.listOf (lib.types.submodule {
-        options = {
-          name = lib.mkOption {
-            type = lib.types.str;
-            description = "Label for the staged copy (<name>.sqlite).";
+      type = lib.types.listOf (
+        lib.types.submodule {
+          options = {
+            name = lib.mkOption {
+              type = lib.types.str;
+              description = "Label for the staged copy (<name>.sqlite).";
+            };
+            path = lib.mkOption {
+              type = lib.types.str;
+              description = "Path to the live SQLite database file.";
+            };
           };
-          path = lib.mkOption {
-            type = lib.types.str;
-            description = "Path to the live SQLite database file.";
-          };
-        };
-      });
-      default = [];
+        }
+      );
+      default = [ ];
       description = "SQLite databases to snapshot with `.backup` before upload.";
     };
 
@@ -226,7 +239,11 @@ in
 
     pruneOpts = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "--keep-daily 7" "--keep-weekly 4" "--keep-monthly 6" ];
+      default = [
+        "--keep-daily 7"
+        "--keep-weekly 4"
+        "--keep-monthly 6"
+      ];
       description = "restic forget/prune retention policy.";
     };
 
@@ -246,7 +263,14 @@ in
   # ntfy token/topic as every other homeserver alert.
   config = lib.mkIf cfg.enable {
     services.restic.backups.homeserver = {
-      inherit (cfg) repository passwordFile environmentFile exclude pruneOpts timerConfig;
+      inherit (cfg)
+        repository
+        passwordFile
+        environmentFile
+        exclude
+        pruneOpts
+        timerConfig
+        ;
       paths = backupPaths;
       initialize = true;
       backupPrepareCommand = lib.getExe prepareScript;

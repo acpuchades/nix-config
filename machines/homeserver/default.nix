@@ -39,7 +39,11 @@ let
   uplinkInterface = "wlp3s0";
   adminEmailAddress = "admin@acpuchades.com";
   # Shared with fugazi.nix — the whys live in networks.nix.
-  inherit (import ./networks.nix) lanNetwork wgNetworks privateNetworks cloudflareNetworks;
+  inherit (import ./networks.nix)
+    lanNetwork
+    privateNetworks
+    cloudflareNetworks
+    ;
 
   # nixpkgs-unstable, instantiated ONCE for the handful of packages this host
   # deliberately runs ahead of nixpkgs-26.05. Three consumers today: openclaw and
@@ -72,7 +76,13 @@ let
   };
 
   configuration =
-    inputs@{ config, options, lib, pkgs, ... }:
+    inputs@{
+      config,
+      options,
+      lib,
+      pkgs,
+      ...
+    }:
     {
       imports = [
         # Include the results of the hardware scan.
@@ -209,75 +219,79 @@ let
         credentialsFile = config.sops.templates."caddy/cloudflare-env".path;
       };
 
-      my.vpn-server = let
-        # alex's own peers (named alex-*): the ones trusted past the internet
-        # and this host — into the LAN and to each other.
-        alexPeerAddresses = lib.concatLists (lib.mapAttrsToList
-          (name: peer: lib.optionals (lib.hasPrefix "alex-" name) peer.allowedIPs)
-          config.my.vpn-server.peers);
-      in {
-        enable = true;
-        privateKeyFile = config.sops.secrets."wireguard/private-key".path;
-        serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
-        serverEndpoint = "vpn.acpuchades.com:51820";
-        clientDns = "10.0.0.1";
-        upstreamInterface = uplinkInterface;
-        # Every peer's IPv6 goes into the tunnel (and is refused there) instead
-        # of around it.
-        ula6Prefix = "fd7a:9c0e:2b1d";
-        # Peers reach the internet and this host's services; only alex's own
-        # devices reach the LAN (router, printer, IoT) and each other.
-        lanNetworks = [ lanNetwork ];
-        lanAccessFrom = alexPeerAddresses;
-        peerToPeerFrom = alexPeerAddresses;
-        peers = {
-          alex-laptop = {
-            publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
-            allowedIPs = [ "10.0.1.2/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-laptop".path;
-          };
-          alex-ipad = {
-            publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
-            allowedIPs = [ "10.0.1.3/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
-          };
-          alex-phone-owner = {
-            publicKey = "jzXucrFLPLL0og1QXP75R+oYUyTqNCRnD6gw3SMPI0M=";
-            allowedIPs = [ "10.0.1.4/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-owner".path;
-          };
-          alex-phone-personal = {
-            publicKey = "ayIoJHS1QIvbyixoVTRMuDB+RMoh6N7mgscfP7RY7wY=";
-            allowedIPs = [ "10.0.1.5/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-personal".path;
-          };
-          alex-phone-work = {
-            publicKey = "r/0vQN5JOLlWWOBwIi9SRJj8F06FrMP9xywO+PMs6Rc=";
-            allowedIPs = [ "10.0.1.6/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-work".path;
-          };
-          mubin-laptop-personal = {
-            publicKey = "Wk0VWDe0KNjrG8fDDTfFXpuNfZ8BNxLxhYiF1LFyCA4=";
-            allowedIPs = [ "10.0.1.10/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-personal".path;
-          };
-          mubin-laptop-work = {
-            publicKey = "3jUISZl3AQAScASjxNnoGPvayi1/3jbLUzVS+6Kzfmo=";
-            allowedIPs = [ "10.0.1.11/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-work".path;
-          };
-          mubin-phone-personal = {
-            publicKey = "y5XFrY1BT+lG25DM+0se9GBTiGcAv69Ag2twUbcWugE=";
-            allowedIPs = [ "10.0.1.12/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
-          };
-          mubin-phone-work = {
-            publicKey = "efhtt7/eRYIvoyda7u+0GUA7y6WOxZtbPjIUNwdOsF4=";
-            allowedIPs = [ "10.0.1.13/32" ];
-            presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
+      my.vpn-server =
+        let
+          # alex's own peers (named alex-*): the ones trusted past the internet
+          # and this host — into the LAN and to each other.
+          alexPeerAddresses = lib.concatLists (
+            lib.mapAttrsToList (
+              name: peer: lib.optionals (lib.hasPrefix "alex-" name) peer.allowedIPs
+            ) config.my.vpn-server.peers
+          );
+        in
+        {
+          enable = true;
+          privateKeyFile = config.sops.secrets."wireguard/private-key".path;
+          serverPublicKey = "dnwEk7CRGfzDFJruRiCzmGNURU6Ba/OLUDpQ5ImO7G4=";
+          serverEndpoint = "vpn.acpuchades.com:51820";
+          clientDns = "10.0.0.1";
+          upstreamInterface = uplinkInterface;
+          # Every peer's IPv6 goes into the tunnel (and is refused there) instead
+          # of around it.
+          ula6Prefix = "fd7a:9c0e:2b1d";
+          # Peers reach the internet and this host's services; only alex's own
+          # devices reach the LAN (router, printer, IoT) and each other.
+          lanNetworks = [ lanNetwork ];
+          lanAccessFrom = alexPeerAddresses;
+          peerToPeerFrom = alexPeerAddresses;
+          peers = {
+            alex-laptop = {
+              publicKey = "96LNh5CjJQZuWpqquXlmc9cNU5sJzalzKcTcnMhqWSI=";
+              allowedIPs = [ "10.0.1.2/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/alex-laptop".path;
+            };
+            alex-ipad = {
+              publicKey = "qek70rKtZ2KpDk5JvEJrc3HDP9E0i+uwyv8BJpFi4GQ=";
+              allowedIPs = [ "10.0.1.3/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/alex-ipad".path;
+            };
+            alex-phone-owner = {
+              publicKey = "jzXucrFLPLL0og1QXP75R+oYUyTqNCRnD6gw3SMPI0M=";
+              allowedIPs = [ "10.0.1.4/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-owner".path;
+            };
+            alex-phone-personal = {
+              publicKey = "ayIoJHS1QIvbyixoVTRMuDB+RMoh6N7mgscfP7RY7wY=";
+              allowedIPs = [ "10.0.1.5/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-personal".path;
+            };
+            alex-phone-work = {
+              publicKey = "r/0vQN5JOLlWWOBwIi9SRJj8F06FrMP9xywO+PMs6Rc=";
+              allowedIPs = [ "10.0.1.6/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/alex-phone-work".path;
+            };
+            mubin-laptop-personal = {
+              publicKey = "Wk0VWDe0KNjrG8fDDTfFXpuNfZ8BNxLxhYiF1LFyCA4=";
+              allowedIPs = [ "10.0.1.10/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-personal".path;
+            };
+            mubin-laptop-work = {
+              publicKey = "3jUISZl3AQAScASjxNnoGPvayi1/3jbLUzVS+6Kzfmo=";
+              allowedIPs = [ "10.0.1.11/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-laptop-work".path;
+            };
+            mubin-phone-personal = {
+              publicKey = "y5XFrY1BT+lG25DM+0se9GBTiGcAv69Ag2twUbcWugE=";
+              allowedIPs = [ "10.0.1.12/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-personal".path;
+            };
+            mubin-phone-work = {
+              publicKey = "efhtt7/eRYIvoyda7u+0GUA7y6WOxZtbPjIUNwdOsF4=";
+              allowedIPs = [ "10.0.1.13/32" ];
+              presharedKeyFile = config.sops.secrets."wireguard/psk/mubin-phone-work".path;
+            };
           };
         };
-      };
 
       # ProtonVPN egress. Everything about how this is wired — policy routing,
       # the fail-closed chains, the P2P namespace, NAT-PMP, the watchdog — lives
@@ -352,7 +366,8 @@ let
 
           # India and the United States. Tables 42/43/44 are taken
           # (es, p2p, resolver), hence 45 and 46.
-          "in" = { # quoted: `in` is a Nix keyword
+          "in" = {
+            # quoted: `in` is a Nix keyword
             server = "IN#13";
             table = 45;
             sourcePrefixes = [ "10.0.2.0/24" ];
@@ -417,7 +432,7 @@ let
         # torrents that actually have the peers to saturate it.
         maxDownKBps = 15000; # ~120 Mbit/s full speed (overnight 23:00–08:00)
         maxUpKBps = 2500;
-        altDownKBps = 4000;  # ~32 Mbit/s turtle (active 08:00–23:00)
+        altDownKBps = 4000; # ~32 Mbit/s turtle (active 08:00–23:00)
         altUpKBps = 1000;
       };
 
@@ -440,22 +455,70 @@ let
           # which avoids the split-horizon blip a global AdGuard rewrite caused
           # for remote clients re-resolving the endpoint through the tunnel when
           # switching networks while connected.
-          { domain = "acpuchades.com";           answer = homeServerLocalAddress; }
-          { domain = "www.acpuchades.com";       answer = homeServerLocalAddress; }
-          { domain = "blog.acpuchades.com";      answer = homeServerLocalAddress; }
-          { domain = "home.acpuchades.com";      answer = homeServerLocalAddress; }
-          { domain = "adguard.acpuchades.com";   answer = homeServerLocalAddress; }
-          { domain = "bitwarden.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "photos.acpuchades.com";    answer = homeServerLocalAddress; }
-          { domain = "media.acpuchades.com";     answer = homeServerLocalAddress; }
-          { domain = "cloud.acpuchades.com";     answer = homeServerLocalAddress; }
-          { domain = "collabora.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "prefect.acpuchades.com";   answer = homeServerLocalAddress; }
-          { domain = "status.acpuchades.com";    answer = homeServerLocalAddress; }
-          { domain = "analytics.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "dashboard.acpuchades.com"; answer = homeServerLocalAddress; }
-          { domain = "torrent.acpuchades.com";   answer = homeServerLocalAddress; }
-          { domain = "nominatim.acpuchades.com"; answer = homeServerLocalAddress; }
+          {
+            domain = "acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "www.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "blog.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "home.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "adguard.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "bitwarden.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "photos.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "media.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "cloud.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "collabora.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "prefect.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "status.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "analytics.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "dashboard.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "torrent.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "nominatim.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
           # fugazitrade.com is public AND proxied through Cloudflare, so these
           # rewrites do more than save a hairpin: a client resolving through
           # AdGuard reaches Caddy directly instead of going out to the CF edge and
@@ -471,12 +534,24 @@ let
           # rewritten here anyway, because a CNAME would otherwise send a LAN
           # client out to the CF edge and back for a name this resolver can answer
           # directly.
-          { domain = "fugazitrade.com";          answer = homeServerLocalAddress; }
-          { domain = "www.fugazitrade.com";      answer = homeServerLocalAddress; }
-          { domain = "testing.fugazitrade.com";  answer = homeServerLocalAddress; }
+          {
+            domain = "fugazitrade.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "www.fugazitrade.com";
+            answer = homeServerLocalAddress;
+          }
+          {
+            domain = "testing.fugazitrade.com";
+            answer = homeServerLocalAddress;
+          }
           # ntfy is reachable from off-LAN by design; this rewrite only affects
           # clients resolving through AdGuard, and just saves them a NAT hairpin.
-          { domain = "ntfy.acpuchades.com";      answer = homeServerLocalAddress; }
+          {
+            domain = "ntfy.acpuchades.com";
+            answer = homeServerLocalAddress;
+          }
         ];
       };
 
@@ -574,8 +649,17 @@ let
           # Store: appstoreEnable = false drops store-apps from apps_paths, so
           # anything still living only there silently disappears.
           extraApps = [
-            "bookmarks" "calendar" "contacts" "gpoddersync" "groupfolders"
-            "guests" "news" "nextpod" "notes" "richdocuments" "tasks"
+            "bookmarks"
+            "calendar"
+            "contacts"
+            "gpoddersync"
+            "groupfolders"
+            "guests"
+            "news"
+            "nextpod"
+            "notes"
+            "richdocuments"
+            "tasks"
             "twofactor_webauthn"
           ];
           # Probes status.php every 15 min; nextcloud-health is wired into
@@ -617,7 +701,11 @@ let
         # readable by Jellyfin; shareGroup = "share" makes jellyfin join the
         # group and provisions the folders root:share 2770 (matching the share).
         mediaDir = "/srv/shared/Media";
-        libraries = [ "Movies" "Shows" "Music" ];
+        libraries = [
+          "Movies"
+          "Shows"
+          "Music"
+        ];
         shareGroup = "share";
         # Internal hosts only — Caddy restricts the vhost to the LAN/VPN subnets.
         allowedNetworks = privateNetworks;
@@ -632,27 +720,29 @@ let
         enable = true;
         allowedNetworks = privateNetworks;
         # Driverless printers (IPP Everywhere / AirPrint) need no driver package.
-        drivers = [];
+        drivers = [ ];
         # Network printer at 192.168.2.3, driverless (IPP Everywhere). model =
         # "everywhere" derives the PPD by querying the device, so the printer must
         # be reachable at `nixos-rebuild switch` time. Print to it with
         # `lp -d HomePrinter <file>`.
         defaultPrinter = "HomePrinter";
-        printers = [{
-          name = "HomePrinter";
-          location = "Home";
-          deviceUri = "ipp://192.168.2.3/ipp/print";
-          model = "everywhere";
-          # Default to two-sided (long-edge / book-style). `Duplex` is the
-          # standard PPD keyword CUPS's driverless PPD exposes; DuplexNoTumble =
-          # flip on the long edge, DuplexTumble = short edge, None = one-sided.
-          # This only sets the DEFAULT — a job can still override per-print
-          # (`lp -o Duplex=None`/`sides=one-sided`). If the generated PPD names the
-          # option `sides` instead, use `sides = "two-sided-long-edge";` here.
-          ppdOptions = {
-            Duplex = "DuplexNoTumble";
-          };
-        }];
+        printers = [
+          {
+            name = "HomePrinter";
+            location = "Home";
+            deviceUri = "ipp://192.168.2.3/ipp/print";
+            model = "everywhere";
+            # Default to two-sided (long-edge / book-style). `Duplex` is the
+            # standard PPD keyword CUPS's driverless PPD exposes; DuplexNoTumble =
+            # flip on the long edge, DuplexTumble = short edge, None = one-sided.
+            # This only sets the DEFAULT — a job can still override per-print
+            # (`lp -o Duplex=None`/`sides=one-sided`). If the generated PPD names the
+            # option `sides` instead, use `sides = "two-sided-long-edge";` here.
+            ppdOptions = {
+              Duplex = "DuplexNoTumble";
+            };
+          }
+        ];
       };
 
       # Nominatim. Kept LAN/WireGuard-only: a public geocoding endpoint is a
@@ -801,10 +891,10 @@ let
         # Data-directory paths tracked off their owning modules' options so they
         # follow any relocation. /home covers both alex and eva (incl. Maildir).
         paths = [
-          "/home"                                            # all user homes (caches excluded below)
-          "/var/lib/openclaw/eva"                            # eva agent state/memory
-          "/var/lib/hass"                                    # Home Assistant config
-          "/srv/prefect"                                     # Prefect data dir
+          "/home" # all user homes (caches excluded below)
+          "/var/lib/openclaw/eva" # eva agent state/memory
+          "/var/lib/hass" # Home Assistant config
+          "/srv/prefect" # Prefect data dir
 
           # --- machine identity, not user data --------------------------------
           # These are what turn "the config rebuilds" into "the machine comes
@@ -821,11 +911,11 @@ let
           # not only in Vaultwarden, which is hosted here. With those two in hand
           # this entry is what makes a rebuild on new hardware a restore rather
           # than a re-key of every secret in the repo.
-          "/etc/ssh"                                         # host keys = the sops age identity
+          "/etc/ssh" # host keys = the sops age identity
           # NixOS records its allocated uids/gids here. Restore the data without
           # it and every dynamically-allocated service user can come back on a
           # different number, leaving the restored trees owned by nobody.
-          "/var/lib/nixos"                                   # uid/gid allocation map
+          "/var/lib/nixos" # uid/gid allocation map
           # ACME account key + issued certs. Re-issue is automatic, so this is
           # only a convenience — but it means HTTPS works the minute the new box
           # boots, and it keeps a migration from spending a Let's Encrypt
@@ -843,10 +933,10 @@ let
           # transfer restarts from zero and re-hashes.
           "/var/lib/transmission"
 
-          config.my.cloud-suite.nextcloud.dataDir            # /srv/encrypted/nextcloud
-          config.my.cloud-suite.bitwarden.dataDir            # /srv/encrypted/vaultwarden
-          config.my.cloud-suite.immich.mediaLocation         # /srv/encrypted/immich
-          "/srv/shared"                                      # Samba share (media/downloads excluded)
+          config.my.cloud-suite.nextcloud.dataDir # /srv/encrypted/nextcloud
+          config.my.cloud-suite.bitwarden.dataDir # /srv/encrypted/vaultwarden
+          config.my.cloud-suite.immich.mediaLocation # /srv/encrypted/immich
+          "/srv/shared" # Samba share (media/downloads excluded)
         ];
 
         # Keep the big, re-acquirable trees out of the off-site copy.
@@ -883,9 +973,9 @@ let
           "/home/*/.cargo"
           "/home/*/.npm"
           "/home/*/.local/share/uv"
-          "/home/*/.claude/projects/*/shell-snapshots"       # ephemeral shell captures
-          "/home/alex/nominatim"                             # Geofabrik import data, re-downloadable
-          "/home/alex/nix-config"                            # version-controlled + pushed to GitHub
+          "/home/*/.claude/projects/*/shell-snapshots" # ephemeral shell captures
+          "/home/alex/nominatim" # Geofabrik import data, re-downloadable
+          "/home/alex/nix-config" # version-controlled + pushed to GitHub
         ];
 
         # PostgreSQL: dump every live DB except the huge, re-importable Nominatim
@@ -894,15 +984,25 @@ let
 
         # SQLite services snapshot-copied consistently before upload.
         sqliteDatabases = [
-          { name = "grafana"; path = "/var/lib/grafana/grafana.db"; }
-          { name = "ntfy";    path = "/var/lib/ntfy-sh/user.db"; }
+          {
+            name = "grafana";
+            path = "/var/lib/grafana/grafana.db";
+          }
+          {
+            name = "ntfy";
+            path = "/var/lib/ntfy-sh/user.db";
+          }
         ];
 
         # Quiesce NextCloud during the backup so files + DB agree.
         nextcloudOccBin = "${config.services.nextcloud.occ}/bin/nextcloud-occ";
 
         # Retention: 7 daily, 4 weekly, 6 monthly (host default; here explicit).
-        pruneOpts = [ "--keep-daily 7" "--keep-weekly 4" "--keep-monthly 6" ];
+        pruneOpts = [
+          "--keep-daily 7"
+          "--keep-weekly 4"
+          "--keep-monthly 6"
+        ];
 
         # Failure alerting is handled by my.ntfy-alert — restic-backups-homeserver
         # is opted into its failureUnits below.
@@ -947,8 +1047,10 @@ let
       # LAN/VPN-only). Immich's mobile app logs in once per device, Umami's
       # admin rarely — 10/min per client never touches a real user.
       my.web-server.loginRateLimits = {
-        ${config.my.cloud-suite.immich.hostName}.paths =
-          [ "/api/auth/login" "/api/auth/change-password" ];
+        ${config.my.cloud-suite.immich.hostName}.paths = [
+          "/api/auth/login"
+          "/api/auth/change-password"
+        ];
         ${config.my.web-analytics.hostName}.paths = [ "/api/auth/login" ];
       };
 
@@ -962,44 +1064,109 @@ let
           {
             name = "Cloud";
             services = [
-              { name = "Nextcloud";   icon = "nextcloud.png";        description = "Files, calendar, contacts & notes"; href = "https://${config.my.cloud-suite.nextcloud.hostName}"; }
-              { name = "Immich";      icon = "immich.png";           description = "Photo & video backup";              href = "https://${config.my.cloud-suite.immich.hostName}"; }
-              { name = "Vaultwarden"; icon = "vaultwarden.png";      description = "Password manager";                  href = "https://${config.my.cloud-suite.bitwarden.hostName}"; }
-              { name = "Collabora";   icon = "collabora-online.png"; description = "Online office suite";               href = "https://${config.my.cloud-suite.collabora.hostName}"; }
+              {
+                name = "Nextcloud";
+                icon = "nextcloud.png";
+                description = "Files, calendar, contacts & notes";
+                href = "https://${config.my.cloud-suite.nextcloud.hostName}";
+              }
+              {
+                name = "Immich";
+                icon = "immich.png";
+                description = "Photo & video backup";
+                href = "https://${config.my.cloud-suite.immich.hostName}";
+              }
+              {
+                name = "Vaultwarden";
+                icon = "vaultwarden.png";
+                description = "Password manager";
+                href = "https://${config.my.cloud-suite.bitwarden.hostName}";
+              }
+              {
+                name = "Collabora";
+                icon = "collabora-online.png";
+                description = "Online office suite";
+                href = "https://${config.my.cloud-suite.collabora.hostName}";
+              }
             ];
           }
           {
             name = "Media";
             services = [
-              { name = "Jellyfin"; icon = "jellyfin.png"; description = "Movies, shows & music"; href = "https://${config.my.media-server.hostName}"; }
+              {
+                name = "Jellyfin";
+                icon = "jellyfin.png";
+                description = "Movies, shows & music";
+                href = "https://${config.my.media-server.hostName}";
+              }
             ];
           }
           {
             name = "Smart Home";
             services = [
-              { name = "Home Assistant"; icon = "home-assistant.png"; description = "Home automation"; href = "https://${config.my.home-assistant.hostName}"; }
+              {
+                name = "Home Assistant";
+                icon = "home-assistant.png";
+                description = "Home automation";
+                href = "https://${config.my.home-assistant.hostName}";
+              }
             ];
           }
           {
             name = "Network";
             services = [
-              { name = "AdGuard Home"; icon = "adguard-home.png"; description = "DNS filtering"; href = "https://${config.my.dns-filtering.virtualHost}"; }
-              { name = "Transmission"; icon = "transmission.png"; description = "BitTorrent client"; href = "https://${config.my.transmission-server.hostName}"; }
+              {
+                name = "AdGuard Home";
+                icon = "adguard-home.png";
+                description = "DNS filtering";
+                href = "https://${config.my.dns-filtering.virtualHost}";
+              }
+              {
+                name = "Transmission";
+                icon = "transmission.png";
+                description = "BitTorrent client";
+                href = "https://${config.my.transmission-server.hostName}";
+              }
             ];
           }
           {
             name = "Workflows & Analytics";
             services = [
-              { name = "Prefect";     icon = "https://avatars.githubusercontent.com/u/39270919?s=200&v=4"; description = "Workflow orchestration"; href = "https://${config.my.prefect-server.virtualHost}"; }
-              { name = "Umami";       icon = "umami.png";      description = "Web analytics";          href = "https://${config.my.web-analytics.hostName}"; }
-              { name = "Nominatim";   icon = "mdi-map-search"; description = "OSM geocoding & reverse geocoding"; href = "https://${config.my.geocoding.hostName}"; }
+              {
+                name = "Prefect";
+                icon = "https://avatars.githubusercontent.com/u/39270919?s=200&v=4";
+                description = "Workflow orchestration";
+                href = "https://${config.my.prefect-server.virtualHost}";
+              }
+              {
+                name = "Umami";
+                icon = "umami.png";
+                description = "Web analytics";
+                href = "https://${config.my.web-analytics.hostName}";
+              }
+              {
+                name = "Nominatim";
+                icon = "mdi-map-search";
+                description = "OSM geocoding & reverse geocoding";
+                href = "https://${config.my.geocoding.hostName}";
+              }
             ];
           }
           {
             name = "Monitoring";
             services = [
-              { name = "Grafana"; icon = "grafana.png"; description = "Metrics & dashboards"; href = "https://${config.my.server-stats.hostName}"; }
-              { name = "ntfy";    icon = "mdi-bell-ring";  description = "Push notifications";    href = "https://${config.my.push-notifications.hostName}"; }
+              {
+                name = "Grafana";
+                icon = "grafana.png";
+                description = "Metrics & dashboards";
+                href = "https://${config.my.server-stats.hostName}";
+              }
+              {
+                name = "ntfy";
+                icon = "mdi-bell-ring";
+                description = "Push notifications";
+                href = "https://${config.my.push-notifications.hostName}";
+              }
             ];
           }
         ];
@@ -1022,7 +1189,11 @@ let
           # Runs arbitrary code as prefect. alex uses the CLI against it.
           prefect = {
             port = config.my.prefect-server.port;
-            users = [ "caddy" "prefect" "alex" ];
+            users = [
+              "caddy"
+              "prefect"
+              "alex"
+            ];
           };
           # Spam thresholds, maps and learning.
           rspamd = {
@@ -1060,7 +1231,12 @@ let
         resolveTo = "127.0.0.1";
         healthCheck = {
           enable = true;
-          diskPaths = [ "/" "/boot" "/srv" "/srv/encrypted" ];
+          diskPaths = [
+            "/"
+            "/boot"
+            "/srv"
+            "/srv/encrypted"
+          ];
         };
         bootNotice.enable = true;
         # All suitable long-running services whose failure means a real outage.
@@ -1128,7 +1304,6 @@ let
         ];
       };
 
-
       my.prefect-server = {
         enable = true;
         # Loopback only: the Prefect API has NO authentication, and it can run
@@ -1177,13 +1352,15 @@ in
 
 nixpkgs.lib.nixosSystem {
   system = "x86_64-linux";
-  modules = import ../common.nix {
-    host = "homeserver";
-    homeDirectory = "/home/alex";
-    inherit sops-nix emacs-overlay pkgsUnstable;
-  } ++ [
-    configuration
-    sops-nix.nixosModules.sops
-    home-manager.nixosModules.home-manager
-  ];
+  modules =
+    import ../common.nix {
+      host = "homeserver";
+      homeDirectory = "/home/alex";
+      inherit sops-nix emacs-overlay pkgsUnstable;
+    }
+    ++ [
+      configuration
+      sops-nix.nixosModules.sops
+      home-manager.nixosModules.home-manager
+    ];
 }
