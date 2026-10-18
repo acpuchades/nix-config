@@ -59,8 +59,8 @@ let
   # One alert per OUTAGE, not per failure: a crash-looping unit fires OnFailure
   # on every restart (40 alerts in five minutes for openclaw-eva, 2026-10-18).
   # The first failure alerts and leaves a marker; while it exists the unit's
-  # further failures are muted. failureSweep removes it once the unit has been
-  # healthy for failureClearAfter, re-arming the alert.
+  # further failures are muted. failureSweep announces the recovery and removes
+  # it once the unit has been healthy for failureClearAfter, re-arming the alert.
   failedDir = "/var/lib/ntfy-alert/failed";
 
   # OnFailure handler body. Invoked as: failure-notify <failed-unit-name>
@@ -81,7 +81,7 @@ let
       ntfy-notify "${cfg.systemTopic}" \
         "$unit failed on $host" \
         high "x" \
-        "Unit $unit entered failed state at $(date -Is). Further failures are muted until it has been healthy for ${toString (cfg.failureClearAfter / 60)} min. Inspect with: journalctl -u $unit -n 50" \
+        "Unit $unit entered failed state at $(date -Is). Further failures are muted until it has been healthy for ${toString (cfg.failureClearAfter / 60)} min, which is announced. Inspect with: journalctl -u $unit -n 50" \
         && touch "$marker" || true
     '';
   };
@@ -93,10 +93,11 @@ let
   # satisfies either, however briefly it comes up between failures.
   failureSweep = pkgs.writeShellApplication {
     name = "ntfy-failure-sweep";
-    runtimeInputs = [ pkgs.coreutils pkgs.systemd ];
+    runtimeInputs = [ ntfyNotify pkgs.coreutils pkgs.nettools pkgs.systemd ];
     text = ''
       [ -d ${failedDir} ] || exit 0
       now=$(date +%s)
+      host=$(hostname)
       for marker in ${failedDir}/*; do
         [ -e "$marker" ] || continue
         unit=''${marker##*/}
@@ -114,19 +115,26 @@ let
           -p LoadState -p ActiveState -p Result \
           -p ActiveEnterTimestamp -p InactiveEnterTimestamp)
 
-        clear=0
+        clear=0 since=""
         if [ "$load" = not-found ]; then
-          clear=1   # no longer exists (dropped from failureUnits)
+          # No longer exists (dropped from failureUnits): nothing recovered.
+          rm -f "$marker"
+          continue
         elif [ "$active" = active ] && [ -n "$enter" ] \
              && [ $((now - enter)) -ge ${toString cfg.failureClearAfter} ]; then
-          clear=1
+          clear=1; since="up since $(date -Is -d "@$enter")"
         elif [ "$active" = inactive ] && [ "$result" = success ] \
              && [ -n "$leave" ] && [ "$leave" -gt "$alerted" ]; then
-          clear=1
+          clear=1; since="ran successfully at $(date -Is -d "@$leave")"
         fi
         if [ "$clear" = 1 ]; then
           echo "$unit is healthy again; re-arming its failure alert"
-          rm -f "$marker"
+          # Like the failure alert, the marker goes only once this is
+          # delivered: an undelivered recovery is retried on the next sweep.
+          ntfy-notify "${cfg.systemTopic}" "Resolved: $unit on $host" default \
+            "white_check_mark" \
+            "$unit is healthy again ($since). It failed at $(date -Is -d "@$alerted")." \
+            && rm -f "$marker"
         fi
       done
     '';
@@ -400,9 +408,10 @@ in
             };
           };
           ntfy-failure-sweep = {
-            description = "Re-arm ntfy failure alerts for recovered units";
+            description = "Announce recovered units and re-arm their ntfy failure alerts";
             serviceConfig = {
               Type = "oneshot";
+              EnvironmentFile = cfg.environmentFile;
               StateDirectory = "ntfy-alert";
               ExecStart = lib.getExe failureSweep;
             };
