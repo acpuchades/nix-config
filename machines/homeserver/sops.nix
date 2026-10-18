@@ -484,16 +484,11 @@ in
       # (`fugazi_testing`) — the module derives the OS user, the Postgres role and
       # the database from that one name so peer auth over the socket works.
       #
-      # Consumed by the `testing` INSTANCE and nothing else. It used to be
-      # `fugazi/env`, shared with the database of the same name, because the
-      # instance was the running deployment renamed and neither was worth
-      # disturbing for a label. Both were separated when the rename was finished:
-      # the instance now has a database, a role, a user and a key that are all its
-      # own, and the flat `fugazi/` prefix gave way to `fugazi-web/<instance>/` so
-      # that `prod` is a sibling to add rather than a name to argue over. Sharing
-      # one key across the two would make a session minted on staging valid on the
-      # deployment, since the signature is all the API checks — separate databases
-      # do not help, the token carries its claims.
+      # Consumed by the `testing` INSTANCE and nothing else; every instance gets
+      # its own `fugazi-web/<instance>/` secrets. Never share the key across
+      # instances: a session minted on staging would be valid on the other,
+      # since the signature is all the API checks — separate databases do not
+      # help, the token carries its claims.
       "fugazi-web/testing/env" = {
         owner = "fugazi_testing";
         group = "fugazi_testing";

@@ -94,50 +94,14 @@ let
     || icfg.toolkit.cli != [ ]
     || icfg.toolkit.notes != "";
 
-  # OpenClaw's bundled-plugin loader opens each plugin "public surface" through a
-  # boundary check that REJECTS any file with st_nlink > 1 (openBoundaryFileSync
-  # { rejectHardlinks: true }, enforced once in dist/safe-open-sync-*.js). That is
-  # a hardening against a surface file being hardlinked in from outside the
-  # package boundary — but on NixOS with nix.settings.auto-optimise-store = true
-  # the store hardlink-dedupes identical files, so EVERY bundled surface lands at
-  # nlink >= 2 and the loader throws "Unable to open bundled plugin public surface
-  # <plugin>/<file>".
-  #
-  # It bites selectively: the Claude path never trips it, because the claude-cli
-  # agentRuntime shells out to the `claude` binary and never loads an internal
-  # provider surface. Any NATIVE provider does load one — so a google/gemini
-  # failover (or the duckduckgo web-search plugin) fails on EVERY dispatch, not
-  # just when the failover fires, because the model-routing setup loads the
-  # provider's surface up front. That is what silently broke all of eva's traffic
-  # the moment a gemini fallback was configured.
-  #
-  # Neutralize BOTH nlink>1 enforcement sites so hardlinked store files are
-  # accepted. openBoundaryFileSync (in safe-open-sync-*.js) rejects hardlinks
-  # TWICE: once on the pre-open lstat (preOpenStat) and again on the post-open
-  # fstat (openedStat) — an open-then-verify pair guarding against a TOCTOU swap.
-  # The store dedups identical files to nlink>=2, so both fire. The original
-  # patch disabled only the preOpenStat check, so google/gemini (and any native
-  # provider) surfaces STILL failed to load on every dispatch via the openedStat
-  # check — silently breaking all of eva's traffic once a gemini fallback was set.
-  # The realpath / allowed-type / symlink / max-bytes checks are left intact;
-  # only the two nlink>1 rejections are disabled. Safe here: the files are our own
-  # read-only /nix/store on a single-tenant host — the guard buys nothing against
-  # a hardlink attack and only fights the store's own dedup. Each --replace-fail
-  # makes a version bump that moves/renames either expression fail the build
-  # loudly rather than silently shipping the broken (unpatched) loader.
-  # HARDLINK-GUARD WORKAROUND REMOVED 2026-07-27 — testing the upstream fix
-  # directly. 2026.5.x shipped a bundled-plugin loader that rejected any surface
-  # file with st_nlink > 1 (openBoundaryFileSync { rejectHardlinks:true } in
-  # safe-open-sync-*.js); with NixOS `auto-optimise-store` dedup (nlink>=2) that
-  # broke every bundled surface, so we used to `overrideAttrs` the two rejection
-  # sites to `false`. openclaw 2026.6.x FIXED it upstream — the loaders now pass
-  # `rejectHardlinks: false` (facade-loader / security-runtime in the 2026.6.33
-  # source) — so we now run the package UNMODIFIED to confirm the fix holds under
-  # our store settings. If bundled surfaces / native providers fail to load on
-  # dispatch again ("Unable to open bundled plugin public surface …"), restore the
-  # overrideAttrs patch from git history. Name kept (referenced throughout); it is
-  # now simply the unmodified package.
-  openclawPatched = cfg.package;
+  # Run unmodified. If bundled plugin surfaces fail to load after a bump
+  # ("Unable to open bundled plugin public surface …"), the loader is rejecting
+  # hardlinked store files again (auto-optimise-store leaves them at nlink>=2):
+  # restore the overrideAttrs patch that disabled both rejectHardlinks sites
+  # from git history (removed 2026-07-27). It bites only native providers
+  # (gemini failover, duckduckgo search) — the claude-cli runtime never loads a
+  # surface — and then on every dispatch, not just on failover.
+  openclawPkg = cfg.package;
 
   # The config file is re-seeded from Nix on every start, so it is assembled
   # here in three layers with a clear precedence:
@@ -573,7 +537,7 @@ let
         && cp "$approvalsLegacy" "$approvalsTmp/legacy.json"
       mv -f "$approvalsLegacy" "$approvalsLegacy.imported"
     fi
-    if ${lib.getExe openclawPatched} approvals get --json > "$approvalsTmp/live.json" \
+    if ${lib.getExe openclawPkg} approvals get --json > "$approvalsTmp/live.json" \
       && ${lib.getExe pkgs.jq} -e '.file | objects' "$approvalsTmp/live.json" > /dev/null \
       && ${lib.getExe pkgs.jq} -n \
         --slurpfile seed ${execApprovalsSeed} \
@@ -594,7 +558,7 @@ let
           | .agents["*"] //= {}
           | .agents["*"].allowlist = ($cur + $add)
         ' > "$approvalsTmp/merged.json" \
-      && ${lib.getExe openclawPatched} approvals set --file "$approvalsTmp/merged.json" > /dev/null; then
+      && ${lib.getExe openclawPkg} approvals set --file "$approvalsTmp/merged.json" > /dev/null; then
       :
     else
       echo "[openclaw] WARN: exec-approvals seed failed; leaving stored approvals untouched" >&2
@@ -771,7 +735,7 @@ in
   # has no raw `gpg` to reach for (it carries its own network and key-import
   # surface).
   environment.systemPackages = [
-    openclawPatched
+    openclawPkg
     pkgs.claude-code
     pkgs.jq
     pkgs.ripgrep
@@ -1030,7 +994,7 @@ in
         ${gpgSeed}
         tmpl=${configTemplate}
         if [ -f ${configFile} ]; then
-          ${lib.getExe openclawPatched} config patch --file "$tmpl" || {
+          ${lib.getExe openclawPkg} config patch --file "$tmpl" || {
             rm -f ${configFile}
             install -m 0640 "$tmpl" ${configFile}
           }
@@ -1051,12 +1015,12 @@ in
           echo "[openclaw] WARN: no Telegram ID in ${icfg.telegram.allowedIdFile}; allowlist stays empty (bot answers no one)" >&2
         fi
         printf '{"channels":{"telegram":{"allowFrom":[%s]}},"commands":{"ownerAllowFrom":[%s]}}' "$ids" "$ids" \
-          | ${lib.getExe openclawPatched} config patch --stdin
+          | ${lib.getExe openclawPkg} config patch --stdin
 
         # (3) Seed the operator-declared exec-approval globs (single jq merge).
         ${allowlistSeedMerge}
       '';
-      ExecStart = "${lib.getExe openclawPatched} gateway";
+      ExecStart = "${lib.getExe openclawPkg} gateway";
       # `always`, NOT `on-failure`: openclaw's own restart paths (the
       # gateway-restart tool, a config-reload restart) do a "full process
       # restart (supervisor restart)" — the gateway EXITS 0 expecting a

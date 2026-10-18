@@ -145,7 +145,6 @@ in
 
     clientTunnels = {
       es = {
-        # Was ES#124 (130.195.250.98) until it went dark 2026-09-26.
         server = "ES#95";
         table = 42;
         sourcePrefixes = [ "10.0.1.0/24" ];

@@ -4,8 +4,7 @@
 # generates NO fileSystems/boot/swap config at runtime — hardware-configuration
 # .nix remains the single authority for the live system, and importing this
 # module changes nothing about how the machine boots today. What it buys is
-# that the layout MIGRATION.md used to describe only in prose is now
-# executable: on new hardware,
+# an executable layout: on new hardware,
 #
 #   disko --mode format --flake .#homeserver   # NEW blank disks only
 #   disko --mode mount  --flake .#homeserver   # or: mount an existing layout

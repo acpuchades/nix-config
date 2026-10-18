@@ -20,8 +20,7 @@
   # command hangs ~180s then dies with no Telegram prompt. 2026.6.33 adds the
   # responder (claude-live-session answers can_use_tool → allow under YOLO
   # else a clean deny) AND fixes the bundled-surface hardlink guard upstream
-  # (plugin loaders now pass rejectHardlinks:false), which is what our
-  # openclawPatched workaround exists to paper over. Taken from the shared
+  # (plugin loaders now pass rejectHardlinks:false). Taken from the shared
   # `pkgsUnstable` instance in ./default.nix, whose insecure permit is
   # this package's (openclaw is marked knownVulnerabilities upstream) and is
   # version-agnostic, so it survives unstable's openclaw bumps without

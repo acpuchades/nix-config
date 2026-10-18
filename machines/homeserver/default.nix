@@ -82,11 +82,9 @@ let
         # Include the results of the hardware scan.
         ./hardware-configuration.nix
 
-        # Host settings, imported as a module so it merges with full option
-        # semantics. It used to be `import ./settings.nix inputs // { ... }`,
-        # but that shallow `//` silently dropped any top-level key settings.nix
-        # shared with the inline set — notably `services` (losing the journald
-        # SystemMaxUse cap) and `security` (masking the sudo setting).
+        # Host files, imported as modules so they merge with full option
+        # semantics (never `import … // { … }`: a shallow `//` silently drops
+        # any top-level key both sides set).
         ./settings.nix
         ./services.nix
         ./networking.nix

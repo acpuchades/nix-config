@@ -444,13 +444,11 @@ in
           serviceConfig = {
             RestartSec = 5;
             WorkingDirectory = "/var/lib/fugazi-web-${name}";
-            # No hardening here any more: upstream applies one shared sandbox to
-            # all three unit families (API, maintenance, every deployment tick) of
-            # every instance, which supersedes the two settings this used to add. It
-            # is stricter than what ran before — a seccomp filter, no AF_NETLINK,
-            # ProtectProc — and the backend forks a native process pool for runs, so
-            # if a backtest or an SMTP send starts failing after an input bump, look
-            # here first:
+            # No hardening here: upstream applies one shared sandbox to all three
+            # unit families (API, maintenance, every deployment tick) of every
+            # instance — a seccomp filter, no AF_NETLINK, ProtectProc — and the
+            # backend forks a native process pool for runs, so if a backtest or an
+            # SMTP send starts failing after an input bump, look here first:
             # `journalctl -u fugazi-web-${name} | grep -i 'signal\|denied'`.
           };
         };
@@ -544,12 +542,9 @@ in
               # one is a CPU amplifier pointed at this box, and forgot-password also
               # sends mail to an address the caller names.
               #
-              # These are the nginx zones this replaced (10r/m + burst 20; 30r/s +
-              # burst 60), translated rather than copied: caddy-ratelimit is a
-              # sliding window with no separate burst, so `events` is what the burst
-              # allowance used to be. Nothing that worked before is refused now, and
-              # the sustained ceiling tightens from "refills forever" to that same
-              # number per window.
+              # caddy-ratelimit is a sliding window with no separate burst, so
+              # `events` is the burst allowance and also the sustained ceiling per
+              # window.
               #
               # Inside the `route`, so it runs after `abort @denied` and before the
               # handlers -- directives in a route apply as written, which is also

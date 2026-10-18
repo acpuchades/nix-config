@@ -112,16 +112,11 @@ let
   # the table above is ordered. Said as a token rather than a number of seconds so
   # it reads as one of the entries it selects.
   #
-  # `1m` for staging, moved down from `5m` on 2026-08-30. It was held at `5m` on the
-  # grounds that at 1440 and 480 ticks a day the tick would be starting again as
-  # often as it finishes — which was true of a process that pays a fresh start every
-  # bar, and is the measurement that had to come first. It has: a 5m tick ran
-  # 1.26-1.77s wall and 828ms CPU to advance one deployment, of which ~0.53s was the
-  # interpreter and fugazi import. What retires the objection is not the number but
-  # the driver — `deploymentTickResident` below puts 1m, 3m and 5m on long-running
-  # units that pay that start once instead of 1440 times, so the three finest
-  # cadences no longer start a process per bar at all. Coarser ones keep their
-  # timers, where a start amortised over an hour is not worth a resident process.
+  # `1m` for staging. A fresh process per bar would not keep up at 1m/3m (a 5m
+  # tick measured 1.26-1.77s wall, ~0.53s of it interpreter + import), which is
+  # why `deploymentTickResident` below puts 1m, 3m and 5m on long-running units
+  # that pay the start once. Coarser cadences keep their timers, where a start
+  # amortised over an hour is not worth a resident process.
   #
   # Still a cost, and still the operator's own: each of these is a venue round trip
   # and a wallet resume per live deployment, on a box also running bitcoind,
@@ -356,13 +351,10 @@ let
       # schema is what a client generator or an agent reads and it describes the
       # RUNNING build, unlike the committed docs/openapi.json.
       #
-      # Staging used to set "1" so the API surface could be tried interactively.
-      # Measured, that bought nothing: FastAPI renders both viewers from
-      # cdn.jsdelivr.net (ReDoc also pulls Google Fonts) while
-      # SecurityHeadersMiddleware serves `default-src 'none'` on every response,
-      # so the browser blocks every stylesheet and script and /docs comes up
-      # BLANK — verified against this instance, HTTP 200 with 1013 bytes whose
-      # every asset is cross-origin. Enabling it bought a blank page.
+      # Don't set "1" to try the API interactively: FastAPI renders both
+      # viewers from cdn.jsdelivr.net (ReDoc also pulls Google Fonts) while
+      # SecurityHeadersMiddleware serves `default-src 'none'`, so the browser
+      # blocks every asset and /docs comes up BLANK.
       #
       # An explicit "0" is NOT the way to say this, which is the trap worth
       # recording: upstream forces all THREE off on a literal zero, schema
@@ -471,22 +463,12 @@ let
       FUGAZI_SERVICE_SIGNUP_ALLOWED_EMAIL_DOMAINS = "fugazitrade.com";
 
       # --- risk breakers: deliberately ABSENT, and not an oversight ---------
-      # This block used to set MAX_DRAWDOWN_FRACTION = "0.10" and
-      # MAX_DAILY_LOSS_FRACTION = "0.05". Upstream DELETED both knobs; an
-      # instance that still sets them is simply ignored, because `RiskSettings`
-      # is now the kill switch and nothing else. So those two lines read as a
-      # 10%/5% net over every deployment here and did nothing whatsoever —
-      # which is worse than having no breaker, because it is configuration
-      # shaped like a safety net.
-      #
-      # The reasoning that put them here was sound and the mechanism moved out
-      # from under it. An instance-wide ceiling was never the operator's number
-      # to set: a drawdown fraction is a claim about how a PARTICULAR strategy
-      # ought to behave, made by somebody who has never seen it, about money
-      # that is not theirs. A trend book that draws 40% and recovers is doing
-      # its job; a mean-reversion book that draws 15% is broken. No single
-      # value is right for both, which is why upstream removed the rung rather
-      # than retuning it.
+      # Do NOT add MAX_DRAWDOWN_FRACTION / MAX_DAILY_LOSS_FRACTION: upstream
+      # deleted both knobs and silently ignores them, so they would read as a
+      # safety net while doing nothing. An instance-wide ceiling is not the
+      # operator's number anyway — a drawdown fraction is a claim about a
+      # PARTICULAR strategy (a trend book drawing 40% may be fine, a
+      # mean-reversion book drawing 15% is broken).
       #
       # What replaces it is per-deployment `RiskTolerance`, resolved
       # request > account default > nothing — and there is deliberately NO
@@ -560,15 +542,13 @@ in
   #
   # `prod` will be a sibling entry when it launches: its own hostName, its own
   # port (8765 is left free for exactly that), its own database and its own JWT
-  # secret at `fugazi-web/prod/jwt-secret`. Adding it is now only additive —
-  # this instance no longer holds any name `prod` would want, which was the
-  # point of finishing the rename below. Its intended shape is in git — commit
-  # 3224eb7, which had both instances defined — rather than sitting here
-  # commented out.
+  # secret at `fugazi-web/prod/jwt-secret`. Adding it is purely additive — this
+  # instance holds no name `prod` would want. Its intended shape is in git
+  # (commit 3224eb7, which had both instances defined).
   # Caddy-level counterpart of the app-level trustedProxies below: with the CF
   # edges declared, {client_ip} in the vhost's rate-limit keys resolves to the
-  # real visitor instead of the edge, so one busy edge no longer shares — and
-  # one abuser no longer drains — a whole per-edge auth budget.
+  # real visitor instead of the edge, so one busy edge does not share — and one
+  # abuser does not drain — a whole per-edge auth budget.
   my.web-server.trustedProxies = cloudflareNetworks;
 
   my.fugazi-web.instances.testing = {
@@ -676,8 +656,7 @@ in
   # cadence capped at 15m, and the budget is 85% of that, set only below an
   # hour. It also scales `AccuracySec` to 2% of the period and jitters the
   # start by up to a tenth of it, where systemd's defaults are a flat 60s and
-  # nothing. modules/fugazi-web carried a shim for the first two until
-  # 2026-08-28 and no longer does — upstream's arithmetic was byte-identical.
+  # nothing.
   # It applies to the timed cadences only — a resident unit is not started per
   # bar, so it has no start deadline to size.
   services.fugazi-web.instances.testing.deploymentTickFrequencies = fugaziTickFrequencies "testing";

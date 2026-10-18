@@ -1065,14 +1065,10 @@ in
       ]
     );
     # NB: do NOT set channels.telegram.attachmentRoots — that key exists ONLY
-    # under channels.imessage, so putting it on the telegram channel tripped
-    # the strict schema ("channels.telegram: must NOT have additional
-    # properties") and crash-looped the config seed, taking eva down (fixed
-    # 2026-07-27). It was an attempt to fix a "media folder restriction" on
-    # outbound attachments, but the key doesn't exist for telegram. If eva
-    # genuinely can't attach files from her workspace, revisit with a key
-    # that actually validates for this channel — it is NOT an exfil concern,
-    # since the DM is locked to the single owner ID.
+    # under channels.imessage; on telegram the strict schema rejects it and
+    # the config seed crash-loops, taking eva down. For an attachment
+    # restriction, find a key that validates for this channel (not an exfil
+    # concern: the DM is locked to the single owner ID).
     # Exec approval prompts: make Telegram a NATIVE approval client so a
     # missed command raises an inline approve/deny prompt in the owner DM
     # (tap to allow-once / allow-always / deny) instead of blocking silently

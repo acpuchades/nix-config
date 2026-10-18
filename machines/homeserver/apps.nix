@@ -146,8 +146,8 @@ in
     shareGroup = "share";
     # Internal hosts only — Caddy restricts the vhost to the LAN/VPN subnets.
     allowedNetworks = privateNetworks;
-    # TV/mobile apps keep talking straight to :8096 (this replaced the old
-    # blanket LAN accept; drop it if every client moves to the vhost).
+    # TV/mobile apps talk straight to :8096; drop this if every client moves
+    # to the vhost.
     allowedDirectNetworks = privateNetworks;
     # Same GPU render node Immich uses; enable the codecs in Jellyfin's UI.
     accelerationDevices = [ "/dev/dri/renderD128" ];

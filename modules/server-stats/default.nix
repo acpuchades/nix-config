@@ -334,9 +334,8 @@ in
       (lib.mkIf config.services.caddy.enable {
         # Per-server metrics via my.web-server (single owner of the `servers`
         # global block), exposed on a loopback-only plain-HTTP site: the admin API
-        # that used to serve /metrics on 2019 now lives on a 0600 unix socket
-        # (it leaks basic-auth hashes to any local account), and Prometheus can't
-        # scrape a unix socket. The `metrics` handler serves only metrics — no
+        # lives on a 0600 unix socket (it leaks basic-auth hashes to any local
+        # account), and Prometheus can't scrape a unix socket. The `metrics` handler serves only metrics — no
         # config, no hashes — so loopback exposure is fine.
         my.web-server.serverMetrics = true;
         services.caddy.virtualHosts."http://127.0.0.1:2019".extraConfig = "metrics";
