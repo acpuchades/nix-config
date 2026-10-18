@@ -20,8 +20,23 @@ sops machines/homeserver/secrets/default.yml
 sops users/alex/secrets/default.yml
 ```
 
+**Format and lint (CI enforces all three):**
+```bash
+nix fmt                                              # nixfmt, every .nix file
+nix run nixpkgs#statix -- check .                    # statix.toml disables repeated_keys
+nix run nixpkgs#deadnix -- --no-lambda-pattern-names .
+```
+
 For package changes, verify with `nix build`, not just `nix eval` — eval passes
-even when a package fails to compile.
+even when a package fails to compile. For pure refactors, compare both hosts'
+`config.system.build.toplevel.drvPath` before and after (the MacBook's embeds
+the git revision via `darwin-version.json`; `nix-diff` shows it).
+
+CI (`.github/workflows/`): `eval.yml` evaluates both hosts and runs the lints
+on every push/PR; `build.yml` builds the patched derivations (prefect,
+rPackages.gtsummary → V8) weekly and when the lock or their overlays change.
+Both evaluating workflows share `.github/actions/private-inputs-netrc` for the
+private fugazi-web inputs.
 
 ## Architecture Overview
 
@@ -111,8 +126,10 @@ never aborts a save); every package is deferred unless it must act at startup
   rspamd, ACME STARTTLS
 - `dns-filtering` — AdGuard Home + DNSCrypt
 - `vpn-server` — WireGuard server (peers declared under `my.vpn-server.peers`
-  in `machines/homeserver/default.nix`)
-- `openclaw` — multi-agent module (`my.openclaw.instances.<name>`), runs eva
+  in `machines/homeserver/vpn.nix`)
+- `openclaw` — multi-agent module (`my.openclaw.instances.<name>`), runs eva;
+  split into `default.nix` (module shell), `instance-options.nix` (per-instance
+  schema), `instance.nix` (fragment builder), `instance-actions.nix` (wrappers)
 - `fugazi-web` — host topology around the upstream flake's module (public
   backtest service, www.fugazitrade.com)
 
@@ -121,7 +138,8 @@ Plus: `backup` (restic → B2), `ntfy-alert`, `transmission-server`,
 `print-server`, `geocoding`, `home-assistant`, `server-stats`, `web-analytics`,
 `service-dashboard`, `acme-cloudflare`, `caddy-plugins`, `host-security`
 (fail2ban), `ups-monitor`, `tor-bridge`, `push-notifications`,
-`wireguard-client` (library module driven by protonvpn).
+`wireguard-client` (library module driven by protonvpn), `firewall-allow`
+(library module: source-restricted firewall accepts, see below).
 
 ### Agents (`agents/`)
 
@@ -141,8 +159,9 @@ Only `eva` today (homeserver).
 Home-manager config shared by both machines; `host` arg ("macbookpro" /
 "homeserver") for per-host conditionals, passed via `extraSpecialArgs` so it is
 usable in `imports` (where `pkgs` is not). Programs under `programs/`: ghostty,
-git (delta), gpg, ssh, tmux, zsh (oh-my-zsh), starship, gh, atuin, eza, fzf,
-zoxide, claude-code. Also `services.nix`, `sops.nix`, `files/`, `launchd.nix` (darwin).
+git (delta), gpg, ssh, tmux, zsh (oh-my-zsh), atuin, eza, fzf, zoxide,
+claude-code; small ones (starship, gh, bat, btop, …) are inline in
+`programs/default.nix`. Also `services.nix`, `sops.nix`, `files/`, `launchd.nix` (darwin).
 
 ### Secrets Management
 
@@ -160,23 +179,40 @@ Referenced as `config.sops.secrets.<name>.path` or via sops templates.
 
 ### Homeserver
 
-`machines/homeserver/default.nix` is the host configuration; one service is
-split out: `fugazi.nix` (everything fugazi-web: policy helpers, the `testing`
-instance, overlay, assertions). It is curried over the flake inputs because its
-`imports` needs them. Its sops secrets stay in `sops.nix` and its ntfy-alert
-units in `default.nix`, so those lists each read as one thing.
+`machines/homeserver/default.nix` is the host's identity: constants (exported
+to the other files via `_module.args`), the `pkgsUnstable` instance, the import
+list and `stateVersion`. Service configuration lives in per-area files, each
+importing the modules it configures:
+
+- `vpn.nix` — WireGuard server + peers, ProtonVPN egress, Transmission, Tor bridge
+- `web.nix` — Caddy (plugins hash, overlay, ACME, rate limits), AdGuard
+  rewrites, service dashboard
+- `apps.nix` — cloud-suite, PostgreSQL, Samba, media, print, geocoding, Home
+  Assistant, analytics, Prefect
+- `eva.nix` — the agent, its mail server, the wildcard cert
+- `monitoring.nix` — ntfy, ntfy-alert (`failureUnits`: the one list of what
+  gets alerted on), Grafana, UPS, host-security
+- `backup.nix` — restic → B2
+- `fugazi.nix` — everything fugazi-web (policy helpers, the `testing`
+  instance, overlay, assertions)
+
+`web.nix` and `fugazi.nix` are curried over flake inputs because they need
+them (`imports` / overlays cannot take `_module.args`). All sops secrets stay
+in `sops.nix` so that list reads as one thing.
 
 `services.nix` holds the small standalone services: bitcoind (full node, tx
 indexing), PostgreSQL, ddclient, openssh, pipewire, avahi. `networking.nix` is
-hostname/WiFi/firewall; `settings.nix` kernel/boot/nix tuning; `users.nix`
+hostname/WiFi/uplink/firewall; `settings.nix` kernel/boot/TPM/crypttab/nix tuning; `users.nix`
 accounts; `networks.nix` the shared LAN/WireGuard prefix constants;
 `disko.nix` the disk layout (provisioning-only).
 
 Firewall convention: there is NO blanket LAN accept and wg0 is NOT a trusted
-interface. A service that LAN/VPN clients reach directly gets its own
-source-restricted `-I nixos-fw` accepts driven by an allowed-networks option
-(samba, print, dns-filtering, ups-monitor, media-server all follow this
-pattern); everything else is reachable only through Caddy.
+interface. A service that LAN/VPN clients reach directly declares
+`my.firewall-allow.<name> = { networks; ports; protocols; }` from its
+allowed-networks option (samba, print, dns-filtering, ups-monitor,
+media-server, web-server, host mDNS); `modules/firewall-allow` renders the
+`-I`/`-D nixos-fw` pairs. Never hand-write those rules. Everything else is
+reachable only through Caddy.
 
 ### MacBook-specific
 
@@ -194,13 +230,13 @@ Locations are given as greppable identifiers, not line numbers. Last reviewed:
 
 | Workaround | Location | Drop condition / re-check |
 |---|---|---|
-| Caddy plugin-set hash pin (`caddy.withPlugins` from `nix-caddy-withplugins`) | `my.caddy-plugins.hash` in `machines/homeserver/default.nix`; overlay nearby; input in `flake.nix` | Effectively permanent (nixpkgs#450289 closed: nixpkgs' own withPlugins hashes caddy+plugins together). Re-pin `hash` when the plugin LIST changes, or when a `nix-caddy-withplugins` bump moves the Caddy version (take the `got:` value). If the *base* FOD (`caddy-base-proxy`) fails instead, `nix flake update nix-caddy-withplugins` — and if its bot hasn't caught up, wait rather than hand-patch. |
+| Caddy plugin-set hash pin (`caddy.withPlugins` from `nix-caddy-withplugins`) | `my.caddy-plugins.hash` in `machines/homeserver/web.nix`; overlay nearby; input in `flake.nix` | Effectively permanent (nixpkgs#450289 closed: nixpkgs' own withPlugins hashes caddy+plugins together). Re-pin `hash` when the plugin LIST changes, or when a `nix-caddy-withplugins` bump moves the Caddy version (take the `got:` value). If the *base* FOD (`caddy-base-proxy`) fails instead, `nix flake update nix-caddy-withplugins` — and if its bot hasn't caught up, wait rather than hand-patch. |
 | OpenClaw skills hardlink staging | `skillsStageSeed` in `modules/openclaw/instance.nix` | The skills loader silently drops any SKILL.md with nlink>=2, and `auto-optimise-store` hardlinks every store file — so store-path `extraDirs` load ZERO skills. ExecStartPre copies skills to `${stateDir}/nix-skills` (fresh inodes). Drop when the skills loader stops enforcing `rejectHardlinks` (the plugin loader already did in 2026.6.x). Re-check on each openclaw bump: `openclaw skills check` must show Total ≠ 0. |
 | OpenClaw source = nixpkgs-unstable | `pkgsUnstable` in `machines/homeserver/default.nix`; input in `flake.nix` | 26.05 freezes openclaw at 2026.5.7 (claude-cli exec approvals hang — no permission responder). Drop when 26.05 catches up; `nix flake update nixpkgs-unstable` to bump. |
 | OpenClaw insecure-package allowance | `allowInsecurePredicate` on `pkgsUnstable` in `machines/homeserver/default.nix` | Upstream's deliberate `knownVulnerabilities` (LLM prompt-injection). Won't be lifted; predicate is version-independent, nothing to hand-bump. |
 | rPackages.V8 icu78 force-link | overlay in `modules/r-dev/system.nix` | Drop when [nixpkgs#547532](https://github.com/NixOS/nixpkgs/issues/547532) is fixed. Re-check on each `nix flake update`: revert the overlay and confirm `gt`/`gtsummary` still **build** (not just eval). |
 | prefect fastapi lower-bound relax | overlay in `modules/prefect-server/system.nix` (imported by BOTH machines) | prefect 3.8.3 declares `fastapi>=0.139.0` but 26.05 ships 0.136.3; the runtime-deps check would fail every rebuild on both hosts. The pin is metadata-only (verified: the API app starts under 0.136.3). Drop when `nixpkgs#python3Packages.fastapi.version` >= 0.139.0 or prefect relaxes; re-check by deleting the overlay and building `.#nixosConfigurations.homeserver.pkgs.prefect`. |
-| immich source = nixpkgs-unstable | `pkgsUnstable.immich` in `machines/homeserver/default.nix`; `package` option in `modules/cloud-suite` | 26.05's 2.7.5 is EOL + marked insecure (an eval failure for the whole host, and it serves photos.acpuchades.com publicly). Cross-channel is safe: same NixOS module either side, ML follows via passthru, both substitute from cache. Note 2.x→3.x migrates the DB irreversibly on first start. Drop on the next NixOS release: delete the `package =` line. |
+| immich source = nixpkgs-unstable | `pkgsUnstable.immich` in `machines/homeserver/apps.nix`; `package` option in `modules/cloud-suite` | 26.05's 2.7.5 is EOL + marked insecure (an eval failure for the whole host, and it serves photos.acpuchades.com publicly). Cross-channel is safe: same NixOS module either side, ML follows via passthru, both substitute from cache. Note 2.x→3.x migrates the DB irreversibly on first start. Drop on the next NixOS release: delete the `package =` line. |
 | claude-code source = nixpkgs-unstable | `modules/claude-code/system.nix` (imported by `machines/common.nix`, so BOTH machines); the `pkgsUnstable` instance it is handed in each of `machines/{homeserver,macbookpro}/default.nix` | 26.05 freezes claude-code at 2.1.148, too old for the Claude 5 family (sonnet-5/fable-5-1 need >= 2.1.251, opus-5-5 needs >= 2.1.280). The overlay replaces `pkgs.claude-code` system-wide, which under `useGlobalPkgs` is also what alex's home-manager `programs.claude-code` gets. Each machine's `allowUnfreePredicate` is load-bearing: `pkgsUnstable` is a separate nixpkgs evaluation and does NOT see `nixpkgs.config.allowUnfree` from that host's `settings.nix`. Drop when 26.05 ships >= 2.1.280: delete the import from common.nix and the module; on the MacBook the whole `pkgsUnstable` binding goes with it, on the homeserver it stays for openclaw/immich (drop only its unfree predicate). |
 | linux-firmware `yellow_carp_dmcub.bin` pin | overlay in `machines/homeserver/settings.nix` | linux-firmware 20260910 ships an *older* DMCUB (0x0400004A) that this board's PSP rejects — DMUB never starts, display-core errors log ~5×/s, a kworker pins a core and the fan runs full. Overlay swaps in the 20260810 blob (0x0400004C). Drop when upstream ships >= 0x0400004C (`xxd -s 16 -l 4`, little-endian). Re-check requires a **reboot** (firmware loads at amdgpu probe) + `journalctl -b -k | grep -c 'Error queueing DMUB'` = 0. Don't use `amdgpu.dc=0`: the iGPU serves Jellyfin/Immich transcoding and the local console. |
-| CI runner image = `ubuntu-latest` | `runs-on` in `.github/workflows/eval.yml` | Not a pin, bookkeeping: GitHub starts migrating the `ubuntu-latest` label to Ubuntu 26 on 2026-10-19 ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)), so the eval's base image changes with no commit here. Nothing in the job is platform-specific — it is pure evaluation, no builds, no aarch64 — so the expected impact is none. Re-check the first run after that date and pin `ubuntu-24.04` ONLY if it actually breaks; pinning pre-emptively just moves the same bump to a date nobody is watching. |
+| CI runner image = `ubuntu-latest` | `runs-on` in `.github/workflows/{eval,build}.yml` | Not a pin, bookkeeping: GitHub starts migrating the `ubuntu-latest` label to Ubuntu 26 on 2026-10-19 ([actions/runner-images#14748](https://github.com/actions/runner-images/issues/14748)), so the eval's base image changes with no commit here. Nothing in the job is platform-specific — it is pure evaluation, no builds, no aarch64 — so the expected impact is none. Re-check the first run after that date and pin `ubuntu-24.04` ONLY if it actually breaks; pinning pre-emptively just moves the same bump to a date nobody is watching. |

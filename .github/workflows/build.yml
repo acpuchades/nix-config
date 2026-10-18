@@ -1,0 +1,50 @@
+# Build — not just evaluate — the derivations this repo patches and that have
+# broken at BUILD time before. Evaluation passes when a package fails to
+# compile, so eval.yml cannot catch these; this does, before a rebuild on the
+# box does. Each one is a row in CLAUDE.md's upstream-workarounds table:
+#
+#   prefect           fastapi lower-bound relax (modules/prefect-server/system.nix)
+#   rPackages.gtsummary  pulls gt -> juicyjuice -> V8, the icu78 force-link
+#                        overlay (modules/r-dev/system.nix)
+#
+# Built from the homeserver's pkgs (x86_64-linux, the only native runner);
+# both overlays are imported by both hosts. Not every push: weekly, on demand,
+# and whenever the lock or one of those overlays changes.
+name: build
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - flake.lock
+      - modules/prefect-server/system.nix
+      - modules/r-dev/system.nix
+      - .github/workflows/build.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to commit SHAs, as in eval.yml: this job holds NIX_GITHUB_PAT.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+
+      # Selecting from nixosConfigurations.homeserver evaluates its overlays,
+      # fugazi-web's among them, so the private inputs are needed here too.
+      - uses: ./.github/actions/private-inputs-netrc
+        with:
+          pat: ${{ secrets.NIX_GITHUB_PAT }}
+
+      - name: Build patched derivations
+        if: env.skip != 'true'
+        run: |
+          nix build --no-link --print-build-logs \
+            .#nixosConfigurations.homeserver.pkgs.prefect \
+            .#nixosConfigurations.homeserver.pkgs.rPackages.gtsummary
