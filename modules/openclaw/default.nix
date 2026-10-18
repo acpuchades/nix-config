@@ -323,7 +323,7 @@ let
       gpgSeed = lib.optionalString gpgEnabled ''
         ${pkgs.gnupg}/bin/gpgconf --homedir ${gnupgHome} --kill gpg-agent >/dev/null 2>&1 || true
         rm -rf ${gnupgHome}
-        install -d -m 0700 ${gnupgHome}
+        install -d -m 00700 ${gnupgHome} # 00: drop the inherited setgid (see skillsStageSeed)
         if [ -r "''${CREDENTIALS_DIRECTORY:-}/mail-gpg-key" ]; then
           ${pkgs.gnupg}/bin/gpg ${gpgFlags} --import "''${CREDENTIALS_DIRECTORY}/mail-gpg-key" \
             || echo "[openclaw] WARN: could not import the agent's OpenPGP secret key; confidential mail fails closed" >&2
@@ -974,7 +974,12 @@ let
         # path changes) always overwrites it with the current skills — and stale
         # skills from a prior generation never linger.
         rm -rf ${skillsStageDir}
-        install -d -m 0750 ${skillsStageDir}
+        # 00750, not 0750: the leading 00 makes install CLEAR the setgid bit the
+        # dir inherits from the 2750 state dir. Left set, every subdir cp creates
+        # inherits it too, and cp's (and the chmod's) mode change then carries
+        # S_ISGID — which RestrictSUIDSGID=yes rejects with EPERM, failing the
+        # seed and crash-looping the gateway (2026-10-18).
+        install -d -m 00750 ${skillsStageDir}
         for d in ${lib.escapeShellArgs moduleSkillDirs}; do
           # `cp` (no --preserve=links) copies content into new inodes, breaking the
           # store's hardlinks; each store dir holds exactly one `<name>/SKILL.md`.
