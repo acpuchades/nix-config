@@ -107,3 +107,26 @@ jobs:
       - name: Evaluate MacBook
         if: env.skip != 'true'
         run: nix eval --raw .#darwinConfigurations.MacBook-Pro-de-Alejandro.config.system.build.toplevel.drvPath
+
+  # Formatting and lints. A separate job because it needs no secrets, so it runs
+  # on fork PRs too. Tools come from the nixpkgs revision pinned in flake.lock —
+  # the same nixfmt `nix fmt` runs locally — without evaluating the flake (whose
+  # private inputs this job has no token for).
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: cachix/install-nix-action@448cde739abec1eaf0646249e3d25bb8d9bc7702 # v31.11.2
+
+      - name: nixfmt, statix, deadnix
+        run: |
+          set -euo pipefail
+          nixpkgs="github:NixOS/nixpkgs/$(jq -r .nodes.nixpkgs.locked.rev flake.lock)"
+          nix shell "$nixpkgs#nixfmt" "$nixpkgs#statix" "$nixpkgs#deadnix" --command bash -euo pipefail -c '
+            git ls-files -z "*.nix" | xargs -0 nixfmt --check
+            statix check .
+            # Unused names in lambda PATTERNS (`{ pkgs, ... }:`) are idiomatic
+            # module signatures, so only bindings and plain arguments count.
+            deadnix --fail --no-lambda-pattern-names .
+          '

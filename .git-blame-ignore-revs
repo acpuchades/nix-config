@@ -1,0 +1,5 @@
+# Mechanical reformats — `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+# (GitHub applies this file automatically).
+
+# nixfmt over the whole tree
+030a4250e1d12594fbf7468c4c81a9a8aeb4b02e
