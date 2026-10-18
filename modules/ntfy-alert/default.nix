@@ -56,6 +56,13 @@ let
     '';
   };
 
+  # One alert per OUTAGE, not per failure: a crash-looping unit fires OnFailure
+  # on every restart (40 alerts in five minutes for openclaw-eva, 2026-10-18).
+  # The first failure alerts and leaves a marker; while it exists the unit's
+  # further failures are muted. failureSweep removes it once the unit has been
+  # healthy for failureClearAfter, re-arming the alert.
+  failedDir = "/var/lib/ntfy-alert/failed";
+
   # OnFailure handler body. Invoked as: failure-notify <failed-unit-name>
   failureNotify = pkgs.writeShellApplication {
     name = "ntfy-failure-notify";
@@ -63,11 +70,65 @@ let
     text = ''
       unit="''${1:-unknown unit}"
       host="$(hostname)"
+      marker="${failedDir}/$unit"
+      if [ -e "$marker" ]; then
+        echo "$unit failed again; already alerted for this outage"
+        exit 0
+      fi
+      mkdir -p ${failedDir}
+      # The marker is written only after delivery, so an alert that did not go
+      # out is retried on the next failure instead of being muted.
       ntfy-notify "${cfg.systemTopic}" \
         "$unit failed on $host" \
         high "x" \
-        "Unit $unit entered failed state at $(date -Is). Inspect with: journalctl -u $unit -n 50" \
-        || true
+        "Unit $unit entered failed state at $(date -Is). Further failures are muted until it has been healthy for ${toString (cfg.failureClearAfter / 60)} min. Inspect with: journalctl -u $unit -n 50" \
+        && touch "$marker" || true
+    '';
+  };
+
+  # Re-arms the alert for units that have recovered. Healthy means: running
+  # (or exited, for RemainAfterExit oneshots) continuously for
+  # failureClearAfter, or — for a plain oneshot, which is never "active" for
+  # long — finished successfully after the alert went out. A crash loop never
+  # satisfies either, however briefly it comes up between failures.
+  failureSweep = pkgs.writeShellApplication {
+    name = "ntfy-failure-sweep";
+    runtimeInputs = [ pkgs.coreutils pkgs.systemd ];
+    text = ''
+      [ -d ${failedDir} ] || exit 0
+      now=$(date +%s)
+      for marker in ${failedDir}/*; do
+        [ -e "$marker" ] || continue
+        unit=''${marker##*/}
+        alerted=$(stat -c %Y "$marker")
+        load="" active="" result="" enter="" leave=""
+        while IFS="=" read -r k v; do
+          case "$k" in
+            LoadState) load=$v ;;
+            ActiveState) active=$v ;;
+            Result) result=$v ;;
+            ActiveEnterTimestamp) enter=''${v#@} ;;
+            InactiveEnterTimestamp) leave=''${v#@} ;;
+          esac
+        done < <(systemctl show --timestamp=unix "$unit" \
+          -p LoadState -p ActiveState -p Result \
+          -p ActiveEnterTimestamp -p InactiveEnterTimestamp)
+
+        clear=0
+        if [ "$load" = not-found ]; then
+          clear=1   # no longer exists (dropped from failureUnits)
+        elif [ "$active" = active ] && [ -n "$enter" ] \
+             && [ $((now - enter)) -ge ${toString cfg.failureClearAfter} ]; then
+          clear=1
+        elif [ "$active" = inactive ] && [ "$result" = success ] \
+             && [ -n "$leave" ] && [ "$leave" -gt "$alerted" ]; then
+          clear=1
+        fi
+        if [ "$clear" = 1 ]; then
+          echo "$unit is healthy again; re-arming its failure alert"
+          rm -f "$marker"
+        fi
+      done
     '';
   };
 
@@ -215,6 +276,16 @@ in
       '';
     };
 
+    failureClearAfter = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 600;
+      description = ''
+        Seconds a failed unit must stay healthy before its outage is over and
+        the next failure alerts again. Until then, repeat failures are muted.
+        Must be longer than the gap between a crash loop's restarts.
+      '';
+    };
+
     resolveTo = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -308,6 +379,13 @@ in
     })
 
     (lib.mkIf cfg.enable {
+      systemd.timers.ntfy-failure-sweep = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnBootSec = "5min";
+          OnUnitActiveSec = "5min";
+        };
+      };
       systemd.services = lib.mkMerge [
         # Templated OnFailure target: notify-failure@<unit>.service, instantiated
         # per failing unit via `OnFailure=notify-failure@%n.service`.
@@ -317,7 +395,16 @@ in
             serviceConfig = {
               Type = "oneshot";
               EnvironmentFile = cfg.environmentFile;
+              StateDirectory = "ntfy-alert";
               ExecStart = "${lib.getExe failureNotify} %i";
+            };
+          };
+          ntfy-failure-sweep = {
+            description = "Re-arm ntfy failure alerts for recovered units";
+            serviceConfig = {
+              Type = "oneshot";
+              StateDirectory = "ntfy-alert";
+              ExecStart = lib.getExe failureSweep;
             };
           };
         }
