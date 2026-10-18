@@ -875,9 +875,27 @@ let
         # deliberately NOT pinned here — that is the human-gated approve-and-remember
         # surface. Other tools.exec.* keys (timeouts, backgroundMs, …) stay settable
         # via icfg.settings; only these safety keys are pinned.
-        tools.exec = {
-          security = icfg.exec.security;
-          ask = icfg.exec.ask;
+        #
+        # openclaw 2026.10.x folds security/ask into a single `mode` and rejects an
+        # exec object carrying both, so the pair is emitted as the `mode` that
+        # `doctor --fix` would migrate it to — otherwise the doctor-migrated live
+        # file and this template conflict, the start-time patch is declined and the
+        # config is reseeded from scratch. Only the pairs with no exact equivalent
+        # (ask="always", full+on-miss) stay in the legacy form, which is accepted.
+        tools.exec =
+          (
+            let
+              inherit (icfg.exec) security ask;
+              mode =
+                if ask == "always" || (security == "full" && ask == "on-miss") then null
+                else if security == "deny" then "deny"
+                else if security == "allowlist" && ask == "off" then "allowlist"
+                else if security == "full" then "full"
+                else "ask";
+            in
+            if mode != null then { inherit mode; } else { inherit security ask; }
+          )
+          // {
           strictInlineEval = icfg.exec.strictInlineEval;
           safeBins =
             icfg.exec.safeBins
@@ -1030,10 +1048,10 @@ let
           cp ${raw} "$out"
         '';
 
-      # The operator-declared exec-approval globs, rendered as ONE JSON file in the
-      # openclaw exec-approvals schema (pattern-only entries — OpenClaw backfills the
-      # id/lastUsedAt fields itself the first time it reads the file). Deterministic
-      # and secret-free, so the nix store is a fine home for it.
+      # The operator-declared exec-approval globs, rendered as ONE JSON document in
+      # the openclaw exec-approvals schema (pattern-only entries — `approvals set`
+      # assigns each a fresh id). Deterministic and secret-free, so the nix store is
+      # a fine home for it.
       execApprovalsSeed = settingsFormat.generate "openclaw-exec-approvals.json" {
         version = 1;
         socket = { };
@@ -1043,44 +1061,54 @@ let
         );
       };
 
-      # Fast, Node-free seed: union the declared globs into the agent's live
-      # exec-approvals.json with a SINGLE jq call, replacing the old loop that ran
-      # one ~1.4s `openclaw approvals allowlist add` process per glob (~34 of them,
-      # which overran the gateway's 90s start-pre timeout and crash-looped it). The
-      # union is by pattern string, so the agent's own approve-and-remember entries
-      # survive across restarts; a failed merge warns and leaves the file untouched.
+      # Union the declared globs into the agent's live approvals, by pattern string,
+      # so her own approve-and-remember entries survive across restarts.
       #
-      # PATH (openclaw 2026.6.x): the live exec-approvals file lives in the STATE DIR
-      # (`${stateDir}/exec-approvals.json`), which is what the runtime reads —
-      # `resolveExecApprovalsFromFile` resolves `join(stateDir, "exec-approvals.json")`.
-      # 2026.5.x read it from `~/.openclaw/exec-approvals.json`; seeding the old path
-      # on 2026.6.x silently left the whole operator allowlist UNLOADED (every command
-      # missed → prompted/denied). Since the runtime reads this JSON each start, the
-      # reseed-every-start union still holds.
+      # STORAGE (openclaw 2026.10.x): approvals live in SQLite
+      # (`state/openclaw.sqlite#exec_approvals_config`), read and written offline
+      # through `openclaw approvals get/set`. The old `${stateDir}/exec-approvals.json`
+      # is now LEGACY, and its mere existence blocks every exec-approvals reader —
+      # including the Telegram channel, which exits at startup. Earlier versions of
+      # this seed wrote that file on every start, so a leftover one is moved aside
+      # (to `.imported`) and folded into the union rather than left to block her.
+      # Two Node cold starts (~1.5s each), well inside the start-pre timeout. Any
+      # failure warns and leaves the stored approvals untouched.
       allowlistSeedMerge = ''
-        approvalsFile=${stateDir}/exec-approvals.json
-        mkdir -p "$(dirname "$approvalsFile")"
-        if [ -f "$approvalsFile" ]; then liveSrc="$approvalsFile"; else liveSrc=${execApprovalsSeed}; fi
-        tmp="$(mktemp)"
-        if ${lib.getExe pkgs.jq} -s '
-              .[0] as $seed | .[1] as $live
-              | ($live.agents["*"].allowlist // [])            as $cur
-              | ($cur | map(.pattern))                          as $have
-              | ($seed.agents["*"].allowlist
+        approvalsLegacy=${stateDir}/exec-approvals.json
+        approvalsTmp="$(mktemp -d)"
+        echo '{}' > "$approvalsTmp/legacy.json"
+        if [ -f "$approvalsLegacy" ]; then
+          ${lib.getExe pkgs.jq} -e . "$approvalsLegacy" > /dev/null 2>&1 \
+            && cp "$approvalsLegacy" "$approvalsTmp/legacy.json"
+          mv -f "$approvalsLegacy" "$approvalsLegacy.imported"
+        fi
+        if ${lib.getExe openclawPatched} approvals get --json > "$approvalsTmp/live.json" \
+          && ${lib.getExe pkgs.jq} -e '.file | objects' "$approvalsTmp/live.json" > /dev/null \
+          && ${lib.getExe pkgs.jq} -n \
+            --slurpfile seed ${execApprovalsSeed} \
+            --slurpfile live "$approvalsTmp/live.json" \
+            --slurpfile legacy "$approvalsTmp/legacy.json" '
+              $live[0].file                                   as $file
+              | ($file.agents["*"].allowlist // [])           as $cur
+              | ($cur | map(.pattern))                        as $have
+              | ($legacy[0].agents["*"].allowlist // []
+                 | map(if type == "string" then { pattern: . }
+                       else { pattern } + (if .argPattern then { argPattern } else {} end) end)) as $old
+              | ($old + $seed[0].agents["*"].allowlist
+                 | unique_by(.pattern)
                  | map(select((.pattern) as $p | ($have | index($p)) | not))) as $add
-              | $live
+              | $file
               | .version     //= 1
-              | .socket      //= {}
-              | .defaults    //= {}
               | .agents      //= {}
               | .agents["*"] //= {}
               | .agents["*"].allowlist = ($cur + $add)
-            ' ${execApprovalsSeed} "$liveSrc" > "$tmp"; then
-          install -m 0600 "$tmp" "$approvalsFile"
+            ' > "$approvalsTmp/merged.json" \
+          && ${lib.getExe openclawPatched} approvals set --file "$approvalsTmp/merged.json" > /dev/null; then
+          :
         else
-          echo "[openclaw] WARN: exec-approvals seed merge failed; leaving existing file untouched" >&2
+          echo "[openclaw] WARN: exec-approvals seed failed; leaving stored approvals untouched" >&2
         fi
-        rm -f "$tmp"
+        rm -rf "$approvalsTmp"
       '';
 
       # The self-gating action wrappers (plus mblaze's mlist/mscan/… Maildir tools)
