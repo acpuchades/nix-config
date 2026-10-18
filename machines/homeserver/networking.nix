@@ -35,25 +35,23 @@ in
         8333 # bitcoin
       ];
 
-      # NO blanket LAN accept, deliberately (dropped 2026-09-19): "everything
-      # from 192.168.2.0/24" made every IoT device and every WireGuard peer —
-      # several belonging to a second person — able to reach every listening
-      # socket, which is exactly what turned loopback-vs-0.0.0.0 bind mistakes
-      # into real exposures. Each service that LAN/VPN clients use directly now
-      # carries its own source-restricted accept (samba 445, cups 631, DNS 53,
-      # upsd 3493, jellyfin 8096, mDNS below); anything without a rule is
-      # reachable only through Caddy. iptables backend — nftables is not
+      # NO blanket LAN accept, deliberately: it made every IoT device and every
+      # WireGuard peer — several belonging to a second person — able to reach
+      # every listening socket, turning loopback-vs-0.0.0.0 bind mistakes into
+      # real exposures. Each service that LAN/VPN clients use directly declares
+      # its own source-restricted accept via my.firewall-allow (samba 445, cups
+      # 631, DNS 53, upsd 3493, jellyfin 8096, mDNS below); anything without one
+      # is reachable only through Caddy. iptables backend — nftables is not
       # enabled here (the egress modules rely on iptables).
-      #
-      # mDNS answers (.local / AirPrint discovery) are the one host-level rule:
-      # avahi is host plumbing, not a module. LAN only — multicast does not
-      # cross the WireGuard tunnel anyway.
-      extraCommands = ''
-        iptables -I nixos-fw -p udp -s ${lanNetwork} --dport 5353 -j nixos-fw-accept
-      '';
-      extraStopCommands = ''
-        iptables -D nixos-fw -p udp -s ${lanNetwork} --dport 5353 -j nixos-fw-accept || true
-      '';
     };
+  };
+
+  # mDNS answers (.local / AirPrint discovery) are the one host-level rule:
+  # avahi is host plumbing, not a module. LAN only — multicast does not cross
+  # the WireGuard tunnel anyway.
+  my.firewall-allow.mdns = {
+    networks = [ lanNetwork ];
+    ports = [ 5353 ];
+    protocols = [ "udp" ];
   };
 }

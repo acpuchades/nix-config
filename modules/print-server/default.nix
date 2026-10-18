@@ -94,15 +94,10 @@ in
       publish.userServices = lib.mkDefault true;
     };
 
-    # Allow IPP (TCP 631) only from the configured networks. Inserted at the top
-    # of the nixos-fw chain so it precedes the default refuse rule. Covers VPN
-    # peers too, by their source prefixes.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
-      net: "iptables -I nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept"
-    ) cfg.allowedNetworks;
-
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
-      net: "iptables -D nixos-fw -p tcp -s ${net} --dport 631 -j nixos-fw-accept || true"
-    ) cfg.allowedNetworks;
+    # IPP (TCP 631) only from the configured networks (modules/firewall-allow).
+    my.firewall-allow.cups = {
+      networks = cfg.allowedNetworks;
+      ports = [ 631 ];
+    };
   };
 }

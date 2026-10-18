@@ -102,6 +102,7 @@ let
         # Custom modules
         ../../modules/vpn-server
         ../../modules/wireguard-client
+        ../../modules/firewall-allow
         ../../modules/protonvpn
         ../../modules/transmission-server
         ../../modules/dns-filtering

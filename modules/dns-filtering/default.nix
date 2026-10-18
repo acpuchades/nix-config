@@ -5,20 +5,6 @@
   ...
 }:
 
-let
-  # One accept rule per (network, protocol) for the plain-DNS port, emitted as
-  # bare `nixos-fw …` specs so the caller prefixes -I (insert) or -D (delete)
-  # and the two stay in sync by construction.
-  dnsFirewallRules =
-    cfg:
-    lib.concatMap (
-      net:
-      map (proto: "nixos-fw -p ${proto} -s ${net} --dport ${toString cfg.dnsPort} -j nixos-fw-accept") [
-        "udp"
-        "tcp"
-      ]
-    ) cfg.allowedClientNetworks;
-in
 {
   options.my.dns-filtering = {
     enable = lib.mkEnableOption "DNS filtering with AdGuard Home and DNSCrypt";
@@ -179,18 +165,16 @@ in
       config.my.dns-filtering.allowedClientNetworks == [ ]
     ) [ config.my.dns-filtering.dnsPort ];
 
-    # Accept DNS only from the configured client networks. Inserted at the top of
-    # the nixos-fw chain so it precedes the default refuse rule (same pattern as
-    # print-server/samba-server). VPN peers are covered the same way — the host
-    # includes the wg prefixes in allowedClientNetworks, and a source rule
-    # matches whatever interface the packet arrived on.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (rule: "iptables -I ${rule}") (
-      dnsFirewallRules config.my.dns-filtering
-    );
-
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
-      rule: "iptables -D ${rule} || true"
-    ) (dnsFirewallRules config.my.dns-filtering);
+    # Accept DNS only from the configured client networks (modules/firewall-allow).
+    # VPN peers are covered by the host including the wg prefixes.
+    my.firewall-allow.dns = {
+      networks = config.my.dns-filtering.allowedClientNetworks;
+      ports = [ config.my.dns-filtering.dnsPort ];
+      protocols = [
+        "udp"
+        "tcp"
+      ];
+    };
 
     # DNSCrypt proxy
     services.dnscrypt-proxy = {

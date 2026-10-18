@@ -123,22 +123,15 @@ in
       443
     ];
 
-    # Source-restricted accepts, inserted at the head of nixos-fw like the
-    # other per-service rules on this host. IPv6 ranges go to ip6tables —
-    # iptables rejects them, and the v6 chain is otherwise closed.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
-      net:
-      "${
-        if lib.hasInfix ":" net then "ip6tables" else "iptables"
-      } -I nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept"
-    ) cfg.allowedNetworks;
-
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
-      net:
-      "${
-        if lib.hasInfix ":" net then "ip6tables" else "iptables"
-      } -D nixos-fw -p tcp -s ${net} -m multiport --dports 80,443 -j nixos-fw-accept || true"
-    ) cfg.allowedNetworks;
+    # Source-restricted accepts (modules/firewall-allow), used instead of the
+    # open ports above when allowedNetworks is set.
+    my.firewall-allow.caddy = {
+      networks = cfg.allowedNetworks;
+      ports = [
+        80
+        443
+      ];
+    };
 
     services.caddy = {
       enable = true;

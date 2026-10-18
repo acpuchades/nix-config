@@ -95,15 +95,12 @@ in
       openFirewall = false;
     };
 
-    # Source-restricted accepts for direct app access (same pattern as
-    # samba/print/dns-filtering). Jellyfin's own login still applies there.
-    networking.firewall.extraCommands = lib.concatMapStringsSep "\n" (
-      net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept"
-    ) cfg.allowedDirectNetworks;
-    networking.firewall.extraStopCommands = lib.concatMapStringsSep "\n" (
-      net:
-      "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString jellyfinPort} -j nixos-fw-accept || true"
-    ) cfg.allowedDirectNetworks;
+    # Direct app access, source-restricted (modules/firewall-allow). Jellyfin's
+    # own login still applies there.
+    my.firewall-allow.jellyfin = {
+      networks = cfg.allowedDirectNetworks;
+      ports = [ jellyfinPort ];
+    };
 
     # Let jellyfin read the (group-owned) share, and reach the GPU when transcoding.
     users.users.jellyfin.extraGroups =

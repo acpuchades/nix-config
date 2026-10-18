@@ -160,19 +160,12 @@ in
       cfg.notify.environmentFile != null
     ) [ cfg.notify.environmentFile ];
 
-    # Source-restricted accepts (same pattern as samba/print/dns-filtering)
-    # rather than allowedTCPPorts, which would open 3493 to every source —
-    # including the internet — for a plaintext-authenticated protocol.
-    networking.firewall.extraCommands = lib.mkIf cfg.network.enable (
-      lib.concatMapStringsSep "\n" (
-        net: "iptables -I nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept"
-      ) cfg.network.allowedNetworks
-    );
-    networking.firewall.extraStopCommands = lib.mkIf cfg.network.enable (
-      lib.concatMapStringsSep "\n" (
-        net:
-        "iptables -D nixos-fw -p tcp -s ${net} --dport ${toString cfg.network.port} -j nixos-fw-accept || true"
-      ) cfg.network.allowedNetworks
-    );
+    # Source-restricted (modules/firewall-allow) rather than allowedTCPPorts,
+    # which would open 3493 to every source — including the internet — for a
+    # plaintext-authenticated protocol.
+    my.firewall-allow.upsd = lib.mkIf cfg.network.enable {
+      networks = cfg.network.allowedNetworks;
+      ports = [ cfg.network.port ];
+    };
   };
 }
