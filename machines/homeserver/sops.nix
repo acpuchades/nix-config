@@ -155,10 +155,10 @@ in
       # local alert source: the restic backup, my.ntfy-alert's unit-failure
       # notifier, and the UPS NOTIFYCMD. Rendered into ntfy/env below and injected
       # as NTFY_TOKEN. Topics are separated at the ACL/topic level, not by token.
-      # The ntfy server provisions the matching user/ACL/token itself from
-      # ntfy/server-env (my.push-notifications.provision). Must be `tk_` + 29
-      # lowercase alphanumerics or ntfy refuses to start — generate with
-      # `ntfy token generate`.
+      # Provision one ntfy user with write to the relevant topics:
+      #   sudo <ntfy-sh>/bin/ntfy user add --role=user homeserver
+      #   sudo <ntfy-sh>/bin/ntfy access homeserver "alerts-*" write-only
+      #   sudo <ntfy-sh>/bin/ntfy token add homeserver
       "ntfy/token" = { mode = "0400"; };
 
       # One SMB password per user (nested samba/<user> branch). Add a line here
@@ -485,15 +485,6 @@ in
         mode = "0400";
         content = ''
           NTFY_TOKEN=${config.sops.placeholder."ntfy/token"}
-        '';
-      };
-
-      # The SERVER side of the same token: ntfy provisions it for the
-      # `homeserver` user at every start (my.push-notifications.provision).
-      "ntfy/server-env" = {
-        mode = "0400";
-        content = ''
-          NTFY_AUTH_TOKENS=homeserver:${config.sops.placeholder."ntfy/token"}:alerts
         '';
       };
 
