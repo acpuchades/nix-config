@@ -122,6 +122,10 @@ never aborts a save); every package is deferred unless it must act at startup
   follows from which prefix its address came out of; peers on 10.0.0.0/24 stay
   untunneled on the ISP. Plus a netns-isolated P2P tunnel for Transmission with
   NAT-PMP port renewal. Verify with `scripts/verify-protonvpn.sh --tunnel <name>`.
+  Files: `options.nix`, `default.nix` (client tunnels, policy routing, kill
+  switch, resolver), `p2p.nix`, `watchdog.nix`. Firewall rules inserted with
+  `-I … 1` stay in `default.nix`: imported modules merge first, so moving one
+  changes the live rule order.
 - `mail-server` — Postfix inbound → eva's Maildir, Mailjet relay outbound,
   rspamd, ACME STARTTLS
 - `dns-filtering` — AdGuard Home + DNSCrypt
