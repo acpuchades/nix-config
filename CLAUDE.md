@@ -59,6 +59,8 @@ The ones that shape the architecture:
 - `fugazi-web` / `fugazi-web-testing` — the same PRIVATE repo on two branches
   (tarball URLs + netrc, since `github:` ignores netrc); ONE nixosModule imported,
   the testing instance gets only the second input's packages
+- `titan-web` — PRIVATE repo (tarball URL + netrc, like fugazi-web) for
+  titan.acpuchades.com; overlay + nixosModule consumed by `machines/homeserver/titan.nix`
 - `nix-caddy-withplugins` — deliberately does NOT follow nixpkgs (its pinned base
   FOD hash depends on its own toolchain)
 - `emacs-overlay`, `sops-nix`, `better-zen`
@@ -199,8 +201,11 @@ importing the modules it configures:
 - `backup.nix` — restic → B2
 - `fugazi.nix` — everything fugazi-web (policy helpers, the `testing`
   instance, overlay, assertions)
+- `titan.nix` — titan-web (health analytics): LAN/VPN-only vhost serving the
+  SPA from the store and proxying /v1, mail via the local Postfix; admin with
+  `sudo titan-manage users …`
 
-`web.nix` and `fugazi.nix` are curried over flake inputs because they need
+`web.nix`, `fugazi.nix` and `titan.nix` are curried over flake inputs because they need
 them (`imports` / overlays cannot take `_module.args`). All sops secrets stay
 in `sops.nix` so that list reads as one thing.
 

@@ -169,6 +169,10 @@ in
         domain = "nominatim.acpuchades.com";
         answer = homeServerLocalAddress;
       }
+      {
+        domain = "titan.acpuchades.com";
+        answer = homeServerLocalAddress;
+      }
       # fugazitrade.com is public AND proxied through Cloudflare, so these
       # rewrites do more than save a hairpin: a client resolving through
       # AdGuard reaches Caddy directly instead of going out to the CF edge and
@@ -260,6 +264,17 @@ in
             icon = "home-assistant.png";
             description = "Home automation";
             href = "https://${config.my.home-assistant.hostName}";
+          }
+        ];
+      }
+      {
+        name = "Health";
+        services = [
+          {
+            name = "titan";
+            icon = "mdi-heart-pulse";
+            description = "Body, nutrition, recovery & training";
+            href = config.services.titan.publicUrl;
           }
         ];
       }

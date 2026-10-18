@@ -1,11 +1,11 @@
-# Netrc for the PRIVATE fugazi-web tarball inputs (see flake.nix), with a
+# Netrc for the PRIVATE tarball inputs (fugazi-web, titan-web; see flake.nix), with a
 # preflight that tells a bad token apart from a broken flake. Shared by every
 # workflow that evaluates the flake; the reasoning lives in eval.yml's header.
 #
 # Sets env.skip=true (and exits 0) when no token is available — fork PRs never
 # receive secrets — so callers gate their steps on `env.skip != 'true'`.
 name: Private flake inputs netrc
-description: Write a netrc for the private fugazi-web inputs and preflight it.
+description: Write a netrc for the private flake inputs and preflight it.
 inputs:
   pat:
     description: Classic GitHub PAT with the `repo` scope (secrets.NIX_GITHUB_PAT).
@@ -14,7 +14,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Set up netrc for the private fugazi-web inputs
+    - name: Set up netrc for the private flake inputs
       shell: bash
       env:
         NIX_GITHUB_PAT: ${{ inputs.pat }}
@@ -36,18 +36,19 @@ runs:
           "$pat" > "$RUNNER_TEMP/netrc"
 
         # Preflight the credential with the exact request nix's tarball
-        # fetcher makes, against every fugazi input URL in flake.nix. Without
+        # fetcher makes, against every private input URL in flake.nix. Without
         # this a token that cannot read the repo surfaces as a 300-line nix
         # eval trace ending in a bare `HTTP error 404`, which reads like a
         # broken flake rather than a broken secret. Authenticated, github.com
         # 302s to codeload with a signed token in the URL; unauthenticated it
         # 404s (GitHub does not reveal private repos with a 403).
-        urls=$(grep -oE 'https://github\.com/acpuchades/fugazi-web/archive/[^"]+\.tar\.gz' flake.nix | sort -u) || true
+        urls=$(grep -oE 'https://github\.com/acpuchades/(fugazi-web|titan-web)/archive/[^"]+\.tar\.gz' flake.nix | sort -u) || true
         if [ -z "$urls" ]; then
-          echo "::error::no fugazi-web tarball inputs found in flake.nix — this preflight needs updating"
+          echo "::error::no private tarball inputs (fugazi-web, titan-web) found in flake.nix — this preflight needs updating"
           exit 1
         fi
         for url in $urls; do
+          repo=${url#https://github.com/}; repo=${repo%%/archive/*}
           code=$(curl -sS -o /dev/null -w '%{http_code}' \
             --netrc-file "$RUNNER_TEMP/netrc" "$url")
           case "$code" in
@@ -61,11 +62,11 @@ runs:
           api=$(curl -sS -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer $pat" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/acpuchades/fugazi-web)
+            "https://api.github.com/repos/$repo")
           if [ "$api" = 200 ]; then
-            echo "::error::NIX_GITHUB_PAT can read acpuchades/fugazi-web through api.github.com (HTTP 200) but not $url (HTTP $code) — that is the signature of a FINE-GRAINED token. github.com's archive endpoint only accepts classic tokens. Re-issue as a classic PAT with the 'repo' scope and re-set the secret; no amount of re-scoping a fine-grained one will fix it."
+            echo "::error::NIX_GITHUB_PAT can read $repo through api.github.com (HTTP 200) but not $url (HTTP $code) — that is the signature of a FINE-GRAINED token. github.com's archive endpoint only accepts classic tokens. Re-issue as a classic PAT with the 'repo' scope and re-set the secret; no amount of re-scoping a fine-grained one will fix it."
           else
-            echo "::error::NIX_GITHUB_PAT cannot read acpuchades/fugazi-web (archive HTTP $code, api.github.com HTTP $api). The token is expired, revoked, or lacks the 'repo' scope. Re-issue a classic PAT with 'repo' and re-set the secret."
+            echo "::error::NIX_GITHUB_PAT cannot read $repo (archive HTTP $code, api.github.com HTTP $api). The token is expired, revoked, or lacks the 'repo' scope. Re-issue a classic PAT with 'repo' and re-set the secret."
           fi
           exit 1
         done

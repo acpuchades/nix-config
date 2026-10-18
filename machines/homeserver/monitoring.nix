@@ -77,6 +77,9 @@ in
       "fugazi-web-testing-deployment-tick-1m"
       "fugazi-web-testing-deployment-tick-3m"
       "fugazi-web-testing-deployment-tick-5m"
+      # titan's API. Not titan-sync: a vendor outage fails one hourly
+      # oneshot and the next run catches up.
+      "titan"
       "ddclient"
       "openclaw-eva"
       "bitcoind-main"

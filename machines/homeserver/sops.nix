@@ -253,6 +253,15 @@ in
         mode = "0400";
       };
 
+      # titan's credential vault key (TITAN_SECRET_KEY, rendered into the
+      # titan/env template below): encrypts every connected source's tokens and
+      # passwords at rest. Like fugazi's, LOSING IT makes every stored credential
+      # undecryptable and every account re-connects its sources. Generate with
+      #   openssl rand -base64 32 | tr '+/' '-_'
+      "titan/secret-key" = {
+        mode = "0400";
+      };
+
       # GitHub PAT that lets nix fetch the PRIVATE acpuchades/fugazi-web source at
       # build time. Rendered into the nix/netrc template below; nix.settings.netrc-file
       # (machines/homeserver/fugazi.nix) points nix at it. The module fetches the
@@ -496,6 +505,19 @@ in
         content = ''
           FUGAZI_SERVICE_JWT_SECRET=${config.sops.placeholder."fugazi-web/testing/jwt-secret"}
           FUGAZI_SERVICE_SECRET_KEY=${config.sops.placeholder."fugazi-web/testing/secret-key"}
+        '';
+      };
+
+      # services.titan.environmentFile. When the Withings/Oura developer apps are
+      # registered (redirect URI https://titan.acpuchades.com/v1/oauth/callback),
+      # add titan/{withings,oura}-client-{id,secret} secrets and their
+      # TITAN_{WITHINGS,OURA}_CLIENT_{ID,SECRET} lines here.
+      "titan/env" = {
+        owner = "titan";
+        group = "titan";
+        mode = "0400";
+        content = ''
+          TITAN_SECRET_KEY=${config.sops.placeholder."titan/secret-key"}
         '';
       };
 

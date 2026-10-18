@@ -11,6 +11,7 @@
   emacs-overlay,
   fugazi-web,
   fugazi-web-testing,
+  titan-web,
   nix-caddy-withplugins,
   ...
 }:
@@ -113,6 +114,9 @@ let
         # about half of this one. Curried over the flake inputs because its own
         # `imports` needs them — see the header there.
         (import ./fugazi.nix { inherit fugazi-web fugazi-web-testing; })
+
+        # titan (titan.acpuchades.com, LAN/VPN only), curried the same way.
+        (import ./titan.nix { inherit titan-web; })
       ];
 
       # Host constants as module arguments, so the files imported above name

@@ -4,8 +4,8 @@
 # platform-independent), and no binary cache.
 #
 # One repository secret is required: NIX_GITHUB_PAT, a CLASSIC PAT with the
-# `repo` scope — the two fugazi tarball inputs are a PRIVATE repo fetched via
-# netrc during evaluation (see flake.nix). It must be classic: github.com's
+# `repo` scope — the private tarball inputs (fugazi-web x2, titan-web) are
+# fetched via netrc during evaluation (see flake.nix). It must be classic: github.com's
 # `/archive/refs/heads/*.tar.gz` endpoint does not accept fine-grained tokens
 # and answers 404 no matter how the token is scoped (NixOS/nixpkgs#321481).
 # That is the same 404 GitHub returns for a repo the token cannot see, so the

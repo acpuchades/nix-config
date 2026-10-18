@@ -99,6 +99,15 @@
     fugazi-web-testing.url = "https://github.com/acpuchades/fugazi-web/archive/refs/heads/testing.tar.gz";
     fugazi-web-testing.inputs.nixpkgs.follows = "nixpkgs";
 
+    # titan-web — PRIVATE repo for titan.acpuchades.com (health analytics; see
+    # machines/homeserver/titan.nix). Same shape as fugazi-web above: a tarball URL
+    # so the private fetch goes through netrc, both `overlays.default` (pkgs.titan,
+    # pkgs.titan-frontend) and `nixosModules.default` (services.titan) consumed,
+    # following our nixpkgs (its pyproject-nix/uv2nix inputs follow it in turn).
+    # Bump with `nix flake update titan-web`.
+    titan-web.url = "https://github.com/acpuchades/titan-web/archive/refs/heads/main.tar.gz";
+    titan-web.inputs.nixpkgs.follows = "nixpkgs";
+
     # nix-caddy-withplugins — a drop-in `caddy.withPlugins` whose plugin hash
     # survives Caddy updates. nixpkgs' version hashes ONE fixed-output derivation
     # covering the whole `xcaddy build` + `go mod vendor` tree, so the pin is a
@@ -134,6 +143,7 @@
       better-zen,
       fugazi-web,
       fugazi-web-testing,
+      titan-web,
       emacs-overlay,
       nix-caddy-withplugins,
     }:
