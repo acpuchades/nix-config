@@ -30,7 +30,7 @@ The owner may use any tool: CalDAV, Todoist, Things, Notion, etc. Consult the re
 Each task can carry a context tag indicating which scheduled cycle it belongs to. Any recurring cron job or workflow can define its own context. Core contexts:
 
 - `@heartbeat` — standard checks on every heartbeat cycle (server health, inbox, readiness scores, etc.)
-- `@morning` — morning-specific actions (readiness summary, day preview, calendar scan); sub-context of `@heartbeat`, triggered when the heartbeat fires in the morning
+- `@morning` — morning-specific actions (readiness check, day preview, calendar scan — surface only what needs the owner); sub-context of `@heartbeat`, triggered when the heartbeat fires in the morning
 - `@evening` — end-of-day actions (day recap, flag unprocessed captures, pending follow-ups); sub-context of `@heartbeat`, triggered when the heartbeat fires in the evening
 - `@mailcheck` — run when processing the inbox (triage, archive, capture to owner's list)
 - `@gtdreview` — run during the weekly GTD review cycle

@@ -343,7 +343,7 @@ in
       };
     };
 
-    # Heartbeat: eva takes an autonomous turn every 2h, but only during
+    # Heartbeat: eva takes an autonomous turn every hour, but only during
     # waking hours (08:00–22:00 Europe/Madrid, matching the host timezone) so
     # she doesn't ping overnight. Driven by the module's first-class options
     # (the every/activeHours defaults already match this; timezone is set
@@ -356,6 +356,21 @@ in
         end = "22:00";
         timezone = "Europe/Madrid";
       };
+      # Silence is the default outcome: an hourly all-clear is noise, so only
+      # something that needs the owner gets delivered.
+      prompt = lib.concatStringsSep " " [
+        "Heartbeat poll. Run your @heartbeat checks (plus @morning or @evening when"
+        "they apply), following the heartbeat monitor scratch when provided."
+        "Message the owner ONLY when something needs his attention or action: a"
+        "failure or degradation, a threshold crossed, something unexpected or"
+        "security-relevant, a deadline or a reply he is waiting on."
+        "Routine all-clear results (server healthy, good readiness scores, mail"
+        "triaged as expected) are not worth a message: do not send a status"
+        "summary just to say everything is fine. If nothing needs him, reply"
+        "NO_REPLY. When you do alert, send only the items that matter."
+        "Recurring tasks are automations; do not infer or repeat old tasks from"
+        "prior chats."
+      ];
     };
 
     # Extra tooling eva can invoke by name (the module puts each on the

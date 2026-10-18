@@ -696,6 +696,9 @@ let
             // lib.optionalAttrs (icfg.heartbeat.activeHours.timezone != null) {
               timezone = icfg.heartbeat.activeHours.timezone;
             };
+          }
+          // lib.optionalAttrs (icfg.heartbeat.prompt != null) {
+            prompt = icfg.heartbeat.prompt;
           };
         };
         channels.telegram = {
@@ -1897,6 +1900,19 @@ let
               window means local wall-clock time regardless of the process TZ.
             '';
           };
+        };
+
+        prompt = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = ''
+            Heartbeat prompt body (agents.defaults.heartbeat.prompt), sent
+            verbatim as the scheduled user message. Null keeps OpenClaw's
+            default. A turn that replies NO_REPLY (or calls heartbeat_respond
+            with notify = false) delivers nothing, so this is where "stay
+            quiet unless something needs the owner" is decided — not
+            target = "none", which would also swallow real alerts.
+          '';
         };
       };
 
