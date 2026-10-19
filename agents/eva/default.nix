@@ -318,6 +318,39 @@ in
     '';
   };
 
+  # gh hosts.yml — rendered by sops, copied to Eva's home on every activation.
+  # Keeps `gh auth status` happy even without GH_TOKEN in the environment
+  # (interactive shells, cron jobs outside OpenClaw).
+  sops.templates."gh/eva-hosts.yml" = {
+    mode = "0440";
+    owner = "eva";
+    content = ''
+      github.com:
+          users:
+              eva-nebot:
+                  oauth_token: ${config.sops.placeholder."openclaw/eva/github-token"}
+          oauth_token: ${config.sops.placeholder."openclaw/eva/github-token"}
+          user: eva-nebot
+    '';
+  };
+
+  systemd.services.eva-write-gh-hosts = {
+    description = "Write Eva's gh hosts.yml from sops template";
+    after = [ "sops-install-secrets.service" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      User = "eva";
+    };
+    script = ''
+      mkdir -p /home/eva/.config/gh
+      install -C -m 600 \
+        ${config.sops.templates."gh/eva-hosts.yml".path} \
+        /home/eva/.config/gh/hosts.yml
+    '';
+  };
+
   my.openclaw.instances.eva = {
     # The bot is eva_lebbot, so she gets a real account here: /home/eva,
     # her own workspace.
