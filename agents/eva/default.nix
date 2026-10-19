@@ -44,7 +44,10 @@ let
   # `systemctl restart` sudo entries and the journal wrapper's read allowlist —
   # so the two can never drift apart.
   evaManagedUnits = lib.unique (
-    [ "openclaw-eva" "nominatim-update" ]
+    [
+      "openclaw-eva"
+      "nominatim-update"
+    ]
     # `or false`: a host without these modules simply grants fewer units.
     ++ lib.optionals (config.my.ntfy-alert.enable or false) config.my.ntfy-alert.failureUnits
     ++ fugaziTickUnits
@@ -1316,10 +1319,13 @@ in
       # Per-unit restart grants are kept for the units eva OWNS (openclaw-eva)
       # and any that page her (ntfy-alert.failureUnits). General service admin
       # for the full evaManagedUnits set goes through service-ctl instead.
-      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service")
-        (lib.filter (u: u == "openclaw-eva"
-                      || (config.my.ntfy-alert.enable or false
-                          && builtins.elem u config.my.ntfy-alert.failureUnits)) evaManagedUnits)
+      map (u: "/run/current-system/sw/bin/systemctl restart ${u}.service") (
+        lib.filter (
+          u:
+          u == "openclaw-eva"
+          || (config.my.ntfy-alert.enable or false && builtins.elem u config.my.ntfy-alert.failureUnits)
+        ) evaManagedUnits
+      )
       ++ [
         (lib.getExe evaJournal)
         # General service manager: `sudo service-ctl <action> <unit>`.
