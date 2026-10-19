@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+#
+# check-oura — Oura Ring daily readiness score for today.
+# Destination-fixed: always api.ouraring.com (pinned by the nix wrapper).
+# No user-supplied arguments change the endpoint.
+#
+# Environment (pinned by the wrapper):
+#   OURA_TOKEN_FILE   path to a file holding the Bearer token.
+#                     Accepts either a raw token (single line) or
+#                     a shell KEY=VALUE line: OURA_TOKEN=<value>.
+#   OURA_API_BASE     override the API base URL (optional)
+#
+set -euo pipefail
+
+: "${OURA_TOKEN_FILE:?OURA_TOKEN_FILE not set}"
+API_BASE="${OURA_API_BASE:-https://api.ouraring.com/v2/usercollection}"
+
+[ -r "$OURA_TOKEN_FILE" ] || { echo "check-oura: token file not readable: $OURA_TOKEN_FILE" >&2; exit 1; }
+
+# Support both raw token and KEY=VALUE format (OURA_TOKEN=xxx).
+_raw="$(cat "$OURA_TOKEN_FILE")"
+if printf '%s' "$_raw" | grep -q '^OURA_TOKEN='; then
+  TOKEN="$(printf '%s' "$_raw" | grep -oP '^OURA_TOKEN=\K\S+')"
+else
+  TOKEN="$(printf '%s' "$_raw" | head -1)"
+fi
+[ -n "$TOKEN" ] || { echo "check-oura: could not read token from $OURA_TOKEN_FILE" >&2; exit 1; }
+
+TODAY=$(date +%Y-%m-%d)
+
+# The token rides an Authorization header (Bearer), not a query parameter, so
+# it does not appear in the URL. A curl config file keeps it off the process
+# table (world-readable argv).
+KEY_CFG="$(mktemp)"
+trap 'rm -f "$KEY_CFG"' EXIT
+printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$KEY_CFG"
+
+RESP="$(curl -sS --max-time 30 \
+  --config "$KEY_CFG" \
+  "${API_BASE}/daily_readiness?start_date=${TODAY}&end_date=${TODAY}")"
+
+SCORE=$(printf '%s' "$RESP" | jq -r '.data[0].score // empty')
+if [ -z "$SCORE" ]; then
+  echo "check-oura: no readiness data for $TODAY (ring may not have synced yet)" >&2
+  exit 1
+fi
+
+printf '%s' "$RESP" | jq -r '
+  .data[0] |
+  "Oura readiness \(.day): \(.score)/100\n" +
+  "  hrv_balance:           \(.contributors.hrv_balance)\n" +
+  "  resting_heart_rate:    \(.contributors.resting_heart_rate)\n" +
+  "  recovery_index:        \(.contributors.recovery_index)\n" +
+  "  sleep_balance:         \(.contributors.sleep_balance)\n" +
+  "  previous_night:        \(.contributors.previous_night)\n" +
+  "  activity_balance:      \(.contributors.activity_balance)\n" +
+  "  body_temperature:      \(.contributors.body_temperature)"'

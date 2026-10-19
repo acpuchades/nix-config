@@ -714,6 +714,18 @@ in
       # (through the same trusted-host gate — the provider hosts are trusted sites
       # above) AND lists upcoming events in one command; it also accepts a local
       # file/stdin. Replaces the old request-trusted-url | parse-ics pipe.
+      # Oura Ring daily readiness. Token file stays in eva's own tree for now
+      # (KEY=VALUE format: OURA_TOKEN=…); migrate to a sops-nix secret when
+      # adding the `oura/token` entry to machines/homeserver/secrets/default.yml.
+      checkOura = {
+        enable = true;
+        tokenFile = "/home/eva/workspace/.config/eva/oura-credentials";
+      };
+      # NixOS channel update check via the GitHub API. Keyless — no secret needed.
+      checkNixosUpdate = {
+        enable = true;
+        branch = "nixos-26.05";
+      };
       checkCalendar.enable = true;
       # Calendar invitations she can actually RSVP to. A .ics attached by hand
       # arrives as a file with no accept/decline — the client only offers that for a

@@ -339,6 +339,48 @@ let
           ) "--set WEATHER_API_BASE ${lib.escapeShellArg icfg.actions.checkWeather.apiBase}"}
       '';
 
+  # `check-oura`: Oura Ring daily readiness, destination-fixed to api.ouraring.com.
+  # Bearer auth via a runtime token file (never a nix value). Safe to bless
+  # whole-binary because the endpoint is pinned and the token is a file path.
+  checkOuraBin =
+    pkgs.runCommandLocal "openclaw-check-oura" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+      ''
+        install -Dm0755 ${./actions/check-oura} $out/libexec/check-oura
+        makeWrapper $out/libexec/check-oura $out/bin/check-oura \
+          --prefix PATH : ${
+            lib.makeBinPath [
+              pkgs.curl
+              pkgs.jq
+              pkgs.coreutils
+            ]
+          } \
+          --set OURA_TOKEN_FILE ${lib.escapeShellArg icfg.actions.checkOura.tokenFile} \
+          ${lib.optionalString (
+            icfg.actions.checkOura.apiBase != null
+          ) "--set OURA_API_BASE ${lib.escapeShellArg icfg.actions.checkOura.apiBase}"}
+      '';
+
+  # `check-nixos-update`: latest commit on a NixOS channel branch via the GitHub
+  # API. Destination-fixed to api.github.com/repos/NixOS/nixpkgs. Keyless
+  # (public endpoint), so no runtime secret is needed. Safe to bless whole-binary.
+  checkNixosUpdateBin =
+    pkgs.runCommandLocal "openclaw-check-nixos-update" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+      ''
+        install -Dm0755 ${./actions/check-nixos-update} $out/libexec/check-nixos-update
+        makeWrapper $out/libexec/check-nixos-update $out/bin/check-nixos-update \
+          --prefix PATH : ${
+            lib.makeBinPath [
+              pkgs.curl
+              pkgs.jq
+              pkgs.coreutils
+            ]
+          } \
+          --set NIXOS_BRANCH ${lib.escapeShellArg icfg.actions.checkNixosUpdate.branch} \
+          ${lib.optionalString (
+            icfg.actions.checkNixosUpdate.apiBase != null
+          ) "--set NIXOS_API_BASE ${lib.escapeShellArg icfg.actions.checkNixosUpdate.apiBase}"}
+      '';
+
   # `solve-captcha`: the generic actions/solve-captcha script wrapped so the API
   # key file, the endpoint, the allowed page hosts, the image root and the
   # timeouts are pinned by nix — the script stays generic and the agent can
@@ -572,6 +614,8 @@ let
     ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
     ++ lib.optionals icfg.actions.checkCalendar.enable [ checkCalendarBin ]
     ++ lib.optionals icfg.actions.makeInvite.enable [ makeInviteBin ]
+    ++ lib.optionals icfg.actions.checkOura.enable [ checkOuraBin ]
+    ++ lib.optionals icfg.actions.checkNixosUpdate.enable [ checkNixosUpdateBin ]
     ++ lib.optionals icfg.actions.solveCaptcha.enable [ solveCaptchaBin ]
     ++ lib.optionals icfg.actions.zotero.enable [ zoteroBin ]
     ++ lib.optional (icfg.exec.netIsolatedBins != [ ]) offlineLauncher;
