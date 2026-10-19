@@ -200,6 +200,9 @@ in
       enable = true;
       # Must match the extract imported by hand (spain-latest.osm.pbf).
       replicationUrl = "https://download.geofabrik.de/europe/spain-updates/";
+      # Geofabrik blocks the server's direct IP; route nominatim's egress
+      # through the Spain ProtonVPN exit (table 42 = proton-es).
+      viaTunnel = 42;
     };
   };
 

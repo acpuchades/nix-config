@@ -230,6 +230,17 @@ in
           because the only symptom is a failed timer unit.
         '';
       };
+
+      viaTunnel = lib.mkOption {
+        type = lib.types.nullOr lib.types.int;
+        default = null;
+        description = ''
+          When set, route nominatim replication traffic through this VPN
+          routing table using uid-based policy routing for the nominatim
+          user. Needed when the replication host blocks the server's
+          direct IP address (Geofabrik blocks many datacenter IPs).
+        '';
+      };
     };
   };
 
@@ -348,6 +359,36 @@ in
       ]
     );
 
+    # Route the nominatim user's egress through the specified VPN table.
+    # Geofabrik blocks many datacenter IPs; routing via a residential VPN exit
+    # (ProtonVPN Spain) works around this. The rule is added after
+    # protonvpn-policy so the table exists, and swept alongside it on restart
+    # via partOf — nominatim-route restarts too, re-adding the rule cleanly.
+    systemd.services.nominatim-route = lib.mkIf (cfg.updates.enable && cfg.updates.viaTunnel != null) {
+      description = "Policy routing: nominatim replication via VPN table ${toString cfg.updates.viaTunnel}";
+      after = [ "protonvpn-policy.service" ];
+      partOf = [ "protonvpn-policy.service" ];
+      wantedBy = [ "protonvpn-policy.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = toString (
+          pkgs.writeShellScript "nominatim-route-start" ''
+            uid="$(${pkgs.coreutils}/bin/id -u nominatim)"
+            ${pkgs.iproute2}/bin/ip rule add uidrange "$uid-$uid" \
+              lookup ${toString cfg.updates.viaTunnel} priority 1003
+          ''
+        );
+        ExecStop = toString (
+          pkgs.writeShellScript "nominatim-route-stop" ''
+            uid="$(${pkgs.coreutils}/bin/id -u nominatim 2>/dev/null)" || exit 0
+            ${pkgs.iproute2}/bin/ip rule del uidrange "$uid-$uid" \
+              lookup ${toString cfg.updates.viaTunnel} priority 1003 2>/dev/null || true
+          ''
+        );
+      };
+    };
+
     # The replication timer upstream leaves as a TODO. `--once` applies every
     # diff published since the last run and exits, so the timer controls the
     # cadence rather than a long-lived daemon loop. Requires
@@ -359,7 +400,8 @@ in
       after = [
         "postgresql.service"
         "nominatim-init.service"
-      ];
+      ]
+      ++ lib.optionals (cfg.updates.viaTunnel != null) [ "nominatim-route.service" ];
       requires = [ "postgresql.service" ];
       serviceConfig = {
         Type = "oneshot";
