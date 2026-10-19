@@ -903,6 +903,53 @@
           '';
         };
       };
+      checkOura = {
+        enable = lib.mkEnableOption ''
+          the `check-oura` action: today's Oura Ring readiness score and
+          contributors. Destination-fixed to api.ouraring.com, so it is safe to
+          bless whole-binary. Needs `tokenFile` set'';
+        tokenFile = lib.mkOption {
+          type = lib.types.str;
+          example = "/run/secrets/openclaw-oura-token";
+          description = ''
+            Path to a file holding the Oura API Bearer token (single line), read
+            at runtime. Point it at a sops-nix secret or any out-of-band file the
+            agent can read. The token is never a nix value and does not enter the
+            store.
+          '';
+        };
+        apiBase = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://api.ouraring.com/v2/usercollection";
+          description = ''
+            Override the Oura API base URL (default https://api.ouraring.com/v2/usercollection).
+          '';
+        };
+      };
+      checkNixosUpdate = {
+        enable = lib.mkEnableOption ''
+          the `check-nixos-update` action: latest commit on a NixOS channel branch
+          from the GitHub API. Destination-fixed to api.github.com/repos/NixOS/nixpkgs,
+          so it is safe to bless whole-binary'';
+        branch = lib.mkOption {
+          type = lib.types.str;
+          default = "nixos-24.11";
+          example = "nixos-26.05";
+          description = ''
+            Default NixOS channel branch to check (e.g. "nixos-26.05").
+            The agent can override this per-call with --branch.
+          '';
+        };
+        apiBase = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "https://api.github.com";
+          description = ''
+            Override the GitHub API base URL (default https://api.github.com).
+          '';
+        };
+      };
       solveCaptcha = {
         enable = lib.mkEnableOption ''
           the `solve-captcha` action: solve a CAPTCHA blocking a page the agent is
