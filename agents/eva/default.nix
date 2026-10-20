@@ -359,7 +359,7 @@ in
     # her own workspace.
     user = "eva";
 
-    # Her human name, so mail she sends arrives as `Eva Nebot <e.nebot@...>` rather
+    # Her human name, so mail she sends arrives as `Eva Nebot <eva@...>` rather
     # than a bare address (the send wrappers pass it to sendmail as -F, and it is
     # also the account's GECOS name).
     fullName = "Eva Nebot";
@@ -684,7 +684,9 @@ in
     mail = {
       enable = true;
       manageMaildir = true;
-      fromAddress = "e.nebot@${owner.domain}";
+      # Her mailbox itself, on the host's self-hosted mail subdomain: the apex
+      # alias that used to front it is gone along with Cloudflare Email Routing.
+      fromAddress = "eva@m.${owner.domain}";
       submitUser = "eva-mail";
       # Shared with send-trusted-mail so the two outbound wrappers never drift.
       unpromptedRecipientsFile = owner.mailAddressesFile;

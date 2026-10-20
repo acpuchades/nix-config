@@ -60,9 +60,9 @@
     enable = true;
     hostname = "m.acpuchades.com";
     origin = "acpuchades.com";
-    # Public identity e.nebot@acpuchades.com is a Cloudflare Email Routing
-    # alias forwarding to eva@m.acpuchades.com, which (mailDomain being
-    # local) delivers straight to the eva system user's ~/Maildir.
+    # eva's public address is eva@m.acpuchades.com itself (no apex alias in
+    # front): mailDomain being local, it delivers straight to the eva system
+    # user's ~/Maildir.
     mailDomain = "m.acpuchades.com";
     # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
     # of these AND carries an aligned DKIM signature (spoof-proof). eva keys
