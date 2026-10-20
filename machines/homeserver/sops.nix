@@ -443,7 +443,7 @@ in
         # longer this file's business, and listing a name with no A record just
         # logs a skip on every run.
         #
-        # mail.acpuchades.com stays, and stays DNS-only (grey cloud) while these
+        # m.acpuchades.com stays, and stays DNS-only (grey cloud) while these
         # others are proxied: Cloudflare's proxy does not carry SMTP, so an
         # orange cloud here would take inbound mail off the air. It is also the
         # name the fugazi backend STARTTLSes to, matched against the wildcard
@@ -451,7 +451,7 @@ in
         ${ddnsZone "acpuchades.com" [
           "analytics"
           "blog"
-          "mail"
+          "m"
           "vpn"
           "www"
         ]}

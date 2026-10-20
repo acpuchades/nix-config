@@ -164,7 +164,7 @@ let
 
       smtpHost = lib.mkOption {
         type = lib.types.str;
-        default = "mail.acpuchades.com";
+        default = "m.acpuchades.com";
         description = ''
           SMTP smarthost. The backend always STARTTLSes with certificate
           verification, so this must match the relay's certificate. Defaults to the
@@ -352,13 +352,13 @@ in
     };
 
     # Keep SMTP delivery local while satisfying the relay's TLS certificate:
-    # mail.acpuchades.com resolves to loopback here, and the wildcard cert
+    # m.acpuchades.com resolves to loopback here, and the wildcard cert
     # (*.acpuchades.com) still validates on STARTTLS. Computed across all
     # instances rather than per instance — `networking.hosts.<ip>` is a list, so
     # emitting it once per instance would put the same name in it N times.
-    networking.hosts = lib.mkIf (lib.any (i: i.smtpHost == "mail.acpuchades.com") (
+    networking.hosts = lib.mkIf (lib.any (i: i.smtpHost == "m.acpuchades.com") (
       lib.attrValues cfg.instances
-    )) { "127.0.0.1" = [ "mail.acpuchades.com" ]; };
+    )) { "127.0.0.1" = [ "m.acpuchades.com" ]; };
 
     services.fugazi-web.instances = overInstances (
       name: i: {

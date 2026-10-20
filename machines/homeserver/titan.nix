@@ -53,7 +53,7 @@ in
       host = "127.0.0.1";
       port = 25;
       # Loopback to our own Postfix, which then relays over TLS; its STARTTLS
-      # certificate is for mail.acpuchades.com, which 127.0.0.1 would not match.
+      # certificate is for m.acpuchades.com, which 127.0.0.1 would not match.
       security = "none";
       from = "titan <noreply@acpuchades.com>";
     };

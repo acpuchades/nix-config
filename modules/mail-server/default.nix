@@ -102,7 +102,7 @@ in
         Mail hostname / MX target. Also the CN of the inbound STARTTLS cert, so
         it must have a public A record (see ddclient) that tracks the dynamic IP.
       '';
-      example = "mail.acpuchades.com";
+      example = "m.acpuchades.com";
     };
 
     origin = lib.mkOption {
@@ -119,7 +119,7 @@ in
         from `origin` so the apex stays on Cloudflare Email Routing. Unknown
         local parts are rejected at SMTP time (no catch-all, no backscatter).
       '';
-      example = "mail.acpuchades.com";
+      example = "m.acpuchades.com";
     };
 
     trustedSenders = lib.mkOption {

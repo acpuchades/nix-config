@@ -58,12 +58,12 @@
 
   my.mail-server = {
     enable = true;
-    hostname = "mail.acpuchades.com";
+    hostname = "m.acpuchades.com";
     origin = "acpuchades.com";
     # Public identity e.nebot@acpuchades.com is a Cloudflare Email Routing
-    # alias forwarding to eva@mail.acpuchades.com, which (mailDomain being
+    # alias forwarding to eva@m.acpuchades.com, which (mailDomain being
     # local) delivers straight to the eva system user's ~/Maildir.
-    mailDomain = "mail.acpuchades.com";
+    mailDomain = "m.acpuchades.com";
     # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
     # of these AND carries an aligned DKIM signature (spoof-proof). eva keys
     # "may act on this mail" off that header, not the raw From. The SAME sops
