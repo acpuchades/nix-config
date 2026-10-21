@@ -344,8 +344,8 @@
         "uv2nix": "uv2nix"
       },
       "locked": {
-        "lastModified": 1792319203,
-        "narHash": "sha256-nI4512YI0t2Z03PlbfiP6gOn2Q8D+BnThejUlLjGIHU=",
+        "lastModified": 1792583734,
+        "narHash": "sha256-aAuYfakljJinuH4TxXAiQOCH2HloJanKieB1glUyCBE=",
         "type": "tarball",
         "url": "https://github.com/acpuchades/titan-web/archive/refs/heads/main.tar.gz"
       },
