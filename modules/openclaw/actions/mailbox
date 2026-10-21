@@ -243,6 +243,40 @@ def aligned(sig_domain, from_domain):
     )
 
 
+class _KeyLookup:
+    """dnsfunc for dkimpy that retries, waits longer than its 5 s default (an
+    uncached key behind a CNAME chain and DNSCrypt can take that long), and
+    remembers a FAILED lookup — which dkimpy otherwise reports exactly like a
+    missing key, i.e. as an unsigned message."""
+
+    def __init__(self):
+        self.failed = False
+
+    def __call__(self, name, timeout=5):
+        import dns.exception
+        import dns.rdatatype
+        import dns.resolver
+
+        if isinstance(name, bytes):  # dkimpy hands over the raw d=/s= bytes
+            try:
+                name = name.decode("ascii")
+            except UnicodeDecodeError:
+                return None
+        for _ in range(2):
+            try:
+                ans = dns.resolver.resolve(name, "TXT", raise_on_no_answer=False, lifetime=20)
+            except dns.resolver.NXDOMAIN:
+                return None
+            except (dns.exception.Timeout, dns.resolver.NoNameservers):
+                continue
+            for rrset in ans.response.answer:
+                if rrset.rdtype == dns.rdatatype.TXT:
+                    return b"".join(list(rrset.items)[0].strings)
+            return None
+        self.failed = True
+        return None
+
+
 def trust(raw, msg):
     froms = msg.get_all("From") or []
     if len(froms) != 1:
@@ -257,6 +291,7 @@ def trust(raw, msg):
     if sender not in trusted_addresses():
         return False, "sender is not on the trusted list"
     from_domain = addrs[0].domain.lower().rstrip(".")
+    lookup = _KeyLookup()
     sigs = msg.get_all("DKIM-Signature") or []
     for idx, sig in enumerate(sigs):
         tags = {
@@ -270,10 +305,12 @@ def trust(raw, msg):
         if not d or not aligned(d, from_domain):
             continue
         try:
-            if dkim.DKIM(raw).verify(idx=idx):
+            if dkim.DKIM(raw).verify(idx=idx, dnsfunc=lookup):
                 return True, f"DKIM signature by {d} verified, sender on the trusted list"
         except Exception:  # noqa: BLE001 — any verifier failure means "not verified"
             continue
+    if lookup.failed:
+        return False, "could not fetch the sender's DKIM key (DNS failure) — try reading it again later"
     return False, "no verified DKIM signature aligned with the From domain"
 
 
