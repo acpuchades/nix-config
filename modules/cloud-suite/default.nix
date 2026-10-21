@@ -533,6 +533,8 @@
       # wildcard, see ../web-server).
       services.nginx.virtualHosts.${config.my.cloud-suite.nextcloud.hostName} = {
         inherit (config.my.cloud-suite.nextcloud) allowedNetworks;
+        # Upstream's vhost sends its own HSTS.
+        hsts = false;
       };
 
       # Bitwarden (Vaultwarden)

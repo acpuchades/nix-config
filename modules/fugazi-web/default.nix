@@ -485,6 +485,8 @@ in
         ${i.hostName} = {
           serverAliases = i.aliases;
           inherit (i) allowedNetworks;
+          # Its own, longer HSTS is in securityHeaders below.
+          hsts = false;
           root = frontendOf i;
 
           # The SPA's real Content-Security-Policy. The build-time <meta> one

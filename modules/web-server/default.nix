@@ -9,7 +9,10 @@
 # it (its locations, and `allowedNetworks` if it is gated):
 #
 #   - a vhost whose name falls in one of `certificates` gets that wildcard
-#     (`useACMEHost`) and `forceSSL` by default;
+#     (`useACMEHost`), `forceSSL` and a one-year HSTS header by default (`hsts`,
+#     added here; turn it off where the vhost sends its own). A location with
+#     its own add_header drops the server-level one — repeat it there;
+#     gixy fails the build if you don't;
 #   - `allowedNetworks` (an option added here) gates on the TCP PEER, not the
 #     forwarded client: it is matched against $realip_remote_addr, which the
 #     realip module never rewrites. A Cloudflare-proxied request to a LAN-only
@@ -60,11 +63,26 @@ in
             '';
           };
 
+          options.hsts = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = ''
+              Send `Strict-Transport-Security: max-age=31536000` (no
+              includeSubDomains) from a vhost covered by my.web-server.certificates.
+              Off for vhosts that send their own. Added by modules/web-server.
+            '';
+          };
+
           config = lib.mkIf cfg.enable (
             lib.mkMerge [
               (lib.mkIf (certFor name != null) {
                 useACMEHost = lib.mkDefault (certFor name);
                 forceSSL = lib.mkDefault true;
+              })
+              (lib.mkIf (certFor name != null && config.hsts) {
+                extraConfig = ''
+                  add_header Strict-Transport-Security "max-age=31536000" always;
+                '';
               })
               (lib.mkIf (config.allowedNetworks != [ ]) {
                 extraConfig = ''
@@ -183,7 +201,7 @@ in
         }
       );
       default = { };
-      description = "Plain static sites and redirects, with HSTS.";
+      description = "Plain static sites and redirects.";
     };
   };
 
@@ -231,6 +249,16 @@ in
       recommendedOptimisation = true;
       recommendedGzipSettings = true;
       recommendedProxySettings = true;
+      # nginx's own defaults are one worker and 512 connections, and every
+      # proxied request holds two (client + upstream) — with ntfy
+      # subscriptions and the HA/Immich websockets held open, a few hundred
+      # clients would exhaust it. The rlimit lifts the 1024-fd soft limit the
+      # unit starts with (it has CAP_SYS_RESOURCE for exactly this).
+      appendConfig = ''
+        worker_processes auto;
+        worker_rlimit_nofile 16384;
+      '';
+      eventsConfig = "worker_connections 4096;";
       # nginx's `if` + `return` gate and the rate-limit maps below need these
       # in http context, and so does realip (applies to every server).
       appendHttpConfig = lib.concatStringsSep "\n" (
@@ -274,11 +302,6 @@ in
 
         (lib.mapAttrs (_: hostConfig: {
           inherit (hostConfig) root;
-          # Every vhost here is TLS-only; pin that in the browser so one
-          # plaintext hit can't strip the session.
-          extraConfig = ''
-            add_header Strict-Transport-Security "max-age=31536000" always;
-          '';
           locations."/" = lib.mkIf (hostConfig.redirect != null) {
             return = "301 ${hostConfig.redirect}$request_uri";
           };

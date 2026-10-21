@@ -63,12 +63,12 @@ in
   services.nginx.virtualHosts.${hostName} = {
     allowedNetworks = privateNetworks;
     root = pkgs.titan-frontend;
-    extraConfig = hsts;
     locations."/v1/".proxyPass = "http://${api}";
     locations."= /health".proxyPass = "http://${api}";
     # Vite fingerprints everything under /assets: cache it for good, and never
-    # index.html, so a deploy is picked up on the next load. HSTS is repeated:
-    # a location's own add_header drops every server-level one.
+    # index.html, so a deploy is picked up on the next load. The server-level
+    # HSTS (modules/web-server) is repeated: a location's own add_header drops
+    # every server-level one.
     locations."/assets/" = {
       tryFiles = "$uri =404";
       extraConfig = ''

@@ -115,8 +115,8 @@ never aborts a save); every package is deferred unless it must act at startup
   host (stock nixpkgs nginx, no third-party modules). Certificates are lego
   (`security.acme`) DNS-01 wildcards, one per zone in
   `my.web-server.certificates`. The module extends
-  `services.nginx.virtualHosts`: a vhost named in a zone gets that wildcard +
-  `forceSSL` by default, and gains an `allowedNetworks` option that gates on
+  `services.nginx.virtualHosts`: a vhost named in a zone gets that wildcard,
+  `forceSSL` and HSTS by default (`hsts = false` where it sends its own), and gains an `allowedNetworks` option that gates on
   the TCP PEER (`$realip_remote_addr`, 444 otherwise; loopback always passes),
   not on the realip-resolved client. Service modules write
   `services.nginx.virtualHosts.<host>` directly; upstream nginx vhosts
