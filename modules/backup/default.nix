@@ -252,6 +252,12 @@ in
       default = {
         OnCalendar = "daily";
         RandomizedDelaySec = "30m";
+        # The same offset every day. Without it systemd rerolls the delay on
+        # every daemon-reload — i.e. every nixos-rebuild — and with
+        # Persistent a reroll later than tonight's actual run reads as a
+        # missed run and fires a catch-up backup on the spot (it did,
+        # 2026-10-21, mid-switch: maintenance mode broke nextcloud-setup).
+        FixedRandomDelay = "true";
         Persistent = "true";
       };
       description = "systemd timer config controlling when the backup runs.";
