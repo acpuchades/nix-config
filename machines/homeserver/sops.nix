@@ -415,10 +415,15 @@ in
         # orange cloud here would take inbound mail off the air. It is also the
         # name the fugazi backend STARTTLSes to, matched against the wildcard
         # cert — see my.fugazi-web's smtpHost.
+        #
+        # ntfy is public by design (phones subscribe from anywhere), so its
+        # origin record has to follow the box too; missing here, it went stale
+        # and Cloudflare answered 525 for every off-LAN client.
         ${ddnsZone "acpuchades.com" [
           "analytics"
           "blog"
           "m"
+          "ntfy"
           "vpn"
           "www"
         ]}
