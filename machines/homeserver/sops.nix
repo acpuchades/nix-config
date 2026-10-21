@@ -43,29 +43,16 @@ in
         group = config.users.users.nextcloud.group;
       };
 
-      "cloudflare/account" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-      };
+      # Only ever read through templates (rendered as root), so root-owned.
+      "cloudflare/account" = { };
+      "cloudflare/token" = { };
 
-      "cloudflare/token" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-      };
-
-      "caddy/adguard" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-      };
-
-      "caddy/prefect" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-      };
+      # bcrypt hashes for nginx basic-auth, rendered into the nginx/*-htpasswd
+      # templates. Generate with `mkpasswd -m bcrypt` (or `htpasswd -nbB`). The
+      # `caddy/` key names predate the move to nginx; renaming them means
+      # re-encrypting the file with the master key.
+      "caddy/adguard" = { };
+      "caddy/prefect" = { };
 
       "umami/app-secret" = {
         key = "umami/app-secret";
@@ -132,13 +119,8 @@ in
         key = "wireguard-client/wgproton-p2p";
       };
 
-      # htpasswd hash for the torrent.acpuchades.com basic-auth (rendered into the
-      # caddy/torrent-auth template). Generate with: caddy hash-password
-      "caddy/torrent" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-      };
+      # torrent.acpuchades.com basic-auth hash (see caddy/adguard above).
+      "caddy/torrent" = { };
 
       # Per-peer preshared keys for wg0 (declarative peers in my.vpn-server.peers)
       "wireguard/psk/alex-laptop" = {
@@ -363,17 +345,8 @@ in
 
     templates = {
 
-      "caddy/cloudflare-env" = {
-        owner = "caddy";
-        group = "caddy";
-        mode = "0400";
-        content = ''
-          CLOUDFLARE_API_TOKEN=${config.sops.placeholder."cloudflare/token"}
-        '';
-      };
-
-      # ACME dns-01 via lego. lego's Cloudflare provider reads CF_DNS_API_TOKEN,
-      # same underlying token as Caddy's CLOUDFLARE_API_TOKEN.
+      # ACME dns-01 via lego (my.web-server.certificates); its Cloudflare
+      # provider reads CF_DNS_API_TOKEN.
       "acme/cloudflare-env" = {
         owner = "acme";
         group = "acme";
@@ -383,36 +356,30 @@ in
         '';
       };
 
-      "caddy/adguard-auth" = {
-        owner = "caddy";
-        group = "caddy";
+      "nginx/adguard-htpasswd" = {
+        owner = "nginx";
+        group = "nginx";
         mode = "0400";
         content = ''
-          basic_auth {
-            admin ${config.sops.placeholder."caddy/adguard"}
-          }
+          admin:${config.sops.placeholder."caddy/adguard"}
         '';
       };
 
-      "caddy/prefect-auth" = {
-        owner = "caddy";
-        group = "caddy";
+      "nginx/prefect-htpasswd" = {
+        owner = "nginx";
+        group = "nginx";
         mode = "0400";
         content = ''
-          basic_auth {
-            admin ${config.sops.placeholder."caddy/prefect"}
-          }
+          admin:${config.sops.placeholder."caddy/prefect"}
         '';
       };
 
-      "caddy/torrent-auth" = {
-        owner = "caddy";
-        group = "caddy";
+      "nginx/torrent-htpasswd" = {
+        owner = "nginx";
+        group = "nginx";
         mode = "0400";
         content = ''
-          basic_auth {
-            admin ${config.sops.placeholder."caddy/torrent"}
-          }
+          admin:${config.sops.placeholder."caddy/torrent"}
         '';
       };
 
@@ -438,7 +405,7 @@ in
 
         # The apex is absent here for the same reason it is absent below:
         # acpuchades.com is a CNAME to www.acpuchades.com in Cloudflare, so it
-        # follows www's address on its own. It IS still served — Caddy has a
+        # follows www's address on its own. It IS still served — nginx has a
         # vhost for it that redirects to www — but what it resolves to is no
         # longer this file's business, and listing a name with no A record just
         # logs a skip on every run.
@@ -470,7 +437,7 @@ in
         # none, so every run would log "no 'A' record at Cloudflare" and skip —
         # noise that looks exactly like the real failure mode below.
         # PREREQ: `cloudflare/token` must carry Zone:DNS:Edit on THIS zone too,
-        # the same prerequisite Caddy's DNS-01 already has for these names.
+        # the same prerequisite the fugazitrade.com wildcard's DNS-01 has.
         ${ddnsZone "fugazitrade.com" [
           "www"
           "testing"

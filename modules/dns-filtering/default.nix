@@ -67,7 +67,7 @@
     basicAuthFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
-      description = "Basic auth file for web interface";
+      description = "htpasswd file for the web interface (nginx auth_basic_user_file).";
     };
 
     virtualHost = lib.mkOption {
@@ -196,8 +196,8 @@
     services.adguardhome = {
       enable = true;
       # The admin UI has no users configured (mutableSettings = false and no
-      # `users:` block), so it must only be reachable through the Caddy vhost,
-      # which adds basic-auth + a remote_ip gate. The nixpkgs default host is
+      # `users:` block), so it must only be reachable through the nginx vhost,
+      # which adds basic-auth + a source-network gate. The nixpkgs default host is
       # 0.0.0.0, which would hand unauthenticated control of the resolver —
       # DNS rewrites are a silent MITM — to anyone on the LAN or a VPN peer.
       host = "127.0.0.1";
@@ -239,19 +239,14 @@
       };
     };
 
-    services.caddy.virtualHosts = lib.mkIf (config.my.dns-filtering.virtualHost != null) {
-      ${config.my.dns-filtering.virtualHost}.extraConfig = lib.concatStringsSep "\n" (
-        lib.filter (s: s != "") [
-          (lib.optionalString (config.my.dns-filtering.allowedNetworks != [ ])
-            "@denied not remote_ip ${lib.concatStringsSep " " config.my.dns-filtering.allowedNetworks}\nabort @denied"
-          )
-          (lib.optionalString (
-            config.my.dns-filtering.basicAuthFile != null
-          ) "import ${config.my.dns-filtering.basicAuthFile}")
-          "reverse_proxy http://127.0.0.1:${toString config.my.dns-filtering.adguardPort}"
-          "encode gzip"
-        ]
-      );
+    services.nginx.virtualHosts = lib.mkIf (config.my.dns-filtering.virtualHost != null) {
+      ${config.my.dns-filtering.virtualHost} = {
+        inherit (config.my.dns-filtering) allowedNetworks basicAuthFile;
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString config.my.dns-filtering.adguardPort}";
+          proxyWebsockets = true;
+        };
+      };
     };
   };
 }

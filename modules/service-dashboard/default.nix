@@ -114,7 +114,7 @@ in
       listenPort = cfg.port;
 
       # Homepage rejects requests whose Host header is not allow-listed. Behind
-      # Caddy the header is the public hostname (no port); keep loopback too so
+      # nginx the header is the public hostname (no port); keep loopback too so
       # local health checks/curl still work.
       allowedHosts = "${cfg.hostName},localhost:${toString cfg.port},127.0.0.1:${toString cfg.port}";
 
@@ -147,24 +147,12 @@ in
       services = servicesYaml;
     };
 
-    # Reverse proxy via Caddy, gated to the private networks (same shape as the
-    # other internal-only services). TLS is issued through the global Cloudflare
-    # DNS-01 issuer, so the cert works even though the name never resolves
-    # publicly.
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-      if cfg.allowedNetworks != [ ] then
-        ''
-          @allowed remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}
-          handle @allowed {
-            reverse_proxy http://127.0.0.1:${toString cfg.port}
-            encode gzip
-          }
-          respond 403
-        ''
-      else
-        ''
-          reverse_proxy http://127.0.0.1:${toString cfg.port}
-          encode gzip
-        '';
+    # Reverse proxy via nginx, gated to the private networks (same shape as the
+    # other internal-only services). The zone's DNS-01 wildcard covers it even
+    # though the name never resolves publicly.
+    services.nginx.virtualHosts.${cfg.hostName} = {
+      inherit (cfg) allowedNetworks;
+      locations."/".proxyPass = "http://127.0.0.1:${toString cfg.port}";
+    };
   };
 }

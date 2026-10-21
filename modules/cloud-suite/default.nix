@@ -135,7 +135,7 @@
       uploadTimeout = lib.mkOption {
         type = lib.types.str;
         default = "30m";
-        description = "Read/write timeout for Immich uploads through Caddy";
+        description = "Read/send timeout for Immich uploads through nginx (nginx time syntax)";
       };
 
       cacheLocation = lib.mkOption {
@@ -375,10 +375,6 @@
         settings = {
           overwriteprotocol = "https";
           default_phone_region = config.my.cloud-suite.nextcloud.phoneRegion;
-          trusted_proxies = [
-            "127.0.0.1"
-            "::1"
-          ];
           "integrity.check.disabled" = lib.mkForce false;
           mail_smtpmode = "smtp";
           mail_sendmailmode = "smtp";
@@ -460,54 +456,53 @@
         };
       };
 
-      services.caddy.virtualHosts."${config.my.cloud-suite.immich.hostName}".extraConfig = ''
-        request_body {
-          max_size ${config.my.cloud-suite.immich.maxUploadSize}
-        }
-        reverse_proxy http://127.0.0.1:${toString config.my.cloud-suite.immich.port} {
-          transport http {
-            read_timeout ${config.my.cloud-suite.immich.uploadTimeout}
-            write_timeout ${config.my.cloud-suite.immich.uploadTimeout}
-            versions 1.1
-            keepalive off
-          }
-          flush_interval -1
-        }
-      '';
+      # Uploads are streamed straight through (no request buffering to disk,
+      # no response buffering), with a timeout long enough for a large video.
+      services.nginx.virtualHosts.${config.my.cloud-suite.immich.hostName} = {
+        extraConfig = "client_max_body_size ${config.my.cloud-suite.immich.maxUploadSize};";
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString config.my.cloud-suite.immich.port}";
+          proxyWebsockets = true;
+          extraConfig = ''
+            proxy_request_buffering off;
+            proxy_buffering off;
+            proxy_read_timeout ${config.my.cloud-suite.immich.uploadTimeout};
+            proxy_send_timeout ${config.my.cloud-suite.immich.uploadTimeout};
+          '';
+        };
+      };
 
-      services.caddy.virtualHosts."${config.my.cloud-suite.bitwarden.hostName}".extraConfig =
-        lib.concatStringsSep "\n"
-          (
-            lib.filter (s: s != "") [
-              (lib.optionalString (config.my.cloud-suite.bitwarden.allowedNetworks != [ ])
-                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.bitwarden.allowedNetworks}\nabort @denied"
-              )
-              # Vaultwarden takes the client IP (login rate limit, failed-login log)
-              # from X-Real-IP, which Caddy would otherwise pass through as the
-              # client sent it.
-              "reverse_proxy http://127.0.0.1:8000 {\n  header_up X-Real-IP {client_ip}\n}"
-              "encode gzip"
-            ]
-          );
+      # Vaultwarden takes the client IP (login rate limit, failed-login log)
+      # from X-Real-IP, which recommendedProxySettings sets to $remote_addr.
+      services.nginx.virtualHosts.${config.my.cloud-suite.bitwarden.hostName} = {
+        inherit (config.my.cloud-suite.bitwarden) allowedNetworks;
+        # Attachments and Sends; the size Vaultwarden's own docs use.
+        extraConfig = "client_max_body_size 525m;";
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:8000";
+          # Live sync notifications.
+          proxyWebsockets = true;
+        };
+      };
 
-      services.caddy.virtualHosts."${config.my.cloud-suite.collabora.hostName}".extraConfig =
-        lib.concatStringsSep "\n"
-          (
-            lib.filter (s: s != "") [
-              (lib.optionalString (config.my.cloud-suite.collabora.allowedNetworks != [ ])
-                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.collabora.allowedNetworks}\nabort @denied"
-              )
-              "reverse_proxy http://[::1]:${toString config.my.cloud-suite.collabora.port}"
-              "encode gzip"
-            ]
-          );
+      services.nginx.virtualHosts.${config.my.cloud-suite.collabora.hostName} = {
+        inherit (config.my.cloud-suite.collabora) allowedNetworks;
+        extraConfig = "client_max_body_size 100m;";
+        locations."/" = {
+          proxyPass = "http://[::1]:${toString config.my.cloud-suite.collabora.port}";
+          # An open document is one long-lived websocket; Collabora's own
+          # proxy examples allow it ten hours of silence.
+          proxyWebsockets = true;
+          extraConfig = "proxy_read_timeout 36000s;";
+        };
+      };
 
       # Periodic HTTP probe of Nextcloud, because unit state alone cannot see the
       # failure mode that already happened once (2026-09-19): a broken stateful
       # config.php 503s every request while phpfpm-nextcloud, nextcloud-cron and
-      # nextcloud-setup all stay green. The probe goes through loopback nginx
-      # (the Host header selects the vhost), so it exercises nginx → php-fpm →
-      # config.php without depending on Caddy or the LAN gate. Maintenance mode
+      # nextcloud-setup all stay green. The probe goes through nginx on loopback
+      # (--resolve; the gates admit the host itself), so it exercises nginx →
+      # php-fpm → config.php. Maintenance mode
       # is treated as healthy: the nightly backup quiesce is expected state.
       systemd.services.nextcloud-health = lib.mkIf config.my.cloud-suite.nextcloud.healthCheck.enable {
         description = "Nextcloud HTTP health probe (status.php)";
@@ -517,8 +512,8 @@
         };
         script = ''
           body=$(${pkgs.curl}/bin/curl -sf --max-time 30 \
-            -H "Host: ${config.my.cloud-suite.nextcloud.hostName}" \
-            http://127.0.0.1:8080/status.php) \
+            --resolve ${config.my.cloud-suite.nextcloud.hostName}:443:127.0.0.1 \
+            https://${config.my.cloud-suite.nextcloud.hostName}/status.php) \
             || { echo "status.php unreachable" >&2; exit 1; }
           printf '%s' "$body" | ${pkgs.jq}/bin/jq -e \
             '(.maintenance == true) or (.installed == true)' >/dev/null \
@@ -533,38 +528,12 @@
         };
       };
 
-      # NextCloud: nginx serves PHP-FPM on localhost; Caddy terminates TLS in front
-      services.nginx = {
-        enable = true;
-        recommendedProxySettings = true;
+      # NextCloud: upstream's nginx vhost (PHP-FPM) is the public one; nginx is
+      # this host's edge, so it only needs the LAN gate (TLS comes from the zone
+      # wildcard, see ../web-server).
+      services.nginx.virtualHosts.${config.my.cloud-suite.nextcloud.hostName} = {
+        inherit (config.my.cloud-suite.nextcloud) allowedNetworks;
       };
-      services.nginx.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}" = {
-        listen = [
-          {
-            addr = "127.0.0.1";
-            port = 8080;
-            ssl = false;
-          }
-        ];
-        forceSSL = lib.mkForce false;
-        enableACME = lib.mkForce false;
-      };
-      services.caddy.virtualHosts."${config.my.cloud-suite.nextcloud.hostName}".extraConfig =
-        lib.concatStringsSep "\n"
-          (
-            lib.filter (s: s != "") [
-              (lib.optionalString (config.my.cloud-suite.nextcloud.allowedNetworks != [ ])
-                "@denied not remote_ip ${lib.concatStringsSep " " config.my.cloud-suite.nextcloud.allowedNetworks}\nabort @denied"
-              )
-              ''
-                reverse_proxy http://127.0.0.1:8080 {
-                  transport http {
-                    versions 1.1
-                  }
-                }
-                encode gzip''
-            ]
-          );
 
       # Bitwarden (Vaultwarden)
       services.vaultwarden = {
@@ -573,7 +542,7 @@
         config = {
           DOMAIN = "https://${config.my.cloud-suite.bitwarden.hostName}";
           # Setting `config` replaces the module's loopback default; pin it so
-          # the port Caddy proxies to never ends up on every interface.
+          # the port nginx proxies to never ends up on every interface.
           ROCKET_ADDRESS = "127.0.0.1";
           ROCKET_PORT = 8000;
           DATABASE_URL = "postgresql://vaultwarden?host=/var/run/postgresql";

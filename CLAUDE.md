@@ -61,8 +61,6 @@ The ones that shape the architecture:
   the testing instance gets only the second input's packages
 - `titan-web` — PRIVATE repo (tarball URL + netrc, like fugazi-web) for
   titan.acpuchades.com; overlay + nixosModule consumed by `machines/homeserver/titan.nix`
-- `nix-caddy-withplugins` — deliberately does NOT follow nixpkgs (its pinned base
-  FOD hash depends on its own toolchain)
 - `emacs-overlay`, `sops-nix`, `better-zen`
 - `disko` — provisioning metadata only (`disko.enableConfig = false`); the
   runtime filesystem config stays in `hardware-configuration.nix`
@@ -113,10 +111,18 @@ never aborts a save); every package is deferred unless it must act at startup
 
 **Server modules** (homeserver only), the load-bearing ones:
 
-- `web-server` — Caddy + ACME; Caddy is the public entry point and terminates
-  TLS for every host. One deliberate exception: `cloud-suite` enables
-  `services.nginx` on 127.0.0.1 to serve NextCloud's PHP-FPM, so that vhost is
-  Caddy → nginx → php-fpm. Don't add `services.nginx` anywhere else.
+- `web-server` — nginx is the public entry point and terminates TLS for every
+  host (stock nixpkgs nginx, no third-party modules). Certificates are lego
+  (`security.acme`) DNS-01 wildcards, one per zone in
+  `my.web-server.certificates`. The module extends
+  `services.nginx.virtualHosts`: a vhost named in a zone gets that wildcard +
+  `forceSSL` by default, and gains an `allowedNetworks` option that gates on
+  the TCP PEER (`$realip_remote_addr`, 444 otherwise; loopback always passes),
+  not on the realip-resolved client. Service modules write
+  `services.nginx.virtualHosts.<host>` directly; upstream nginx vhosts
+  (Nextcloud, Nominatim) are served as-is. A location with its own
+  `add_header` drops every server-level one — repeat them (gixy fails the
+  build otherwise).
 - `cloud-suite` — NextCloud, Collabora, Vaultwarden, Immich
 - `protonvpn` — ProtonVPN egress: N prefix-steered client tunnels, one per exit
   country (`my.protonvpn.clientTunnels`) — each owns a `sourcePrefixes` range of
@@ -142,7 +148,7 @@ never aborts a save); every package is deferred unless it must act at startup
 Plus: `backup` (restic → B2), `ntfy-alert`, `transmission-server`,
 `media-server`, `postgresql-server`, `prefect-server`, `samba-server`,
 `print-server`, `geocoding`, `home-assistant`, `server-stats`, `web-analytics`,
-`service-dashboard`, `acme-cloudflare`, `caddy-plugins`, `host-security`
+`service-dashboard`, `host-security`
 (fail2ban), `ups-monitor`, `tor-bridge`, `push-notifications`,
 `wireguard-client` (library module driven by protonvpn), `firewall-allow`
 (library module: source-restricted firewall accepts, see below).
@@ -174,8 +180,8 @@ claude-code; small ones (starship, gh, bat, btop, …) are inline in
 `.sops.yaml` defines age-key recipients by file-path regex. Age-encrypted YAML:
 
 - `machines/homeserver/secrets/default.yml` — WireGuard/Proton keys, WiFi,
-  Caddy basic-auth, DB credentials, Cloudflare/Mailjet/ntfy/restic-B2 tokens,
-  the openclaw/eva credential block
+  nginx basic-auth (bcrypt; keys still named `caddy/*`), DB credentials,
+  Cloudflare/Mailjet/ntfy/restic-B2 tokens, the openclaw/eva credential block
 - `machines/macbookpro/secrets/default.yml`
 - `users/alex/secrets/default.yml` — service tokens (GitHub, Anthropic, PyPI,
   crates.io, Prefect, ntfy, iCloud), plus per-host overrides
@@ -191,11 +197,11 @@ list and `stateVersion`. Service configuration lives in per-area files, each
 importing the modules it configures:
 
 - `vpn.nix` — WireGuard server + peers, ProtonVPN egress, Transmission, Tor bridge
-- `web.nix` — Caddy (plugins hash, overlay, ACME, rate limits), AdGuard
-  rewrites, service dashboard
+- `web.nix` — nginx edge (wildcard certs, origin cloaking, login rate limits),
+  AdGuard rewrites, service dashboard
 - `apps.nix` — cloud-suite, PostgreSQL, Samba, media, print, geocoding, Home
   Assistant, analytics, Prefect
-- `eva.nix` — the agent, its mail server, the wildcard cert
+- `eva.nix` — the agent, its mail server (STARTTLS reuses the web wildcard)
 - `monitoring.nix` — ntfy, ntfy-alert (`failureUnits`: the one list of what
   gets alerted on), Grafana, UPS, host-security
 - `backup.nix` — restic → B2
@@ -221,7 +227,7 @@ interface. A service that LAN/VPN clients reach directly declares
 allowed-networks option (samba, print, dns-filtering, ups-monitor,
 media-server, web-server, host mDNS); `modules/firewall-allow` renders the
 `-I`/`-D nixos-fw` pairs. Never hand-write those rules. Everything else is
-reachable only through Caddy.
+reachable only through nginx.
 
 ### MacBook-specific
 
@@ -239,7 +245,6 @@ Locations are given as greppable identifiers, not line numbers. Last reviewed:
 
 | Workaround | Location | Drop condition / re-check |
 |---|---|---|
-| Caddy plugin-set hash pin (`caddy.withPlugins` from `nix-caddy-withplugins`) | `my.caddy-plugins.hash` in `machines/homeserver/web.nix`; overlay nearby; input in `flake.nix` | Effectively permanent (nixpkgs#450289 closed: nixpkgs' own withPlugins hashes caddy+plugins together). Re-pin `hash` when the plugin LIST changes, or when a `nix-caddy-withplugins` bump moves the Caddy version (take the `got:` value). If the *base* FOD (`caddy-base-proxy`) fails instead, `nix flake update nix-caddy-withplugins` — and if its bot hasn't caught up, wait rather than hand-patch. |
 | OpenClaw skills hardlink staging | `skillsStageSeed` in `modules/openclaw/instance.nix` | The skills loader silently drops any SKILL.md with nlink>=2, and `auto-optimise-store` hardlinks every store file — so store-path `extraDirs` load ZERO skills. ExecStartPre copies skills to `${stateDir}/nix-skills` (fresh inodes). Drop when the skills loader stops enforcing `rejectHardlinks` (the plugin loader already did in 2026.6.x). Re-check on each openclaw bump: `openclaw skills check` must show Total ≠ 0. |
 | OpenClaw source = nixpkgs-unstable | `pkgsUnstable` in `machines/homeserver/default.nix`; input in `flake.nix` | 26.05 freezes openclaw at 2026.5.7 (claude-cli exec approvals hang — no permission responder). Drop when 26.05 catches up; `nix flake update nixpkgs-unstable` to bump. |
 | OpenClaw insecure-package allowance | `allowInsecurePredicate` on `pkgsUnstable` in `machines/homeserver/default.nix` | Upstream's deliberate `knownVulnerabilities` (LLM prompt-injection). Won't be lifted; predicate is version-independent, nothing to hand-bump. |

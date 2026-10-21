@@ -6,7 +6,7 @@ let
   # Jellyfin's HTTP port. Jellyfin binds 0.0.0.0 (its bind address is stateful
   # config, not set here); who may actually reach it directly is governed by
   # the allowedDirectNetworks firewall rules below — plaintext, Jellyfin's own
-  # login, no Caddy. Everyone else comes through the Caddy vhost.
+  # login, no nginx. Everyone else comes through the nginx vhost.
   jellyfinPort = 8096;
 
   # When mediaDir lives inside a shared (Samba) tree, the library folders are
@@ -69,7 +69,7 @@ in
       example = [ "192.168.2.0/24" ];
       description = ''
         CIDR ranges allowed to reach Jellyfin's own HTTP port (8096) directly,
-        in plaintext, bypassing Caddy — what TV and mobile apps on the LAN use.
+        in plaintext, bypassing nginx — what TV and mobile apps on the LAN use.
         Empty closes direct access entirely (the vhost is then the only way in).
       '';
     };
@@ -91,7 +91,7 @@ in
     services.jellyfin = {
       enable = true;
       # No global opening; direct :8096 access is granted per source network
-      # below, everything else goes through Caddy + allowedNetworks.
+      # below, everything else goes through nginx + allowedNetworks.
       openFirewall = false;
     };
 
@@ -132,14 +132,17 @@ in
     # option and no-ops when mediaDir is on /.
     systemd.services.jellyfin.unitConfig.RequiresMountsFor = [ cfg.mediaDir ];
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
-      lib.filter (s: s != "") [
-        (lib.optionalString (
-          cfg.allowedNetworks != [ ]
-        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:${toString jellyfinPort}"
-        "encode gzip"
-      ]
-    );
+    services.nginx.virtualHosts.${cfg.hostName} = {
+      inherit (cfg) allowedNetworks;
+      # Jellyfin's recommended proxy settings: websockets for the session
+      # socket (remote control, sync play), no response buffering so streams
+      # start immediately, and room for subtitle/image uploads.
+      extraConfig = "client_max_body_size 20m;";
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString jellyfinPort}";
+        proxyWebsockets = true;
+        extraConfig = "proxy_buffering off;";
+      };
+    };
   };
 }

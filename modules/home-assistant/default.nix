@@ -147,16 +147,15 @@
       };
     };
 
-    services.caddy.virtualHosts."${config.my.home-assistant.hostName}".extraConfig =
-      lib.concatStringsSep "\n"
-        (
-          lib.filter (s: s != "") [
-            (lib.optionalString (config.my.home-assistant.allowedNetworks != [ ])
-              "@denied not remote_ip ${lib.concatStringsSep " " config.my.home-assistant.allowedNetworks}\nabort @denied"
-            )
-            "reverse_proxy http://127.0.0.1:${toString config.my.home-assistant.port}"
-            "encode gzip"
-          ]
-        );
+    services.nginx.virtualHosts.${config.my.home-assistant.hostName} = {
+      inherit (config.my.home-assistant) allowedNetworks;
+      # Backups are restored by uploading them through the UI.
+      extraConfig = "client_max_body_size 4g;";
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString config.my.home-assistant.port}";
+        # The whole frontend talks to the core over one websocket.
+        proxyWebsockets = true;
+      };
+    };
   };
 }

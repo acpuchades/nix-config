@@ -10,12 +10,9 @@
 # (Nominatim).
 #
 # Wraps the upstream `services.nominatim` module with:
-#   - the nginx-behind-Caddy pattern already used for NextCloud in
-#     ../cloud-suite. The upstream module hardcodes an nginx vhost with
-#     `enableACME` and `forceSSL`, which would fight Caddy for :443. Both are
-#     plain `lib.mkDefault` upstream, so a plain `false` here is enough to
-#     override them (unlike NextCloud, which needs `lib.mkForce`). nginx is
-#     pinned to a loopback port and Caddy terminates TLS in front.
+#   - upstream's own nginx vhost served as the public one: nginx is this
+#     host's edge (../web-server), so the vhost only trades upstream's
+#     per-host `enableACME` for the zone wildcard and gains the LAN gate.
 #   - a replication timer. Upstream carries a literal
 #     `# TODO: add nominatim-update service`, so without this the database is
 #     frozen at whatever the initial import contained.
@@ -134,16 +131,6 @@ in
     hostName = lib.mkOption {
       type = lib.types.str;
       description = "Public hostname for the Nominatim API and web UI";
-    };
-
-    port = lib.mkOption {
-      type = lib.types.port;
-      default = 8085;
-      description = ''
-        Port for the module's own nginx vhost, bound to loopback and fronted
-        by Caddy. Not the Nominatim API itself, which upstream only exposes
-        over a Unix socket at /run/nominatim.sock.
-      '';
     };
 
     allowedNetworks = lib.mkOption {
@@ -320,44 +307,13 @@ in
       requires = [ "nominatim-tablespace.service" ];
     };
 
-    # Pin the upstream nginx vhost to loopback and hand TLS to Caddy. Both
-    # forceSSL and enableACME are lib.mkDefault upstream, so plain values win.
-    services.nginx = {
-      enable = true;
-      recommendedProxySettings = true;
-    };
-
-    services.nginx.virtualHosts."${cfg.hostName}" = {
-      listen = [
-        {
-          addr = "127.0.0.1";
-          inherit (cfg) port;
-          ssl = false;
-        }
-      ];
-      forceSSL = false;
+    # Upstream's vhost, served directly. enableACME is a plain lib.mkDefault
+    # upstream; it has to go because it is mutually exclusive with the
+    # wildcard's useACMEHost.
+    services.nginx.virtualHosts.${cfg.hostName} = {
       enableACME = false;
-
-      # Upstream redirects `/` to the UI with `return 301 $scheme://$http_host/...`.
-      # Behind Caddy nginx only ever sees plain HTTP, so $scheme would emit an
-      # http:// Location and cost a second round trip through Caddy's
-      # http->https redirect. This vhost is only ever reached over TLS, so
-      # hardcoding the scheme is both correct and cheaper. mkForce because
-      # upstream sets this location's extraConfig unconditionally.
-      locations."= /".extraConfig = lib.mkForce (
-        lib.optionalString cfg.ui.enable "return 301 https://$http_host/ui/search.html;"
-      );
+      inherit (cfg) allowedNetworks;
     };
-
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
-      lib.filter (s: s != "") [
-        (lib.optionalString (
-          cfg.allowedNetworks != [ ]
-        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:${toString cfg.port}"
-        "encode gzip"
-      ]
-    );
 
     # Route the nominatim user's egress through the specified VPN table.
     # Geofabrik blocks many datacenter IPs; routing via a residential VPN exit

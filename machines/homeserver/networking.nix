@@ -41,7 +41,7 @@ in
       # real exposures. Each service that LAN/VPN clients use directly declares
       # its own source-restricted accept via my.firewall-allow (samba 445, cups
       # 631, DNS 53, upsd 3493, jellyfin 8096, mDNS below); anything without one
-      # is reachable only through Caddy. iptables backend — nftables is not
+      # is reachable only through nginx. iptables backend — nftables is not
       # enabled here (the egress modules rely on iptables).
     };
   };

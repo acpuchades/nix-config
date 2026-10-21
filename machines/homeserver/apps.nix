@@ -144,7 +144,7 @@ in
       "Music"
     ];
     shareGroup = "share";
-    # Internal hosts only — Caddy restricts the vhost to the LAN/VPN subnets.
+    # Internal hosts only — nginx restricts the vhost to the LAN/VPN subnets.
     allowedNetworks = privateNetworks;
     # TV/mobile apps talk straight to :8096; drop this if every client moves
     # to the vhost.
@@ -234,7 +234,7 @@ in
   my.prefect-server = {
     enable = true;
     # Loopback only: the Prefect API has NO authentication, and it can run
-    # arbitrary code as the prefect user (deployments/flow runs). The Caddy
+    # arbitrary code as the prefect user (deployments/flow runs). The nginx
     # vhost (basic-auth) is the only intended way in; the local workers
     # already target 127.0.0.1:4200 directly.
     host = "127.0.0.1";
@@ -242,7 +242,7 @@ in
     dataDir = "/srv/prefect";
     baseUrl = "https://prefect.acpuchades.com";
     virtualHost = "prefect.acpuchades.com";
-    basicAuthFile = config.sops.templates."caddy/prefect-auth".path;
+    basicAuthFile = config.sops.templates."nginx/prefect-htpasswd".path;
     # Not in public DNS, but the name is in CT logs and the vhost answered
     # from the internet; every client reaches it over LAN or VPN anyway.
     allowedNetworks = privateNetworks;

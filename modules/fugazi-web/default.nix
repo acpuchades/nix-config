@@ -6,14 +6,14 @@
 }:
 
 # fugazi-web (github.com/acpuchades/fugazi-web) — a multi-user web service for
-# live fugazi backtest stats. A React/Vite SPA served as static files by Caddy,
+# live fugazi backtest stats. A React/Vite SPA served as static files by nginx,
 # talking to a FastAPI backend (`uvicorn fugazi_service.api.app:app`) on
 # loopback. Persistence is Postgres; outbound mail goes through the host's local
 # Postfix relay. The SPA calls the API at same-origin `/v1/*` and `/health`, so
-# Caddy reverse-proxies those two prefixes to the backend and serves the built
+# nginx reverse-proxies those two prefixes to the backend and serves the built
 # frontend for everything else (with SPA-history fallback to index.html).
 #
-# This module owns the HOST topology only — Caddy, Postgres, the SMTP loopback
+# This module owns the HOST topology only — nginx, Postgres, the SMTP loopback
 # and the sops-backed environment, once per instance. The service itself comes
 # from upstream:
 #   fugazi-web.nixosModules.default → `services.fugazi-web.instances.<name>`
@@ -31,7 +31,7 @@
 # INSTANCES. Both this module and upstream's are keyed by instance name, and a
 # name is the whole of an instance's identity: `fugazi-web-<name>.service`,
 # `/var/lib/fugazi-web-<name>`, its own Postgres database and role, its own
-# Caddy vhost. Nothing is shared but the box. That is what lets a staging
+# nginx vhost. Nothing is shared but the box. That is what lets a staging
 # deployment tracking a different branch sit beside the public one — see
 # `packages` below for how a branch actually gets in, and the flake.nix header
 # for why there are two inputs rather than two imported modules.
@@ -41,19 +41,12 @@
 # maintenance-window vars via `environment`, …) is set directly on
 # `services.fugazi-web.instances.<name>` in the host config.
 #
-# Not used, on purpose: upstream's `enableNginx`. It serves the SPA, terminates
-# TLS and adds the response CSP + edge rate limiting — but this host's :443 is
-# Caddy's, so the two would fight over the port. The parts of it that are policy
-# rather than plumbing (the real CSP, the security headers, the immutable-asset
-# caching, the body cap, and now serving the bundle's precompressed siblings)
-# are replicated in the Caddy vhost below; the one part
-# that was missing is nginx's `limit_req` zones; they are here now, as
-# caddy-ratelimit. The in-process limiter still covers those routes too, and only
-# correctly while `trustedProxies` is right, which is why it is set below.
-#
-# Upstream has since removed its nginx branch outright — nothing set it and it had
-# never evaluated — so this vhost is not a second copy of one any more. It is the
-# only one, and the flake's module header states what it owes.
+# Upstream does not serve the SPA or terminate TLS (it removed its `enableNginx`
+# branch), so the vhost below is the only one, and the flake's module header
+# states what it owes: the real CSP, the security headers, the immutable-asset
+# caching, the body cap and the edge `limit_req` zones. The in-process limiter
+# still covers those routes too, and only correctly while `trustedProxies` is
+# right, which is why it is set below.
 #
 # Wired per instance, not here: FUGAZI_SERVICE_SECRET_KEY, the Fernet key for the
 # broker-credential vault. Without one the backend composes a NullVault — paper
@@ -100,7 +93,7 @@ let
   # Upstream's module is written this way for the same reason.
   overInstances = f: lib.mkMerge (lib.mapAttrsToList f cfg.instances);
 
-  # The SPA this instance's Caddy vhost serves. Falls back to the overlay's
+  # The SPA this instance's nginx vhost serves. Falls back to the overlay's
   # frontend — i.e. the build whose NixOS module was imported — when the instance
   # is not pinned to a second input.
   frontendOf = i: if i.packages == null then pkgs.fugazi-web-frontend else i.packages.frontend;
@@ -122,9 +115,9 @@ let
         description = ''
           Additional names served by the same site block (legacy or vanity
           domains). They serve the app directly rather than redirecting, so
-          bookmarks against an old name keep working. Each still needs its own
-          certificate, which Caddy gets over DNS-01 — so every name here must live
-          in a zone the Cloudflare API token can write to.
+          bookmarks against an old name keep working. Each must be covered by a
+          my.web-server.certificates wildcard — the vhost's TLS comes from the zone
+          of `hostName`, so an alias in another zone gets the wrong certificate.
         '';
       };
 
@@ -262,8 +255,8 @@ let
           rate-limit bucket on /v1/auth is keyed off the address that walk returns,
           so this list decides who shares a budget with whom.
 
-          The default is the local Caddy and nothing else, which is right whenever
-          Caddy is the only hop. When a CDN or edge proxy sits in front, its ranges
+          The default is the local nginx and nothing else, which is right whenever
+          nginx is the only hop. When a CDN or edge proxy sits in front, its ranges
           belong here too: the rightmost hop is then the edge, and leaving it
           untrusted makes *it* the bucket, so every caller arriving through one
           edge node shares one budget. The opposite error costs more — listing a
@@ -274,9 +267,9 @@ let
 
       maxRequestBodySize = lib.mkOption {
         type = lib.types.str;
-        default = "65MiB";
+        default = "65m";
         description = ''
-          Caddy's cap on a request body. It has to sit at or above the backend's
+          nginx's cap on a request body (client_max_body_size). It has to sit at or above the backend's
           own transport ceiling, or the edge quietly becomes the real upload limit
           and a caller gets a connection cut instead of the parser's 413.
 
@@ -287,9 +280,8 @@ let
           unuploadable — the backend has its own constant for this, and this option
           exists to keep the edge from reintroducing the bug it fixes.
 
-          Mind the unit. Caddy reads `MB` as 10^6 and `MiB` as 2^20, while every
-          limit on the backend side is binary: `64MB` is about 3 MiB SHORT of
-          64 MiB. Spell it in MiB.
+          nginx's `m` is binary (2^20), like every limit on the backend side, so
+          `65m` is 65 MiB.
         '';
       };
     };
@@ -303,7 +295,7 @@ in
       fugazi-web deployments on this host, keyed by name. Defining an entry
       enables it. Each gets its own Postgres database and role, its own service
       user, its own `fugazi-web-<name>` units and state directory (upstream) and
-      its own Caddy vhost (here).
+      its own nginx vhost (here).
 
       Set `packages` on an instance to run a different branch of the fugazi-web
       repo in it; leave it null to run the same build as the imported module.
@@ -387,7 +379,7 @@ in
             #
             # Taken from the attribute name rather than asked for again: the name is
             # already the whole of an instance's identity here (the unit, the state
-            # directory, the database and role, the Caddy vhost), so a second
+            # directory, the database and role, the nginx vhost), so a second
             # spelling would be one more thing to keep in step, and the badge could
             # end up contradicting the unit whose logs are open beside it.
             #
@@ -457,158 +449,119 @@ in
 
     # Edge rate limiting is the half `adapters/rate_limit` structurally cannot do:
     # it counts per process, so behind N workers an attacker gets N times the
-    # budget and every deploy resets it — its own docstring asks for this. Caddy
-    # has no built-in equivalent, so it is a compiled-in plugin, assembled by
-    # my.caddy-plugins (which owns `services.caddy.package`).
+    # budget and every deploy resets it — its own docstring asks for this.
     #
-    # Pinned rather than tracked: v0.1.0 is the only tag and it is from 2024, so a
-    # bump is a deliberate act. Verified to build and to register
-    # `http.handlers.rate_limit` against Caddy 2.11.4.
-    my.caddy-plugins.plugins = lib.optional (
-      cfg.instances != { }
-    ) "github.com/mholt/caddy-ratelimit@v0.1.0";
+    # Two budgets per instance, keyed on the client address — the real visitor
+    # when the host declares the CDN's edges in my.web-server.trustedProxies,
+    # and the TCP peer otherwise. `/v1/auth` is the one that matters: register,
+    # login and reset each burn an argon2 hash, so an unbudgeted one is a CPU
+    # amplifier pointed at this box, and forgot-password also sends mail to an
+    # address the caller names. The zones are exclusive because nginx picks one
+    # location per request: an auth request spends the auth budget only.
+    services.nginx.appendHttpConfig = lib.concatStrings (
+      lib.mapAttrsToList (name: _: ''
+        limit_req_zone $binary_remote_addr zone=fugazi_${name}_auth:10m rate=20r/m;
+        limit_req_zone $binary_remote_addr zone=fugazi_${name}_api:10m rate=60r/s;
+      '') cfg.instances
+    );
 
-    services.caddy.virtualHosts = overInstances (
-      _: i: {
+    services.nginx.virtualHosts = overInstances (
+      name: i:
+      let
+        backend = "http://127.0.0.1:${toString i.port}";
+        # Repeated in every location that sets a header of its own: an
+        # add_header there drops ALL of the server-level ones.
+        securityHeaders = ''
+          add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" always;
+          add_header X-Content-Type-Options "nosniff" always;
+          add_header X-Frame-Options "DENY" always;
+          add_header Referrer-Policy "no-referrer" always;
+          add_header Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()" always;
+          add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+          ${lib.optionalString i.noIndex ''add_header X-Robots-Tag "noindex, nofollow" always;''}
+        '';
+      in
+      {
         ${i.hostName} = {
           serverAliases = i.aliases;
+          inherit (i) allowedNetworks;
+          root = frontendOf i;
 
+          # The SPA's real Content-Security-Policy. The build-time <meta> one
+          # that Vite injects is a stopgap: a meta CSP cannot express
+          # frame-ancestors at all, and has to allow any https connect-src. No
+          # Sentry ingest origin (no DSN is compiled into our bundle — add it to
+          # connect-src here if that changes, or the reports are blocked).
+          #
+          # 'unsafe-inline' on style-src is not slack: React writes style
+          # attributes and recharts computes its layout that way, and there is no
+          # nonce path for an attribute.
+          #
+          # 'wasm-unsafe-eval' and `data:` on connect-src are not slack either:
+          # a served policy owes both or it breaks a shipped feature. @react-pdf
+          # lays out through yoga-layout, an emscripten module carrying its
+          # WebAssembly inlined as base64: it fetches that base64 as a `data:` URL
+          # for `instantiateStreaming` and falls back to instantiating the buffer
+          # it already holds. There is no .wasm request to allow and no script to
+          # hash. Without the token every PDF report dies as `RuntimeError:
+          # Aborted(CompileError: call to WebAssembly.instantiate() blocked by
+          # CSP)`, which names neither the directive nor the dependency; without
+          # `data:` the report still renders but leaves two CSP errors per run in
+          # the console. 'wasm-unsafe-eval' admits WebAssembly and nothing else --
+          # `eval` and `new Function` stay refused, which is why it exists apart
+          # from 'unsafe-eval'. Keep this in step with SPA_CSP in
+          # frontend/vite.config.ts.
+          #
+          # HSTS: the SPA keeps its session token in localStorage, so a single
+          # plaintext request hands it to anyone on the path.
+          #
+          # client_max_body_size bounds an upload at the edge as well as in the
+          # app. The app's own caps — per tier, with
+          # FUGAZI_SERVICE_MAX_UPLOAD_BYTES as the backstop — are the real ones,
+          # and they also cover a chunked body; this just stops a large one being
+          # buffered here first. See the option for why it sits a megabyte above
+          # the archive cap.
           extraConfig = ''
-            ${lib.optionalString (
-              i.allowedNetworks != [ ]
-            ) "@denied not remote_ip ${lib.concatStringsSep " " i.allowedNetworks}"}
-            # Vite fingerprints everything under /assets, so it may be cached
-            # forever; index.html must not be, or a deploy is invisible until the
-            # browser gives up its copy. Two matchers rather than two bare `header`
-            # lines because directives inside a handle are sorted by Caddy's own
-            # order, not the order written — mutually exclusive matchers make that
-            # sort irrelevant.
-            @assets path /assets/*
-            @nocache not path /assets/*
-            route {
-              ${lib.optionalString (i.allowedNetworks != [ ]) "abort @denied"}
-
-              # The SPA's real Content-Security-Policy. The build-time <meta> one
-              # that Vite injects is a stopgap: a meta CSP cannot express
-              # frame-ancestors at all, and has to allow any https connect-src. This
-              # is the same policy upstream's `enableNginx` branch serves, minus the
-              # Sentry ingest origin (no DSN is compiled into our bundle — add it to
-              # connect-src here if that changes, or the reports are blocked).
-              #
-              # 'unsafe-inline' on style-src is not slack: React writes style
-              # attributes and recharts computes its layout that way, and there is no
-              # nonce path for an attribute.
-              #
-              # 'wasm-unsafe-eval' and `data:` on connect-src are not slack either, and
-              # they are not the meta policy's stopgaps repeated -- a served policy owes
-              # both or it breaks a shipped feature. @react-pdf lays out through
-              # yoga-layout, an emscripten module carrying its WebAssembly inlined as
-              # base64: it fetches that base64 as a `data:` URL for
-              # `instantiateStreaming` and falls back to instantiating the buffer it
-              # already holds. There is no .wasm request to allow and no script to hash.
-              # Without the token every PDF report dies as `RuntimeError:
-              # Aborted(CompileError: call to WebAssembly.instantiate() blocked by CSP)`,
-              # which names neither the directive nor the dependency; without `data:` the
-              # report still renders but leaves two CSP errors per run in the console.
-              # 'wasm-unsafe-eval' admits WebAssembly and nothing else -- `eval` and
-              # `new Function` stay refused, which is why it exists apart from
-              # 'unsafe-eval'. Keep this in step with SPA_CSP in
-              # frontend/vite.config.ts.
-              header {
-                Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
-                X-Content-Type-Options "nosniff"
-                X-Frame-Options "DENY"
-                Referrer-Policy "no-referrer"
-                Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
-                # The SPA keeps its session token in localStorage, so a single
-                # plaintext request hands it to anyone on the path.
-                Strict-Transport-Security "max-age=63072000; includeSubDomains"
-                ${lib.optionalString i.noIndex ''X-Robots-Tag "noindex, nofollow"''}
-              }
-
-              # Bounds an upload at the edge as well as in the app. The app's own
-              # caps — per tier, with FUGAZI_SERVICE_MAX_UPLOAD_BYTES as the backstop
-              # — are the real ones, and they also cover a chunked body; this just
-              # stops a large one being buffered here first. See the option for why
-              # it sits a megabyte above the archive cap and why the unit is MiB.
-              request_body {
-                max_size ${i.maxRequestBodySize}
-              }
-
-              # Two budgets, keyed on {client_ip} — the real visitor when the
-              # host declares the CDN's edges in my.web-server.trustedProxies,
-              # and the TCP peer otherwise. `/v1/auth` is the one that matters:
-              # register, login and reset each burn an argon2 hash, so an unbudgeted
-              # one is a CPU amplifier pointed at this box, and forgot-password also
-              # sends mail to an address the caller names.
-              #
-              # caddy-ratelimit is a sliding window with no separate burst, so
-              # `events` is the burst allowance and also the sustained ceiling per
-              # window.
-              #
-              # Inside the `route`, so it runs after `abort @denied` and before the
-              # handlers -- directives in a route apply as written, which is also
-              # why no global `order rate_limit` line is needed.
-              rate_limit {
-                zone auth {
-                  match {
-                    path /v1/auth/*
-                  }
-                  key {client_ip}
-                  events 20
-                  window 1m
-                }
-                zone api {
-                  match {
-                    # Exclusive of the auth zone, because nginx's `location` blocks
-                    # were: it picks the most specific one, so an auth request spent
-                    # one budget. Both zones of a `rate_limit` handler are evaluated,
-                    # so without this an auth request spends both.
-                    path /v1/*
-                    not path /v1/auth/*
-                  }
-                  key {client_ip}
-                  events 60
-                  window 1s
-                }
-              }
-
-              handle /v1/* {
-                reverse_proxy 127.0.0.1:${toString i.port}
-              }
-              handle /health {
-                reverse_proxy 127.0.0.1:${toString i.port}
-              }
-              handle {
-                root * ${frontendOf i}
-                header @assets Cache-Control "public, max-age=31536000, immutable"
-                header @nocache Cache-Control "no-cache"
-                try_files {path} /index.html
-                # Serve the .br/.gz siblings the frontend derivation builds rather
-                # than compressing each response here. Caddy has no brotli
-                # *encoder* — `caddy list-modules` offers only gzip and zstd — so
-                # for the SPA this is not a saving on `encode`, it is the only way
-                # brotli is served at all. It is also a better one: quality 11 at
-                # build against whatever level a per-request encoder can afford.
-                # Measured on the entry chunk, 89,181 B on-the-fly gzip against
-                # 74,440 B precompressed brotli, and the gzip path improves too
-                # (85,360 B), because that sibling is level 9.
-                #
-                # `br` first: the list is a preference order, and every browser
-                # that accepts brotli accepts gzip. A client sending neither gets
-                # the plain file, so nothing depends on the siblings existing.
-                file_server {
-                  precompressed br gzip
-                }
-              }
-            }
-            # Still here for the proxied JSON, which has no sibling to serve and is
-            # generated per request. zstd ahead of gzip for the clients that take
-            # it; the static half no longer passes through this at all, since
-            # `precompressed` sets Content-Encoding and `encode` leaves an already
-            # encoded response alone.
-            encode zstd gzip
+            ${securityHeaders}
+            client_max_body_size ${i.maxRequestBodySize};
+            limit_req_status 429;
           '';
+
+          # burst = the budget a caller may spend back-to-back; nodelay serves
+          # it at once instead of queueing, then the rate refills it.
+          locations."/v1/auth/" = {
+            proxyPass = backend;
+            extraConfig = "limit_req zone=fugazi_${name}_auth burst=20 nodelay;";
+          };
+          locations."/v1/" = {
+            proxyPass = backend;
+            extraConfig = "limit_req zone=fugazi_${name}_api burst=60 nodelay;";
+          };
+          locations."= /health".proxyPass = backend;
+
+          # Vite fingerprints everything under /assets, so it may be cached
+          # forever; index.html must not be, or a deploy is invisible until the
+          # browser gives up its copy.
+          #
+          # The bundle ships .gz siblings, served by recommendedGzipSettings'
+          # `gzip_static on` (quality 9 at build beats a per-request level).
+          # Its .br siblings go unused: brotli needs a third-party nginx module,
+          # i.e. a locally compiled nginx. Cloudflare re-encodes to brotli for
+          # visitors anyway; only LAN clients see gzip.
+          locations."/assets/" = {
+            tryFiles = "$uri =404";
+            extraConfig = ''
+              ${securityHeaders}
+              add_header Cache-Control "public, max-age=31536000, immutable";
+            '';
+          };
+          locations."/" = {
+            tryFiles = "$uri /index.html";
+            extraConfig = ''
+              ${securityHeaders}
+              add_header Cache-Control "no-cache";
+            '';
+          };
         };
       }
     );

@@ -139,8 +139,8 @@ else.
    sudo nixos-rebuild switch --flake .#homeserver
    ```
 
-   Expect the first build to be long: Nominatim, Immich and the Caddy plugin FOD
-   are all built or fetched here.
+   Expect the first build to be long: Nominatim and Immich are built or
+   fetched here.
 
 ---
 

@@ -178,10 +178,10 @@ in
           # The veth's FORWARD drop is in ./default.nix, after the kill switch.
 
           my.transmission-server = {
-            # The daemon binds its RPC to the namespace end; Caddy connects from
+            # The daemon binds its RPC to the namespace end; nginx connects from
             # the host end, which is what the whitelist has to name.
             rpcAddress = v.namespaceAddress;
-            # Both ends of the link. Caddy reaches the daemon from the host end;
+            # Both ends of the link. nginx reaches the daemon from the host end;
             # the NAT-PMP renewal unit runs INSIDE the namespace and therefore
             # reaches it from the namespace end, where source selection picks the
             # local address. Omitting the second address makes every port update

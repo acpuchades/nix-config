@@ -35,7 +35,7 @@ in
   my.ntfy-alert = {
     enable = true;
     environmentFile = config.sops.templates."ntfy/env".path;
-    # ntfy is served from this host: connect straight to Caddy, so alerts
+    # ntfy is served from this host: connect straight to nginx, so alerts
     # still go out when DNS is what broke (it did on 2026-09-26, when the
     # resolver's tunnel died).
     resolveTo = "127.0.0.1";
@@ -61,7 +61,6 @@ in
       "postgresql"
       "redis-nextcloud"
       "redis-immich"
-      "caddy"
       "postfix"
       "vaultwarden"
       "phpfpm-nextcloud"
@@ -88,7 +87,7 @@ in
       # DNS for the LAN and the VPN.
       "adguardhome"
       "dnscrypt-proxy"
-      # Nextcloud's vhost is Caddy -> nginx -> php-fpm; Collabora behind it.
+      # The public edge for every vhost (Nextcloud is nginx -> php-fpm).
       "nginx"
       "coolwsd"
       "immich-machine-learning"
@@ -143,19 +142,19 @@ in
       enable = true;
       ignoreIP = privateNetworks;
     };
-    # Unauthenticated control APIs: Caddy (which adds basic-auth and the
+    # Unauthenticated control APIs: nginx (which adds basic-auth and the
     # LAN gate) and their own clients only.
     localPortGuards = {
       # DNS rewrites for every LAN/VPN client.
       adguard = {
         port = config.my.dns-filtering.adguardPort;
-        users = [ "caddy" ];
+        users = [ "nginx" ];
       };
       # Runs arbitrary code as prefect. alex uses the CLI against it.
       prefect = {
         port = config.my.prefect-server.port;
         users = [
-          "caddy"
+          "nginx"
           "prefect"
           "alex"
         ];
@@ -169,7 +168,7 @@ in
       transmission = {
         address = config.my.protonvpn.transmission.veth.namespaceAddress;
         port = config.my.transmission-server.rpcPort;
-        users = [ "caddy" ];
+        users = [ "nginx" ];
       };
     };
   };

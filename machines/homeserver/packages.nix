@@ -3,7 +3,6 @@
 with pkgs;
 [
   btrfs-progs
-  caddy
   cryptsetup
   curl
   dnsutils

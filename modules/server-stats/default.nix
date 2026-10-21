@@ -302,21 +302,14 @@ in
           };
         };
 
-        services.caddy.virtualHosts."${cfg.hostName}".extraConfig =
-          if cfg.allowedNetworks != [ ] then
-            ''
-              @allowed remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}
-              handle @allowed {
-                reverse_proxy http://127.0.0.1:${toString cfg.port}
-                encode gzip
-              }
-              respond 403
-            ''
-          else
-            ''
-              reverse_proxy http://127.0.0.1:${toString cfg.port}
-              encode gzip
-            '';
+        services.nginx.virtualHosts.${cfg.hostName} = {
+          inherit (cfg) allowedNetworks;
+          locations."/" = {
+            proxyPass = "http://127.0.0.1:${toString cfg.port}";
+            # Grafana Live (streaming panel updates) is a websocket.
+            proxyWebsockets = true;
+          };
+        };
       }
 
       (lib.mkIf (btrfsMounts != [ ]) {
@@ -331,26 +324,41 @@ in
         ];
       })
 
-      (lib.mkIf config.services.caddy.enable {
-        # Per-server metrics via my.web-server (single owner of the `servers`
-        # global block), exposed on a loopback-only plain-HTTP site: the admin API
-        # lives on a 0600 unix socket (it leaks basic-auth hashes to any local
-        # account), and Prometheus can't scrape a unix socket. The `metrics` handler serves only metrics — no
-        # config, no hashes — so loopback exposure is fine.
-        my.web-server.serverMetrics = true;
-        services.caddy.virtualHosts."http://127.0.0.1:2019".extraConfig = "metrics";
+      (lib.mkIf config.services.nginx.enable {
+        # stub_status on a loopback-only listener of its own, rather than
+        # nixpkgs' `statusPage` — that one adds a `localhost` vhost on :80 of
+        # every address, which serves nginx's welcome page to any Host:
+        # localhost request the firewall lets in.
+        services.nginx.virtualHosts.nginx-status = {
+          listen = [
+            {
+              addr = "127.0.0.1";
+              port = 8079;
+            }
+          ];
+          locations."= /nginx_status".extraConfig = ''
+            stub_status;
+            access_log off;
+          '';
+        };
+        services.prometheus.exporters.nginx = {
+          enable = true;
+          listenAddress = "127.0.0.1";
+          port = 9113;
+          scrapeUri = "http://127.0.0.1:8079/nginx_status";
+        };
         services.prometheus.scrapeConfigs = [
           {
-            job_name = "caddy";
-            static_configs = [ { targets = [ "127.0.0.1:2019" ]; } ];
+            job_name = "nginx";
+            static_configs = [ { targets = [ "127.0.0.1:9113" ]; } ];
           }
         ];
         services.grafana.provision.dashboards.settings.providers = [
-          # Caddy Monitoring
-          (mkProvider "caddy" (fetchDashboard {
-            id = 20802;
+          # NGINX exporter
+          (mkProvider "nginx" (fetchDashboard {
+            id = 12708;
             revision = 1;
-            hash = "sha256-vSt63PakGp5NzKFjbU5Yh0nDbKET5QRWp5nusM76/O4=";
+            hash = "sha256-T1HqWbwt+i/We+Y2B7hcl3CijGxZF5QI38aPcXjk9y0=";
           }))
         ];
       })

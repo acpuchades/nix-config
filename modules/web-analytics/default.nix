@@ -56,14 +56,9 @@ in
       };
     };
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
-      lib.filter (s: s != "") [
-        (lib.optionalString (
-          cfg.allowedNetworks != [ ]
-        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        "reverse_proxy http://127.0.0.1:${toString cfg.port}"
-        "encode gzip"
-      ]
-    );
+    services.nginx.virtualHosts.${cfg.hostName} = {
+      inherit (cfg) allowedNetworks;
+      locations."/".proxyPass = "http://127.0.0.1:${toString cfg.port}";
+    };
   };
 }

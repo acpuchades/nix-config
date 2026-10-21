@@ -13,7 +13,8 @@
 #   * the `my.ntfy-alert.failureUnits` entries naming the fugazi units
 #     (./monitoring.nix) — that list is a host-level statement of what gets
 #     alerted on, and reads as one thing
-#   * the caddy overlay (./web.nix); this file contributes its own
+#   * the edge itself (./web.nix: nginx, certificates, realip); this file
+#     only adds the vhost through modules/fugazi-web
 #
 { fugazi-web, fugazi-web-testing }:
 
@@ -174,7 +175,7 @@ let
   #
   # Deliberately UNSET, each with its reason — an absent knob is a decision too,
   # and the ones below are the knobs somebody will otherwise re-litigate:
-  #   HSTS               Caddy already sends Strict-Transport-Security on this
+  #   HSTS               nginx already sends Strict-Transport-Security on this
   #                      vhost (max-age=63072000; includeSubDomains). Two sources
   #                      for one header is one too many.
   #   MAX_BODY_BYTES     upstream's 2 MiB covers every non-upload body; the upload
@@ -296,7 +297,7 @@ let
       # plus a megabyte of multipart headroom) has something stable to track.
       # `pro` is named for the same reason and not because anyone is on it: the
       # backend derives its transport ceiling from the HIGHEST finite tier cap,
-      # and pro ships at 256 MiB — a size no request could reach through Caddy,
+      # and pro ships at 256 MiB — a size no request could reach through nginx,
       # and one that would have the ASGI middleware read a quarter-gigabyte
       # before the parser refused it.
       FUGAZI_SERVICE_MAX_UPLOAD_BYTES = mib 64;
@@ -522,7 +523,7 @@ in
     # The fugazi-web service itself (`services.fugazi-web`): the uvicorn unit,
     # the maintenance timer and the per-frequency deployment-tick timers all
     # live upstream. ../../modules/fugazi-web is only the host topology around
-    # it (Caddy, Postgres, SMTP loopback, sops env) and drives this module.
+    # it (nginx, Postgres, SMTP loopback, sops env) and drives this module.
     fugazi-web.nixosModules.default
   ];
 
@@ -545,10 +546,10 @@ in
   # secret at `fugazi-web/prod/jwt-secret`. Adding it is purely additive — this
   # instance holds no name `prod` would want. Its intended shape is in git
   # (commit 3224eb7, which had both instances defined).
-  # Caddy-level counterpart of the app-level trustedProxies below: with the CF
-  # edges declared, {client_ip} in the vhost's rate-limit keys resolves to the
-  # real visitor instead of the edge, so one busy edge does not share — and one
-  # abuser does not drain — a whole per-edge auth budget.
+  # nginx-level counterpart of the app-level trustedProxies below: with the CF
+  # edges declared, realip makes $remote_addr — the vhost's rate-limit key —
+  # the real visitor instead of the edge, so one busy edge does not share — and
+  # one abuser does not drain — a whole per-edge auth budget.
   my.web-server.trustedProxies = cloudflareNetworks;
 
   my.fugazi-web.instances.testing = {
@@ -606,10 +607,11 @@ in
     allowedNetworks = cloudflareNetworks ++ privateNetworks;
 
     #
-    # Requests arrive Cloudflare -> Caddy -> uvicorn, so the hop Caddy appends
-    # to X-Forwarded-For is a Cloudflare edge, not the visitor. Trusting only
-    # loopback would make that edge the rate-limit bucket and every visitor
-    # routed through it would share one register/login budget.
+    # Requests arrive Cloudflare -> nginx -> uvicorn. nginx's realip already
+    # resolves the visitor, so the hop it appends to X-Forwarded-For is the
+    # visitor; the CF ranges here are what keeps that true if realip is ever
+    # off — then the appended hop is an edge, and trusting only loopback would
+    # make it the rate-limit bucket for every visitor routed through it.
     trustedProxies = [
       "127.0.0.1/32"
       "::1/128"
@@ -760,7 +762,7 @@ in
   # asserts the invariant that actually spans both columns: the transport
   # ceiling has to agree with the edge cap in modules/fugazi-web
   # (maxRequestBodySize, 65 MiB), and a column that quietly raised its upload
-  # limit would turn Caddy into the real limit and hand callers a cut
+  # limit would turn nginx into the real limit and hand callers a cut
   # connection instead of the parser's 413.
   assertions = [
     {
@@ -770,7 +772,7 @@ in
       message = ''
         fugaziEnvironment: the prod and testing columns disagree about
         FUGAZI_SERVICE_MAX_UPLOAD_BYTES. Both are tracked by one edge cap
-        (my.fugazi-web.instances.<name>.maxRequestBodySize, 65MiB), so either
+        (my.fugazi-web.instances.<name>.maxRequestBodySize, 65m), so either
         keep them equal or give each instance its own cap.
       '';
     }

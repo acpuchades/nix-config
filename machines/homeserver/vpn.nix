@@ -140,7 +140,7 @@ in
     # by hand is how one of them goes stale. The transmission RPC veth
     # (10.200.0.0/30) is deliberately absent from both: tunneled clients have
     # no business reaching the daemon's RPC directly, they reach the web UI
-    # through Caddy like everything else.
+    # through nginx like everything else.
     localPrefixes = privateNetworks;
 
     clientTunnels = {
@@ -227,7 +227,7 @@ in
     hostName = "torrent.acpuchades.com";
     downloadDir = "/srv/shared/Downloads";
     allowedNetworks = privateNetworks;
-    basicAuthFile = config.sops.templates."caddy/torrent-auth".path;
+    basicAuthFile = config.sops.templates."nginx/torrent-htpasswd".path;
     # Bumped above the module defaults (8000/1500 full, 2000/500 turtle) so
     # slow torrents aren't ceilinged — schedule unchanged (turtle 08:00–23:00,
     # full speed overnight). A cap is a ceiling not a floor: this only helps

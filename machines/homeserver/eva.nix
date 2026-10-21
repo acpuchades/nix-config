@@ -35,26 +35,10 @@
     # `package` is shared between them.
   };
 
-  # Wildcard cert for *.acpuchades.com, shared by Postfix (mail STARTTLS) and
-  # any other service that needs a NixOS-managed cert for this domain.
-  # Caddy manages its own certs independently via the acme-cloudflare module.
-  security.acme = {
-    acceptTerms = true;
-    defaults.email = "admin@acpuchades.com";
-    certs."acpuchades.com" = {
-      extraDomainNames = [ "*.acpuchades.com" ];
-      dnsProvider = "cloudflare";
-      environmentFile = config.sops.templates."acme/cloudflare-env".path;
-      group = "postfix";
-      reloadServices = [ "postfix.service" ];
-      # This host's own resolver (AdGuard, 127.0.0.1) split-horizons
-      # acpuchades.com to the LAN IP and returns no SOA for the apex, which
-      # breaks lego's DNS-01 zone-walk ("cloudflare: failed to find zone com.").
-      # Point lego at a public resolver so zone detection + propagation checks
-      # see the real Cloudflare SOA instead of the local rewrite.
-      dnsResolver = "1.1.1.1:53";
-    };
-  };
+  # Postfix's STARTTLS uses the *.acpuchades.com wildcard my.web-server issues
+  # (./web.nix). Its group is nginx's (`acme`): Postfix loads the key as root,
+  # before it drops privileges, so it needs no group of its own.
+  security.acme.certs."acpuchades.com".reloadServices = [ "postfix.service" ];
 
   my.mail-server = {
     enable = true;

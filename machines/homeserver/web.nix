@@ -1,11 +1,6 @@
-# The public edge: Caddy (plugins, ACME, origin cloaking, login rate limits),
+# The public edge: nginx (wildcard certs, origin cloaking, login rate limits),
 # AdGuard's split-horizon rewrites that send LAN/VPN clients straight to it, and
 # the service dashboard that links every vhost.
-#
-# Curried over the nix-caddy-withplugins flake input for its overlay (flake
-# inputs are not module arguments; same pattern as ./fugazi.nix).
-{ nix-caddy-withplugins }:
-
 {
   config,
   homeServerLocalAddress,
@@ -19,42 +14,19 @@ in
 {
   imports = [
     ../../modules/web-server
-    ../../modules/caddy-plugins
-    ../../modules/acme-cloudflare
     ../../modules/dns-filtering
     ../../modules/service-dashboard
   ];
 
-  # Caddy's compiled-in plugins. The list is contributed by whichever modules
-  # need one (acme-cloudflare's DNS-01 solver, fugazi-web's rate limiter);
-  # only the hash lives here, because it is a property of the assembled set
-  # and no single contributor can know it. Changing the set changes this —
-  # rebuild and take the `got:` value from the mismatch.
-  #
-  # Under nix-caddy-withplugins (the overlay below) this covers ONLY the
-  # plugins' own Go modules, so a nixpkgs bump does not touch it; what does is
-  # adding, removing or bumping a plugin — or a nix-caddy-withplugins bump that
-  # moves the Caddy version the plugins resolve against.
-  my.caddy-plugins.hash = "sha256-6efTbiAH0AKk7fZgwJVbuutjSu299ltVHB7nW/qQR2U=";
-
-  my.acme-cloudflare = {
-    enable = true;
-    credentialsFile = config.sops.templates."caddy/cloudflare-env".path;
-  };
-
-  # nix-caddy-withplugins replaces `pkgs.caddy` with the same package carrying
-  # a different `withPlugins`, the one whose plugin hash does not move when
-  # Caddy is updated (see the flake input's comment, and my.caddy-plugins.hash
-  # above). It takes `prev.caddy` and rebuilds it from our pkgs, so what runs
-  # is still nixpkgs' Caddy at nixpkgs' version — only the way the plugin
-  # sources are fetched changes. Nothing but my.caddy-plugins consumes it.
-  #
-  # ./fugazi.nix contributes fugazi-web's overlay to this same list.
-  nixpkgs.overlays = [ nix-caddy-withplugins.overlays.default ];
-
   my.web-server = {
     enable = true;
     adminEmail = adminEmailAddress;
+    # One wildcard per zone, via lego + Cloudflare DNS-01. Postfix's STARTTLS
+    # (./eva.nix) uses the acpuchades.com one too.
+    certificates = {
+      "acpuchades.com".environmentFile = config.sops.templates."acme/cloudflare-env".path;
+      "fugazitrade.com".environmentFile = config.sops.templates."acme/cloudflare-env".path;
+    };
     # Origin cloaking: every public name is orange-clouded, so the only
     # strangers with a reason to reach 80/443 are Cloudflare's edges; LAN
     # and VPN clients reach the private vhosts directly via AdGuard's
@@ -91,7 +63,7 @@ in
     adguardPort = 3000;
     dnsPort = 53;
     dnsResolverPort = 5300;
-    basicAuthFile = config.sops.templates."caddy/adguard-auth".path;
+    basicAuthFile = config.sops.templates."nginx/adguard-htpasswd".path;
     virtualHost = "adguard.acpuchades.com";
     allowedNetworks = privateNetworks;
     # Plain DNS is for the LAN and the VPN only, never the public internet.
@@ -175,12 +147,12 @@ in
       }
       # fugazitrade.com is public AND proxied through Cloudflare, so these
       # rewrites do more than save a hairpin: a client resolving through
-      # AdGuard reaches Caddy directly instead of going out to the CF edge and
+      # AdGuard reaches nginx directly instead of going out to the CF edge and
       # back. Same app, same certificate, one less party in the path.
       #
       # The apex and www are kept here even though NOTHING serves them right
       # now — there is no vhost for either, so a request gets a TLS handshake
-      # failure rather than a page, which is what "reserved for launch" should
+      # failure (the catch-all's ssl_reject_handshake) rather than a page, which is what "reserved for launch" should
       # look like. www stays in ddclient too, so its record is current on the
       # day `prod` takes it rather than dating from whenever the box last
       # moved. The apex does NOT: it is a CNAME to www in Cloudflare and

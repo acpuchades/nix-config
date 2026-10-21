@@ -211,7 +211,7 @@ in
       description = ''
         Environment file for the ACME dns-01 challenge, containing
         CLOUDFLARE_DNS_API_TOKEN=<token> (lego's var name — note it differs from
-        Caddy's CLOUDFLARE_API_TOKEN). Required when acmeCertName is null.
+        the CLOUDFLARE_API_TOKEN other tools use). Required when acmeCertName is null.
       '';
     };
 
@@ -221,8 +221,8 @@ in
       description = ''
         Name of an existing security.acme.certs entry to use for Postfix STARTTLS.
         When set, the module will not request its own ACME certificate; the named
-        entry must already configure group = "postfix" and include postfix.service
-        in reloadServices. When null (default), the module manages its own cert
+        entry must include postfix.service in reloadServices (its group does not
+        matter: Postfix reads the key as root). When null (default), the module manages its own cert
         for cfg.hostname using acmeEnvironmentFile.
       '';
     };
@@ -235,8 +235,7 @@ in
     lib.mkIf cfg.enable {
       # Inbound STARTTLS certificate — managed here only when acmeCertName is not set.
       # When acmeCertName points to an existing security.acme.certs entry (e.g. a
-      # wildcard cert), that entry must already grant group = "postfix" and reload
-      # postfix.service on renewal.
+      # wildcard cert), that entry must reload postfix.service on renewal.
       security.acme = lib.mkIf (cfg.acmeCertName == null) {
         acceptTerms = true;
         defaults.email = cfg.acmeEmail;

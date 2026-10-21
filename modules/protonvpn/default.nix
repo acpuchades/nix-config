@@ -25,7 +25,7 @@
 # Two properties this module is built around, both load-bearing:
 #
 #   1. THE MAIN ROUTING TABLE IS NEVER TOUCHED. This host terminates inbound
-#      services (WireGuard, Caddy for acpuchades.com, Nextcloud, Immich,
+#      services (WireGuard, nginx for acpuchades.com, Nextcloud, Immich,
 #      Vaultwarden, Umami). Moving the default route into a tunnel would make
 #      every one of those reply down a path its request did not arrive on, and
 #      they would all break at once. Steering is done with source-based policy

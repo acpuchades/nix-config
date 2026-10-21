@@ -8,7 +8,7 @@
 # Transmission BitTorrent daemon + web UI.
 #
 # This module is intentionally UNAWARE of any VPN/egress concern. It just runs
-# the daemon, exposes the web UI behind Caddy, and applies bandwidth limits.
+# the daemon, exposes the web UI behind nginx, and applies bandwidth limits.
 # Confining the daemon's traffic to a VPN tunnel (the network namespace it runs
 # in, the tunnel, NAT-PMP port forwarding) is handled entirely outside this
 # module — see modules/protonvpn, the same way modules/wireguard-client (the
@@ -25,7 +25,7 @@ in
 
     hostName = lib.mkOption {
       type = lib.types.str;
-      description = "Virtual host for the Caddy-fronted web UI.";
+      description = "Virtual host for the nginx-fronted web UI.";
       example = "torrent.acpuchades.com";
     };
 
@@ -49,22 +49,22 @@ in
     rpcPort = lib.mkOption {
       type = lib.types.port;
       default = 9091;
-      description = "Port the RPC/web UI binds to (fronted by Caddy).";
+      description = "Port the RPC/web UI binds to (fronted by nginx).";
     };
 
     rpcAddress = lib.mkOption {
       type = lib.types.str;
       default = "127.0.0.1";
       description = ''
-        Address the RPC/web UI binds to, and the address Caddy proxies to — one
+        Address the RPC/web UI binds to, and the address nginx proxies to — one
         option for both, so the two cannot drift apart.
 
         Defaults to loopback. It exists as an option because the daemon does not
-        always share a network namespace with Caddy; when it does not, this is
+        always share a network namespace with nginx; when it does not, this is
         the address of whatever link the two actually share. Whatever it is set
         to must NOT be an interface with a path to the internet: the RPC endpoint
         has no authentication of its own (see `rpc-authentication-required`
-        below) and relies entirely on being unreachable except through Caddy.
+        below) and relies entirely on being unreachable except through nginx.
       '';
     };
 
@@ -73,7 +73,7 @@ in
       default = "127.0.0.1";
       description = ''
         Comma-separated list of addresses permitted to make RPC calls
-        (Transmission's `rpc-whitelist`). Must contain the address Caddy connects
+        (Transmission's `rpc-whitelist`). Must contain the address nginx connects
         FROM, which is not necessarily the address the daemon binds to.
       '';
     };
@@ -87,7 +87,7 @@ in
     basicAuthFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
-      description = "Caddy basic_auth snippet to `import` in front of the web UI.";
+      description = "htpasswd file guarding the web UI (nginx auth_basic_user_file).";
     };
 
     # Bandwidth / ratio / peer limits — sensible defaults for a residential
@@ -158,24 +158,24 @@ in
       inherit (cfg) group;
       downloadDirPermissions = "0770";
       # Peer port lives on the VPN tunnel (handled by the egress layer) and the
-      # web UI is proxied by Caddy — nothing belongs on the LAN firewall.
+      # web UI is proxied by nginx — nothing belongs on the LAN firewall.
       openPeerPorts = false;
       openRPCPort = false;
 
       settings = {
-        # Web UI / RPC — Caddy fronts it; see rpcAddress for where it binds.
+        # Web UI / RPC — nginx fronts it; see rpcAddress for where it binds.
         rpc-bind-address = cfg.rpcAddress;
         rpc-port = cfg.rpcPort;
         rpc-whitelist-enabled = true;
         rpc-whitelist = cfg.rpcWhitelist;
-        # Caddy forwards Host: ${hostName}; the host whitelist would 409 it, and
+        # nginx forwards Host: ${hostName}; the host whitelist would 409 it, and
         # access is already gated by allowedNetworks + basic auth.
         rpc-host-whitelist-enabled = false;
         # No RPC auth: the endpoint is reachable only from the addresses in
         # rpcWhitelist, none of which have a path to the internet, and in practice
-        # solely through Caddy — the single auth gate (basicAuthFile +
-        # allowedNetworks). A second password here only collides with Caddy's,
-        # since Caddy forwards the Authorization header upstream.
+        # solely through nginx — the single auth gate (basicAuthFile +
+        # allowedNetworks). A second password here only collides with nginx's,
+        # since nginx forwards the Authorization header upstream.
         rpc-authentication-required = false;
 
         # Storage — keep incomplete inside the download tree so it stays within
@@ -218,17 +218,11 @@ in
       };
     };
 
-    # Reverse proxy the web UI, restricted to private nets + basic auth. Mirrors
-    # the snippet used by modules/dns-filtering.
-    services.caddy.virtualHosts.${cfg.hostName}.extraConfig = lib.concatStringsSep "\n" (
-      lib.filter (s: s != "") [
-        (lib.optionalString (
-          cfg.allowedNetworks != [ ]
-        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
-        "reverse_proxy http://${cfg.rpcAddress}:${toString cfg.rpcPort}"
-        "encode gzip"
-      ]
-    );
+    # Reverse proxy the web UI, restricted to private nets + basic auth. Same
+    # shape as modules/dns-filtering.
+    services.nginx.virtualHosts.${cfg.hostName} = {
+      inherit (cfg) allowedNetworks basicAuthFile;
+      locations."/".proxyPass = "http://${cfg.rpcAddress}:${toString cfg.rpcPort}";
+    };
   };
 }

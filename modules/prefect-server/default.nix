@@ -51,7 +51,7 @@ in
     basicAuthFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
-      description = "Basic auth file for web interface";
+      description = "htpasswd file for the web interface (nginx auth_basic_user_file).";
     };
 
     allowedNetworks = lib.mkOption {
@@ -107,7 +107,7 @@ in
       }
 
       # Pin every worker to the LOCAL API. Otherwise the worker resolves the
-      # public baseUrl (https://.../api), which sits behind Caddy basic_auth and
+      # public baseUrl (https://.../api), which sits behind nginx basic auth and
       # answers 401 — so the worker can never reach api/work_pools/<pool>. The
       # local server has no auth, so workers must talk to it directly.
       #
@@ -133,17 +133,15 @@ in
       ) cfg.workerPools)
     ];
 
-    services.caddy.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
-      ${cfg.virtualHost}.extraConfig = lib.concatStringsSep "\n" (
-        lib.filter (s: s != "") [
-          (lib.optionalString (
-            cfg.allowedNetworks != [ ]
-          ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-          (lib.optionalString (cfg.basicAuthFile != null) "import ${cfg.basicAuthFile}")
-          "reverse_proxy http://127.0.0.1:${toString cfg.port}"
-          "encode gzip"
-        ]
-      );
+    services.nginx.virtualHosts = lib.mkIf (cfg.virtualHost != null) {
+      ${cfg.virtualHost} = {
+        inherit (cfg) allowedNetworks basicAuthFile;
+        locations."/" = {
+          proxyPass = "http://127.0.0.1:${toString cfg.port}";
+          # The UI's live event feed is a websocket.
+          proxyWebsockets = true;
+        };
+      };
     };
   };
 }

@@ -61,7 +61,7 @@ in
         prefect = {
           port = 4200;
           users = [
-            "caddy"
+            "nginx"
             "prefect"
           ];
         };

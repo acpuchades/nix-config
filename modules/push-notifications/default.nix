@@ -5,18 +5,18 @@
 #
 # Wraps the upstream `services.ntfy-sh` module. That module already binds to
 # 127.0.0.1:2586 by default, so unlike Nominatim there is no vhost to wrestle
-# away from ACME — Caddy just reverse-proxies it, same as Umami.
+# away from ACME — nginx just reverse-proxies it, same as Umami.
 #
 # Two details that are easy to get wrong and hard to debug afterwards:
 #
 #   - `behind-proxy`. Without it every request looks like it comes from
 #     127.0.0.1, so ntfy's per-visitor rate limiting collapses into one global
-#     bucket shared by every client. Caddy sets X-Forwarded-For, so this is
+#     bucket shared by every client. nginx sets X-Forwarded-For, so this is
 #     enabled by default here.
-#   - `flush_interval -1` on the Caddy side. ntfy holds connections open for
-#     subscriptions (SSE, JSON streaming, WebSocket). Caddy auto-detects
-#     text/event-stream, but ntfy also streams application/x-ndjson, which it
-#     does not — buffered, those subscriptions look like they simply hang.
+#   - `proxy_buffering off` on the nginx side. ntfy holds connections open for
+#     subscriptions (SSE, JSON streaming, WebSocket); buffered, those
+#     subscriptions look like they simply hang. Likewise the read timeout:
+#     it must outlast ntfy's 45s keepalive or idle subscriptions get cut.
 #
 # Access control is deny-all by default: an open ntfy server on a public
 # hostname will be found and used as free infrastructure by others. Users and
@@ -54,7 +54,7 @@ in
     port = lib.mkOption {
       type = lib.types.port;
       default = 2586;
-      description = "ntfy listen port (loopback only, fronted by Caddy)";
+      description = "ntfy listen port (loopback only, fronted by nginx)";
     };
 
     allowedNetworks = lib.mkOption {
@@ -89,7 +89,7 @@ in
       default = true;
       description = ''
         Trust X-Forwarded-For, so rate limiting and visitor tracking see real
-        client addresses rather than Caddy's loopback address.
+        client addresses rather than nginx's loopback address.
       '';
     };
 
@@ -97,7 +97,7 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        CIDRs of CDN edges in front of Caddy. ntfy takes the rightmost
+        CIDRs of CDN edges in front of nginx. ntfy takes the rightmost
         X-Forwarded-For entry not listed here, so without them a proxied
         vhost sees the edge as the visitor, and its built-in auth-failure
         lockout is shared by everyone behind that edge instead of applying
@@ -152,19 +152,23 @@ in
       };
     };
 
-    services.caddy.virtualHosts."${cfg.hostName}".extraConfig = lib.concatStringsSep "\n" (
-      lib.filter (s: s != "") [
-        (lib.optionalString (
-          cfg.allowedNetworks != [ ]
-        ) "@denied not remote_ip ${lib.concatStringsSep " " cfg.allowedNetworks}\nabort @denied")
-        # flush_interval -1 disables response buffering outright, which is what
-        # ntfy's held-open subscription streams need. No `encode gzip` here for
-        # the same reason: compressing a stream reintroduces buffering.
-        ''
-          reverse_proxy http://127.0.0.1:${toString cfg.port} {
-            flush_interval -1
-          }''
-      ]
-    );
+    services.nginx.virtualHosts.${cfg.hostName} = {
+      inherit (cfg) allowedNetworks;
+      # Attachments (ntfy's own cap is 15M per file).
+      extraConfig = "client_max_body_size 20m;";
+      locations."/" = {
+        proxyPass = "http://127.0.0.1:${toString cfg.port}";
+        proxyWebsockets = true;
+        # See the header: held-open subscription streams. No gzip either —
+        # compressing a stream reintroduces buffering.
+        extraConfig = ''
+          proxy_buffering off;
+          proxy_request_buffering off;
+          proxy_read_timeout 3m;
+          proxy_send_timeout 3m;
+          gzip off;
+        '';
+      };
+    };
   };
 }

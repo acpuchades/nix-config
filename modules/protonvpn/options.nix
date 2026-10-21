@@ -526,7 +526,7 @@ in
       };
 
       # A /30 carrying exactly two addresses and no default route. It exists so
-      # Caddy can reach the web UI, and for nothing else: without a route to the
+      # nginx can reach the web UI, and for nothing else: without a route to the
       # internet on it, and with the host refusing to forward anything off it
       # (see the FORWARD drop in ./default.nix), it cannot become a way around the tunnel.
       veth = {
@@ -543,7 +543,7 @@ in
         hostAddress = lib.mkOption {
           type = lib.types.str;
           default = "10.200.0.1";
-          description = "Host end of the RPC link. This is what Caddy connects from.";
+          description = "Host end of the RPC link. This is what nginx connects from.";
         };
         namespaceAddress = lib.mkOption {
           type = lib.types.str;

@@ -110,13 +110,14 @@ systemd.services = lib.mapAttrs' (name: value:
 environment.SOME_VAR = lib.mkForce "my-value";
 ```
 
-## Reverse proxy (Caddy)
+## Reverse proxy (nginx)
 
-If the homelab uses Caddy as a reverse proxy:
-- Virtual host configs are typically in `services.caddy.virtualHosts.<domain>.extraConfig`
-- Caddy logs: the `caddy` unit's journal (via the journal wrapper)
-- Validating a Caddy config change is part of the owner's rebuild, not yours
+If the homelab uses nginx as a reverse proxy:
+- Virtual hosts are typically `services.nginx.virtualHosts.<domain>` (`locations`, `extraConfig`)
+- nginx logs: the `nginx` unit's journal (via the journal wrapper)
+- Validating an nginx config change is part of the owner's rebuild, not yours
 - If a site returns 502, the upstream service is likely down — check it first
+- A connection closed with no response is usually a deliberate source gate (444), not a crash
 
 ## Monitoring and health
 

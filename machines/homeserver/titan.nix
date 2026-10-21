@@ -5,7 +5,7 @@
 # (hardened, migrations on start, hourly source sync, a local PostgreSQL database
 # and role over peer auth). This file is only the host topology around it.
 #
-# INTERNAL: LAN and WireGuard peers only, like media/nominatim — the vhost aborts
+# INTERNAL: LAN and WireGuard peers only, like media/nominatim — the vhost drops
 # every other source, AdGuard rewrites the name to this host, and there is no
 # public DNS record (nothing in ddclient). It is multi-user personal HEALTH data:
 # sign-up is open, but only to whoever can reach the vhost at all. eva is
@@ -25,7 +25,6 @@
 
 {
   config,
-  lib,
   pkgs,
   ...
 }:
@@ -34,6 +33,7 @@ let
   inherit (import ./networks.nix) privateNetworks;
   hostName = "titan.acpuchades.com";
   api = "127.0.0.1:${toString config.services.titan.port}";
+  hsts = ''add_header Strict-Transport-Security "max-age=31536000" always;'';
 in
 {
   imports = [ titan-web.nixosModules.default ];
@@ -59,28 +59,29 @@ in
     };
   };
 
-  # The API never serves the SPA: Caddy does, from the store, and proxies /v1.
-  services.caddy.virtualHosts.${hostName}.extraConfig = ''
-    @denied not remote_ip ${lib.concatStringsSep " " privateNetworks}
-    abort @denied
-    header Strict-Transport-Security "max-age=31536000"
-    encode gzip
-
-    handle /v1/* {
-      reverse_proxy ${api}
-    }
-    handle /health {
-      reverse_proxy ${api}
-    }
-    handle {
-      root * ${pkgs.titan-frontend}
-      # Vite fingerprints everything under /assets: cache it for good, and never
-      # index.html, so a deploy is picked up on the next load.
-      @app not path /assets/*
-      header /assets/* Cache-Control "public, max-age=31536000, immutable"
-      header @app Cache-Control "no-cache"
-      try_files {path} /index.html
-      file_server
-    }
-  '';
+  # The API never serves the SPA: nginx does, from the store, and proxies /v1.
+  services.nginx.virtualHosts.${hostName} = {
+    allowedNetworks = privateNetworks;
+    root = pkgs.titan-frontend;
+    extraConfig = hsts;
+    locations."/v1/".proxyPass = "http://${api}";
+    locations."= /health".proxyPass = "http://${api}";
+    # Vite fingerprints everything under /assets: cache it for good, and never
+    # index.html, so a deploy is picked up on the next load. HSTS is repeated:
+    # a location's own add_header drops every server-level one.
+    locations."/assets/" = {
+      tryFiles = "$uri =404";
+      extraConfig = ''
+        ${hsts}
+        add_header Cache-Control "public, max-age=31536000, immutable";
+      '';
+    };
+    locations."/" = {
+      tryFiles = "$uri /index.html";
+      extraConfig = ''
+        ${hsts}
+        add_header Cache-Control "no-cache";
+      '';
+    };
+  };
 }

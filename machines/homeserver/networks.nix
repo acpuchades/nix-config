@@ -21,8 +21,8 @@ rec {
 
   # Cloudflare's published edge ranges (cloudflare.com/ips-v4 + ips-v6, fetched
   # 2026-08-18). Every public web name on this host is proxied through
-  # Cloudflare, so these — not the visitor — are the peers Caddy sees. Two jobs:
-  # the hops trustedProxies skips to find the real caller (Caddy and fugazi),
+  # Cloudflare, so these — not the visitor — are the peers nginx sees. Two jobs:
+  # the hops trustedProxies skips to find the real caller (nginx and fugazi),
   # and the only public sources the 80/443 firewall accepts (my.web-server
   # .allowedNetworks), so scanners never see the origin's certs on this IP.
   # Cloudflare changes the list rarely and announces it; a missing range shows

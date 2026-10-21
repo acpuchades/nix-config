@@ -12,7 +12,6 @@
   fugazi-web,
   fugazi-web-testing,
   titan-web,
-  nix-caddy-withplugins,
   ...
 }:
 
@@ -95,7 +94,7 @@ let
         # Service configuration, by area. Each file imports the modules it
         # configures.
         ./vpn.nix
-        (import ./web.nix { inherit nix-caddy-withplugins; })
+        ./web.nix
         ./apps.nix
         ./eva.nix
         ./monitoring.nix

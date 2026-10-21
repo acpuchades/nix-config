@@ -157,7 +157,7 @@
 
         # The module defaults to 0066, which would have hugo write public/ as
         # 0600 — and `rsync -a` preserves those bits, so the deployed site would
-        # be unreadable by caddy. 0022 gives the usual 0644/0755.
+        # be unreadable by nginx. 0022 gives the usual 0644/0755.
         UMask = "0022";
 
         # The deploy's `rsync --chmod=Dg+ws` keeps the web root 2775 so alex can

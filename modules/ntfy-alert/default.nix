@@ -311,7 +311,7 @@ in
       default = [ ];
       example = [
         "postgresql"
-        "caddy"
+        "nginx"
         "vaultwarden"
       ];
       description = ''
@@ -413,7 +413,7 @@ in
         wants = [ "network-online.target" ];
         after = [
           "network-online.target"
-          "caddy.service"
+          "nginx.service"
           "ntfy-sh.service"
         ];
         # Boot-only: a rebuild must not re-announce a boot.

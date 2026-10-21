@@ -75,7 +75,7 @@ in
         actually connect to. Must be forwarded from the router.
 
         Well-known ports (443, 80) are harder for a censor to block wholesale,
-        but both are already taken by Caddy on this host, so this defaults to a
+        but both are already taken by nginx on this host, so this defaults to a
         high port instead.
       '';
     };
