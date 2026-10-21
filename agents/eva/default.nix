@@ -308,6 +308,7 @@ in
     # so in her hands it would send around every recipient gate. Postfix
     # reads it too, through the sasl_passwd template (machines/homeserver).
     "openclaw/eva/mail-password" = {
+      key = "migadu/eva";
       owner = "openclaw-secrets";
       mode = "0400";
     };

@@ -31,10 +31,10 @@ in
 
     secrets = {
 
-      # Password of the noreply@m.acpuchades.com Migadu mailbox: the services'
-      # relay login (postfix/sasl_passwd below). eva's own mailbox password is
-      # an agent-identity secret, declared in agents/eva.
-      "migadu/noreply-password" = { };
+      # Migadu mailbox passwords live together under migadu/<mailbox>.
+      # noreply@m.acpuchades.com is the services' relay login (postfix/sasl_passwd
+      # below); eva's is declared by agents/eva, which owns who may read it.
+      "migadu/noreply" = { };
 
       "nextcloud/admin" = {
         owner = config.users.users.nextcloud.name;
@@ -444,11 +444,9 @@ in
         # relay line is the fallback for any other sender, which Migadu then
         # refuses unless noreply@ owns it.
         content = ''
-          noreply@m.acpuchades.com noreply@m.acpuchades.com:${
-            config.sops.placeholder."migadu/noreply-password"
-          }
+          noreply@m.acpuchades.com noreply@m.acpuchades.com:${config.sops.placeholder."migadu/noreply"}
           eva@m.acpuchades.com eva@m.acpuchades.com:${config.sops.placeholder."openclaw/eva/mail-password"}
-          [smtp.migadu.com]:587 noreply@m.acpuchades.com:${config.sops.placeholder."migadu/noreply-password"}
+          [smtp.migadu.com]:587 noreply@m.acpuchades.com:${config.sops.placeholder."migadu/noreply"}
         '';
       };
 
