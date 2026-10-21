@@ -391,6 +391,46 @@
         // lib.optionalAttrs (config.my.cloud-suite.nextcloud.maintenanceWindowStart != null) {
           maintenance_window_start = config.my.cloud-suite.nextcloud.maintenanceWindowStart;
         };
+
+        # Client Push: the desktop/mobile clients hold a websocket to /push/
+        # and are told when something changed, instead of re-PROPFINDing the
+        # tree on a timer — changes land in seconds and the polling load goes.
+        # Upstream wires the nginx location, the app and its self-test
+        # (notify_push_setup). bendDomainToLocalhost points this host's own
+        # lookups of the hostname at 127.0.0.1, which the self-test needs: the
+        # push daemon and Nextcloud reach each other through nginx, and the
+        # loopback address is what goes into trusted_proxies (and passes the
+        # vhost's LAN gate).
+        notify_push = {
+          enable = true;
+          bendDomainToLocalhost = true;
+        };
+      };
+
+      # Every Nextcloud write is a handful of small transactions (filecache
+      # row, parent etags, activity), and on this host each COMMIT waits for
+      # an fsync on a spinning disk — which is most of what a sync of many
+      # small files spends its time on. Asynchronous commit, for this one
+      # database only, drops that wait; the trade is that a crash can lose
+      # the last fraction of a second of metadata (never corrupt it), which
+      # `nextcloud-occ files:scan --all` re-derives from the files on disk.
+      # Everything else in the cluster (fugazi in particular) keeps durable
+      # commits.
+      systemd.services.nextcloud-db-async-commit = {
+        description = "Asynchronous commit for the Nextcloud database";
+        after = [ "postgresql-setup.service" ];
+        requires = [ "postgresql-setup.service" ];
+        wantedBy = [ "multi-user.target" ];
+        path = [ config.services.postgresql.package ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          User = "postgres";
+        };
+        script = ''
+          psql -d postgres -v ON_ERROR_STOP=1 \
+            -c 'ALTER DATABASE "${config.services.nextcloud.config.dbname}" SET synchronous_commit = off'
+        '';
       };
 
       # Collabora Online
