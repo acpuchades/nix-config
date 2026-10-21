@@ -134,14 +134,19 @@ never aborts a save); every package is deferred unless it must act at startup
   switch, resolver), `p2p.nix`, `watchdog.nix`. Firewall rules inserted with
   `-I … 1` stay in `default.nix`: imported modules merge first, so moving one
   changes the live rule order.
-- `mail-server` — Postfix inbound → eva's Maildir, Mailjet relay outbound,
-  rspamd, ACME STARTTLS
+- `mail-server` — send-only Postfix on loopback, relaying through Migadu
+  with a login per sender (`machines/homeserver/mail.nix`); every local sender
+  is `@m.acpuchades.com`. Nothing is received: eva's mailbox is at Migadu,
+  read over IMAP by the openclaw credential broker (`openclaw-secrets`)
 - `dns-filtering` — AdGuard Home + DNSCrypt
 - `vpn-server` — WireGuard server (peers declared under `my.vpn-server.peers`
   in `machines/homeserver/vpn.nix`)
 - `openclaw` — multi-agent module (`my.openclaw.instances.<name>`), runs eva;
   split into `default.nix` (module shell), `instance-options.nix` (per-instance
-  schema), `instance.nix` (fragment builder), `instance-actions.nix` (wrappers)
+  schema), `instance.nix` (fragment builder), `instance-actions.nix` (wrappers).
+  Credential-using wrappers (mail today) run as the shared broker account
+  `openclaw-secrets` via sudo — each agent may only sudo to its OWN pinned
+  wrapper store paths, and the agent never reads the secret
 - `fugazi-web` — host topology around the upstream flake's module (public
   backtest service, www.fugazitrade.com)
 
@@ -181,7 +186,7 @@ claude-code; small ones (starship, gh, bat, btop, …) are inline in
 
 - `machines/homeserver/secrets/default.yml` — WireGuard/Proton keys, WiFi,
   nginx basic-auth (bcrypt; keys still named `caddy/*`), DB credentials,
-  Cloudflare/Mailjet/ntfy/restic-B2 tokens, the openclaw/eva credential block
+  Cloudflare/Migadu/ntfy/restic-B2 tokens, the openclaw/eva credential block
 - `machines/macbookpro/secrets/default.yml`
 - `users/alex/secrets/default.yml` — service tokens (GitHub, Anthropic, PyPI,
   crates.io, Prefect, ntfy, iCloud), plus per-host overrides
@@ -201,7 +206,8 @@ importing the modules it configures:
   AdGuard rewrites, service dashboard
 - `apps.nix` — cloud-suite, PostgreSQL, Samba, media, print, geocoding, Home
   Assistant, analytics, Prefect
-- `eva.nix` — the agent, its mail server (STARTTLS reuses the web wildcard)
+- `eva.nix` — the agent
+- `mail.nix` — the outbound relay (Postfix → Migadu) every service sends through
 - `monitoring.nix` — ntfy, ntfy-alert (`failureUnits`: the one list of what
   gets alerted on), Grafana, UPS, host-security
 - `backup.nix` — restic → B2

@@ -60,15 +60,17 @@ let
     gpgSeed
     mailAllowlist
     mailFromDisplay
-    mailManageBins
-    mailReadBins
     mailSendBin
+    mailboxBin
     netIsolateAllowlist
     outboxBin
     outboxDir
-    submitUser
+    secretsUser
     trustedMailBin
     ;
+
+  # Mail is the broker's only client so far (see secretsUser).
+  brokerUsed = icfg.mail.enable;
 
   # Skill generators live in ./skills/*.nix — one file per skill. They are
   # config-templated (they interpolate icfg/homeDir/mailFromDisplay), so unlike
@@ -351,8 +353,9 @@ let
         strictInlineEval = icfg.exec.strictInlineEval;
         safeBins =
           icfg.exec.safeBins
-          ++ lib.optionals icfg.mail.enable mailReadBins
-          ++ lib.optionals (icfg.mail.enable && icfg.mail.manageMaildir) mailManageBins
+          # mailbox self-limits to the agent's own mailbox (and to read-only
+          # verbs unless mail.manageMailbox), so it is safe whole-binary.
+          ++ lib.optionals icfg.mail.enable [ "mailbox" ]
           # The trusted-* action wrappers SELF-GATE their destination (refusing
           # anything off the trusted list), so they are safe to bless whole-binary:
           # any invocation either targets a trusted destination or exits non-zero.
@@ -660,14 +663,15 @@ in
   # key — so at least require the model file for the local backend here.
   assertions = [
     {
-      # The keyring lives in the agent's state dir, which the submit user
-      # cannot read; encrypted mail would need its own path through sudo.
-      assertion = submitUser != null -> !gpgEnabled;
-      message = "my.openclaw.instances.${name}.mail.submitUser: not supported together with mail.gpg yet.";
+      # The keyring lives in the agent's state dir, which the broker cannot
+      # read; encrypted mail would need its own path through sudo.
+      assertion = !gpgEnabled;
+      message = "my.openclaw.instances.${name}.mail.gpg: not supported since mail runs through the credential broker (openclaw-secrets).";
     }
     {
-      assertion = submitUser != null -> icfg.mail.enable;
-      message = "my.openclaw.instances.${name}.mail.submitUser: requires mail.enable.";
+      # send-trusted-mail submits through the broker like send-email does.
+      assertion = icfg.actions.trustedMail.enable -> icfg.mail.enable;
+      message = "my.openclaw.instances.${name}.actions.trustedMail: requires mail.enable.";
     }
     {
       assertion =
@@ -729,7 +733,7 @@ in
   # below (so bash -c can also resolve them) — belt-and-braces across both
   # resolution paths.
   #
-  # The action wrappers (and mblaze) come in via actionWrapperBins, which is
+  # The action wrappers come in via actionWrapperBins, which is
   # ALSO spliced onto the service `path` below — see its definition for why
   # both. The gnupg wrappers deliberately ship WITHOUT pkgs.gnupg, so the agent
   # has no raw `gpg` to reach for (it carries its own network and key-import
@@ -743,14 +747,15 @@ in
   ++ lib.optionals icfg.stt.enable [ pkgs.ffmpeg-headless ]
   ++ actionWrapperBins
   ++ icfg.extraPackages
-  ++ lib.optional (submitUser != null) outboxBin;
+  ++ lib.optional icfg.mail.enable outboxBin;
 
   users.users =
-    lib.optionalAttrs (submitUser != null) {
-      ${submitUser} = {
+    lib.optionalAttrs brokerUsed {
+      # Shared by every agent on the host (each instance defines it alike).
+      ${secretsUser} = {
         isSystemUser = true;
-        group = submitUser;
-        description = "Mail submission for OpenClaw agent ${name}";
+        group = secretsUser;
+        description = "OpenClaw credential broker";
       };
     }
     // {
@@ -771,8 +776,7 @@ in
         # agent happened to be configured first. Deliberately NOT the `openclaw`
         # group below: that one reads the state TREE, and putting agents in it would
         # let each agent read every other agent's memory and sessions.
-        # The submit user's group reads the address lists both sides use.
-        extraGroups = [ "agents" ] ++ lib.optional (submitUser != null) submitUser;
+        extraGroups = [ "agents" ];
         # Local-only identity: no password, no keys, and sshd refuses it outright
         # (below), so the account can be inhabited from a root session on this box
         # and nowhere else. `!` is an invalid hash — it matches nothing.
@@ -780,7 +784,7 @@ in
         openssh.authorizedKeys.keys = [ ];
       };
     };
-  users.groups = lib.optionalAttrs (submitUser != null) { ${submitUser} = { }; } // {
+  users.groups = lib.optionalAttrs brokerUsed { ${secretsUser} = { }; } // {
     ${icfg.user} = { };
     # Read access to the agent's service state for principals who should be
     # able to inspect it without becoming the agent. Deliberately NOT the
@@ -817,11 +821,11 @@ in
         options = [ "NOPASSWD" ];
       }) icfg.sudoCommands;
     }
-    # The real send wrappers, as the submit user, with any arguments: each
-    # one checks its own recipients.
-    ++ lib.optional (submitUser != null) {
+    # This agent's OWN broker wrappers, as the broker, with any arguments:
+    # each is pinned to this agent's identity and checks its own inputs.
+    ++ lib.optional brokerUsed {
       users = [ icfg.user ];
-      runAs = submitUser;
+      runAs = secretsUser;
       commands =
         map
           (command: {
@@ -829,7 +833,10 @@ in
             options = [ "NOPASSWD" ];
           })
           (
-            [ "${mailSendBin}/bin/send-email" ]
+            [
+              "${mailSendBin}/bin/send-email"
+              "${mailboxBin}/bin/mailbox"
+            ]
             ++ lib.optional icfg.actions.trustedMail.enable "${trustedMailBin}/bin/send-trusted-mail"
           );
     };
@@ -851,9 +858,11 @@ in
     "d ${stateDir} 2750 ${icfg.user} openclaw -"
     "Z ${stateDir} - ${icfg.user} openclaw -"
   ]
-  ++ lib.optionals (submitUser != null) [
+  ++ lib.optionals icfg.mail.enable [
     "d /var/spool/openclaw-outbox 0755 root root -"
-    "d ${outboxDir} 0700 ${submitUser} ${submitUser} -"
+    "d ${outboxDir} 0700 ${secretsUser} ${secretsUser} -"
+    # Re-own anything held under a previous owner (the per-agent submit user).
+    "Z ${outboxDir} - ${secretsUser} ${secretsUser} -"
   ];
 
   networking.firewall = lib.mkIf icfg.egress.enable {
@@ -915,7 +924,7 @@ in
     ++ lib.optionals (icfg.agentRuntime == "claude-cli") [ pkgs.claude-code ]
     ++ lib.optionals icfg.stt.enable [ icfg.stt.package ]
     # The self-gating action wrappers (generate-image, check-weather,
-    # send-email, …) and mblaze — the agent invokes these by name from its own
+    # send-email, mailbox, …) — the agent invokes these by name from its own
     # shell, so they must resolve on the service PATH, not only in the system
     # profile that OpenClaw's safe-bin trust check reads. See actionWrapperBins.
     ++ actionWrapperBins
@@ -928,7 +937,7 @@ in
     # ("sudo: command not found"; eva never ran one from 2026-08 until
     # this fix). Grants no new privilege: the absolute wrapper paths were
     # always reachable, and sudoers still decides what runs.
-    ++ lib.optional (icfg.sudoCommands != [ ] || submitUser != null) "/run/wrappers";
+    ++ lib.optional (icfg.sudoCommands != [ ] || brokerUsed) "/run/wrappers";
 
     environment = {
       HOME = homeDir;
@@ -1060,7 +1069,7 @@ in
 
       # Confinement. The filesystem is read-only apart from the agent's own
       # trees; other homes are hidden. Not NoNewPrivileges, nor a capability
-      # bound or syscall filter: sudo (sudoCommands, the submit user) needs
+      # bound or syscall filter: sudo (sudoCommands, the broker) needs
       # setuid, and the `offline` launcher needs namespaces.
       ProtectSystem = "strict";
       ProtectHome = "tmpfs";
@@ -1072,9 +1081,9 @@ in
       ]
       # sendmail(1) drops the message here (setgid postdrop).
       ++ lib.optional icfg.mail.enable "/var/lib/postfix/queue/maildrop"
-      # Held mail; written by the submit user, which sudo starts inside this
+      # Held mail; written by the broker, which sudo starts inside this
       # same mount namespace (the directory is 0700 to it, not the agent).
-      ++ lib.optional (submitUser != null) outboxDir;
+      ++ lib.optional icfg.mail.enable outboxDir;
       PrivateTmp = true;
       PrivateDevices = true;
       ProtectKernelTunables = true;

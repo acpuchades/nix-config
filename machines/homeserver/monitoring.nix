@@ -95,7 +95,6 @@ in
       "transmission"
       "samba-smbd"
       "cups"
-      "rspamd"
       "sshd"
       "fail2ban"
       "tor"
@@ -158,11 +157,6 @@ in
           "prefect"
           "alex"
         ];
-      };
-      # Spam thresholds, maps and learning.
-      rspamd = {
-        port = 11334;
-        users = [ config.services.rspamd.user ];
       };
       # Download dir and torrent-done script (code exec as transmission).
       transmission = {

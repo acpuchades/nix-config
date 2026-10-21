@@ -7,7 +7,7 @@
 
   # Encrypted off-site backups to Backblaze B2 (restic, client-side AES-256).
   # Covers the irreplaceable, non-declarative state: DB dumps, all user homes
-  # (keys, configs, shell histories, ~/.claude memory, eva's Maildir + agent
+  # (keys, configs, shell histories, ~/.claude memory, eva's old local Maildir + agent
   # state) and the cloud-suite data dirs. Home coverage is a DENYLIST, not an
   # allowlist — backing up all of /home and excluding the re-acquirable caches
   # means new important dirs are caught automatically instead of silently
@@ -27,7 +27,7 @@
     environmentFile = config.sops.templates."backup/b2-env".path;
 
     # Data-directory paths tracked off their owning modules' options so they
-    # follow any relocation. /home covers both alex and eva (incl. Maildir).
+    # follow any relocation. /home covers both alex and eva.
     paths = [
       "/home" # all user homes (caches excluded below)
       "/var/lib/openclaw/eva" # eva agent state/memory

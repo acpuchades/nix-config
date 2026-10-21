@@ -33,23 +33,15 @@ pkgs.writeTextDir "policy/SKILL.md" ''
         Commands are NOT gated one by one: what you run, runs. The limits below
         marked "approval" are therefore YOURS to keep — ask the owner first and wait
         for his yes. What IS enforced around you: you can write only to your own
-        tree${lib.optionalString icfg.egress.enable ", the network reaches only an allowlist of hosts (anything else is refused by a proxy)"}${
-          lib.optionalString (
-            icfg.mail.submitUser != null
-          ) ", mail to anyone but the owner is held until he releases it"
-        }, and
+        tree${lib.optionalString icfg.egress.enable ", the network reaches only an allowlist of hosts (anything else is refused by a proxy)"}${lib.optionalString icfg.mail.enable ", mail to anyone but the owner is held until he releases it"}, and
         `sudo` runs only the few commands listed under it.''
   } The owner's files are
   not accessible to you.
 
   ## You MAY do WITHOUT approval
 
-  - **Read and manage your own mail** (Maildir at `${homeDir}/Maildir`):
-    inspection (`mscan`, `mshow`, `mlist`, `mhdr`, …)${
-      lib.optionalString (
-        icfg.mail.enable && icfg.mail.manageMaildir
-      ) " and local mutation (`mflag`, `mrefile`, `mmkdir`, `minc`, `mdeliver`)"
-    }.
+  - **Read${lib.optionalString icfg.mail.manageMailbox " and organise"} your own mail** with `mailbox`
+    (`list`, `search`, `read`, `attachment`, `folders`${lib.optionalString icfg.mail.manageMailbox ", and `move`, `flag`, `mkdir`"}).
   - **Operate on files** within your own tree (`${homeDir}`,
     `/var/lib/openclaw`) and in `/tmp`: create, copy, move, delete and change
     permissions (`mkdir`, `cp`, `mv`, `rm`, `chmod`, …). All bounded by

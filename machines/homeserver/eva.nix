@@ -1,10 +1,9 @@
-# eva — the OpenClaw agent (agents/eva) and the mail server that is her inbox,
-# with the wildcard certificate Postfix uses for STARTTLS.
-{ config, pkgsUnstable, ... }:
+# eva — the OpenClaw agent (agents/eva). Her mailbox is at Migadu, read over
+# IMAP through the credential broker; what she sends leaves through ./mail.nix.
+{ pkgsUnstable, ... }:
 {
   imports = [
     ../../agents/eva
-    ../../modules/mail-server
   ];
 
   # OpenClaw agent — Telegram-only, loopback gateway, but NOT confined on
@@ -33,37 +32,5 @@
     # imported above (eva: Telegram bot eva_lebbot, own OS user, home,
     # state dir /var/lib/openclaw/eva and openclaw-eva.service). Only
     # `package` is shared between them.
-  };
-
-  # Postfix's STARTTLS uses the *.acpuchades.com wildcard my.web-server issues
-  # (./web.nix). Its group is nginx's (`acme`): Postfix loads the key as root,
-  # before it drops privileges, so it needs no group of its own.
-  security.acme.certs."acpuchades.com".reloadServices = [ "postfix.service" ];
-
-  my.mail-server = {
-    enable = true;
-    hostname = "m.acpuchades.com";
-    origin = "acpuchades.com";
-    # eva's public address is eva@m.acpuchades.com itself (no apex alias in
-    # front): mailDomain being local, it delivers straight to the eva system
-    # user's ~/Maildir.
-    mailDomain = "m.acpuchades.com";
-    # rspamd stamps `X-Trusted-Sender: yes` on inbound mail whose From is one
-    # of these AND carries an aligned DKIM signature (spoof-proof). eva keys
-    # "may act on this mail" off that header, not the raw From. The SAME sops
-    # value as eva's trusted-recipient list (agents/eva), so trust stays
-    # symmetric in both directions without a second copy to drift.
-    trustedSendersFile = config.sops.secrets."rspamd/trusted-senders".path;
-    # eva is the only mailbox; everything else at mailDomain is refused at
-    # SMTP time. She cannot submit mail herself — only through her send
-    # wrappers, which run as eva-mail (pinned to her address) and hold mail
-    # for anyone but the owner.
-    localRecipients = [ "eva" ];
-    deniedSubmitUsers = [ "eva" ];
-    pinnedSenders.eva-mail = [ config.my.openclaw.instances.eva.mail.fromAddress ];
-    relayHost = "[in-v3.mailjet.com]:587";
-    saslPasswordFile = config.sops.templates."postfix/sasl_passwd".path;
-    # Use the shared wildcard cert instead of managing a per-hostname cert.
-    acmeCertName = "acpuchades.com";
   };
 }

@@ -625,9 +625,11 @@ in
     # half-finished service.
     noIndex = true;
 
-    # mailFrom stays the module default (noreply@acpuchades.com): this is the
+    # mailFrom stays the module default (noreply@m.acpuchades.com): this is the
     # only deployment sending mail, so there is no second sender to tell it
-    # apart from. It gains a -testing suffix when prod launches beside it.
+    # apart from. It gains a -testing suffix when prod launches beside it —
+    # which Migadu must then know as an identity of the relay mailbox, or it
+    # refuses the mail (see the relay in ./eva.nix).
   };
 
   # Knobs modules/fugazi-web deliberately doesn't re-expose go straight on the

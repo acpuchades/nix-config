@@ -1,6 +1,6 @@
 #!/bin/sh
 # Read side of the agent's confidential mail: decrypt an OpenPGP message from its
-# own Maildir and report who signed it, verified against a nix-pinned set of
+# own mailbox (`mailbox raw <UID> | decrypt-mail`) and report who signed it, verified against a nix-pinned set of
 # signer fingerprints.
 #
 # Read-only and destination-less — it opens a file the agent could already read,
@@ -60,7 +60,7 @@ awk '
 ' "$tmp/in" > "$tmp/armor"
 
 if [ ! -s "$tmp/armor" ]; then
-  echo "no OpenPGP armor found: this message is not encrypted or signed — read it with mshow instead" >&2
+  echo "no OpenPGP armor found: this message is not encrypted or signed — read it with mailbox read instead" >&2
   exit 3
 fi
 

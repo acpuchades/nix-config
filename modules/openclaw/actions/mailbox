@@ -1,0 +1,512 @@
+"""mailbox — the agent's own IMAP mailbox, without the agent holding its password.
+
+Runs as the credential broker account (openclaw-secrets) through sudo; the nix
+wrapper pins which mailbox, which password file and which trusted-sender list,
+so an agent can only ever reach its OWN mailbox through it, and never sees the
+password (which also works for SMTP, i.e. would let it send around the
+recipient-gated send wrappers).
+
+Usage:
+  mailbox list   [-f FOLDER] [-n N] [--unseen]
+  mailbox search [-f FOLDER] [-n N] [--unseen] [--from S] [--subject S]
+                 [--text S] [--since YYYY-MM-DD]
+  mailbox read   UID [-f FOLDER] [--peek]
+  mailbox attachment UID INDEX [-f FOLDER]      (bytes on stdout — redirect it)
+  mailbox raw    UID [-f FOLDER]                (the RFC 5322 message)
+  mailbox folders
+ and, only when the wrapper sets MAILBOX_MANAGE=1:
+  mailbox move   UID DEST [-f FOLDER]
+  mailbox flag   UID {+|-}{seen|flagged|answered}...
+  mailbox mkdir  NAME
+
+Nothing deletes or expunges: the worst a confused or prompt-injected agent can
+do to its mailbox is file a message somewhere odd.
+
+TRUST. `read` prints a computed `X-Trusted-Sender: yes|no` line first. It is
+`yes` only when the message has exactly one From address, that address is on
+the trusted list (TRUSTED_SENDERS + TRUSTED_SENDERS_FILE), and a DKIM signature
+VERIFIES (checked here, against DNS) for a domain aligned with it. Signatures
+with an `l=` body-length tag are ignored, since content appended after the
+signed length would not be covered. The message's own X-Trusted-Sender
+headers are never shown — `read` prints only the computed one and `raw`
+strips them — so a sender cannot forge it.
+
+Environment (pinned by the wrapper): MAILBOX_HOST, MAILBOX_PORT, MAILBOX_USER,
+MAILBOX_PASSWORD_FILE, MAILBOX_MANAGE, TRUSTED_SENDERS, TRUSTED_SENDERS_FILE.
+"""
+
+import argparse
+import base64
+import datetime
+import email
+import email.policy
+import email.utils
+import html.parser
+import imaplib
+import os
+import re
+import ssl
+import sys
+
+import dkim
+
+ENV = os.environ
+CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def die(msg, code=1):
+    print(f"mailbox: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def clean(s, oneline=False):
+    """Drop control characters (terminal escapes, header-injection newlines)."""
+    s = CTRL.sub("", str(s))
+    return " ".join(s.split()) if oneline else s
+
+
+# --- folder names: IMAP modified UTF-7 (RFC 3501 §5.1.3) --------------------
+
+
+def mutf7_encode(name):
+    out, buf = [], []
+
+    def flush():
+        if buf:
+            b64 = base64.b64encode("".join(buf).encode("utf-16-be")).decode()
+            out.append("&" + b64.rstrip("=").replace("/", ",") + "-")
+            buf.clear()
+
+    for ch in name:
+        if 0x20 <= ord(ch) <= 0x7E:
+            flush()
+            out.append("&-" if ch == "&" else ch)
+        else:
+            buf.append(ch)
+    flush()
+    return "".join(out)
+
+
+def mutf7_decode(name):
+    def repl(m):
+        t = m.group(1)
+        if not t:
+            return "&"
+        t = t.replace(",", "/")
+        return base64.b64decode(t + "=" * (-len(t) % 4)).decode("utf-16-be")
+
+    return re.sub(r"&([A-Za-z0-9+,]*)-", repl, name)
+
+
+def quote(folder):
+    enc = mutf7_encode(folder)
+    return '"' + enc.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+# --- IMAP -------------------------------------------------------------------
+
+
+def ok(resp, what):
+    typ, data = resp
+    if typ != "OK":
+        detail = b" ".join(d for d in data if isinstance(d, bytes)).decode(errors="replace")
+        die(f"{what} failed: {detail}")
+    return data
+
+
+def connect():
+    try:
+        with open(ENV["MAILBOX_PASSWORD_FILE"]) as f:
+            password = f.read().strip()
+    except OSError as e:
+        die(f"cannot read the mailbox password: {e.strerror}")
+    try:
+        conn = imaplib.IMAP4_SSL(
+            ENV["MAILBOX_HOST"],
+            int(ENV.get("MAILBOX_PORT", "993")),
+            ssl_context=ssl.create_default_context(),
+            timeout=60,
+        )
+        conn.login(ENV["MAILBOX_USER"], password)
+    except (OSError, imaplib.IMAP4.error) as e:
+        die(f"cannot log in to {ENV['MAILBOX_HOST']}: {e}")
+    try:
+        conn.enable("UTF8=ACCEPT")  # lets SEARCH take non-ASCII strings
+    except imaplib.IMAP4.error:
+        pass
+    return conn
+
+
+def select(conn, folder, readonly=True):
+    ok(conn.select(quote(folder), readonly=readonly), f"opening folder {folder!r}")
+
+
+def uid_arg(s):
+    if not re.fullmatch(r"[0-9]+", s):
+        raise argparse.ArgumentTypeError("a UID is a number, as shown by `mailbox list`")
+    return s
+
+
+def fetch_raw(conn, uid):
+    data = ok(conn.uid("FETCH", uid, "(BODY.PEEK[])"), "fetch")
+    for item in data:
+        if isinstance(item, tuple):
+            return item[1]
+    die(f"no message with UID {uid} in this folder")
+
+
+# --- list / search ----------------------------------------------------------
+
+HEADER_FIELDS = "BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)]"
+
+
+def show_list(conn, uids, limit):
+    uids = sorted((int(u) for u in uids), reverse=True)[:limit]
+    if not uids:
+        print("(no messages)")
+        return
+    data = ok(conn.uid("FETCH", ",".join(map(str, uids)), f"(UID FLAGS {HEADER_FIELDS})"), "fetch")
+    rows = {}
+    for item in data:
+        if not isinstance(item, tuple):
+            continue
+        meta = item[0].decode(errors="replace")
+        m = re.search(r"UID (\d+)", meta)
+        if not m:
+            continue
+        flags = re.search(r"FLAGS \(([^)]*)\)", meta)
+        flags = flags.group(1) if flags else ""
+        hdr = email.message_from_bytes(item[1], policy=email.policy.default)
+        try:
+            when = email.utils.parsedate_to_datetime(str(hdr["Date"])).astimezone()
+            when = when.strftime("%Y-%m-%d %H:%M")
+        except (TypeError, ValueError):
+            when = "?"
+        try:
+            addrs = hdr["From"].addresses if hdr["From"] is not None else ()
+            sender = addrs[0].addr_spec if addrs else "?"
+        except (AttributeError, IndexError):
+            sender = clean(hdr.get("From", "?"), oneline=True)
+        mark = ("N" if "\\Seen" not in flags else " ") + ("F" if "\\Flagged" in flags else " ")
+        subject = clean(hdr.get("Subject", ""), oneline=True)
+        rows[int(m.group(1))] = f"{m.group(1):>7}  {when}  {mark}  {clean(sender, True)[:40]:<40}  {subject}"
+    print(f"{'UID':>7}  {'DATE':16}  NF  {'FROM':<40}  SUBJECT")
+    for u in uids:
+        if u in rows:
+            print(rows[u])
+
+
+def search_criteria(args):
+    crit = []
+    if args.unseen:
+        crit.append("UNSEEN")
+    for key, val in (("FROM", args.sender), ("SUBJECT", args.subject), ("TEXT", args.text)):
+        if val:
+            crit += [key, '"' + val.replace("\\", "\\\\").replace('"', '\\"') + '"']
+    if args.since:
+        try:
+            d = datetime.date.fromisoformat(args.since)
+        except ValueError:
+            die("--since takes YYYY-MM-DD", 2)
+        crit += ["SINCE", d.strftime("%d-%b-%Y")]
+    return crit or ["ALL"]
+
+
+def cmd_list(conn, args):
+    select(conn, args.folder)
+    data = ok(conn.uid("SEARCH", *search_criteria(args)), "search")
+    show_list(conn, data[0].split(), args.limit)
+
+
+# --- trust ------------------------------------------------------------------
+
+
+def trusted_addresses():
+    found = {a.lower() for a in ENV.get("TRUSTED_SENDERS", "").split()}
+    path = ENV.get("TRUSTED_SENDERS_FILE")
+    if path:
+        try:
+            with open(path) as f:
+                found |= {
+                    line.strip().lower() for line in f if line.strip() and not line.lstrip().startswith("#")
+                }
+        except OSError:
+            pass  # fail-safe: an unreadable list trusts nobody extra
+    return found
+
+
+def aligned(sig_domain, from_domain):
+    return (
+        sig_domain == from_domain
+        or from_domain.endswith("." + sig_domain)
+        or sig_domain.endswith("." + from_domain)
+    )
+
+
+def trust(raw, msg):
+    froms = msg.get_all("From") or []
+    if len(froms) != 1:
+        return False, "not exactly one From header"
+    try:
+        addrs = froms[0].addresses
+    except AttributeError:
+        return False, "unparseable From"
+    if len(addrs) != 1 or not addrs[0].domain:
+        return False, "From is not a single address"
+    sender = addrs[0].addr_spec.lower()
+    if sender not in trusted_addresses():
+        return False, "sender is not on the trusted list"
+    from_domain = addrs[0].domain.lower().rstrip(".")
+    sigs = msg.get_all("DKIM-Signature") or []
+    for idx, sig in enumerate(sigs):
+        tags = {
+            k.strip().lower(): v.strip()
+            for k, _, v in (t.partition("=") for t in re.sub(r"\s+", "", str(sig)).split(";"))
+            if k.strip()
+        }
+        if "l" in tags:
+            continue  # body-length limit: appended content would be unsigned
+        d = tags.get("d", "").lower().rstrip(".")
+        if not d or not aligned(d, from_domain):
+            continue
+        try:
+            if dkim.DKIM(raw).verify(idx=idx):
+                return True, f"DKIM signature by {d} verified, sender on the trusted list"
+        except Exception:  # noqa: BLE001 — any verifier failure means "not verified"
+            continue
+    return False, "no verified DKIM signature aligned with the From domain"
+
+
+# --- read -------------------------------------------------------------------
+
+
+class _Text(html.parser.HTMLParser):
+    BLOCK = {"p", "div", "br", "tr", "li", "h1", "h2", "h3", "h4", "h5", "h6", "table", "blockquote"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.out, self.skip = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "head"):
+            self.skip += 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+        if tag == "a":
+            href = dict(attrs).get("href")
+            if href and href.startswith(("http://", "https://", "mailto:")):
+                self.out.append(f"[{href}] ")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "head") and self.skip:
+            self.skip -= 1
+        elif tag in self.BLOCK:
+            self.out.append("\n")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.out.append(data)
+
+
+def html_to_text(src):
+    p = _Text()
+    p.feed(src)
+    text = "".join(p.out)
+    return re.sub(r"\n\s*\n\s*\n+", "\n\n", re.sub(r"[ \t]+", " ", text)).strip()
+
+
+def attachments(msg):
+    return [
+        part
+        for part in msg.walk()
+        if not part.is_multipart()
+        and (part.get_content_disposition() == "attachment" or part.get_filename())
+    ]
+
+
+def cmd_read(conn, args):
+    select(conn, args.folder, readonly=args.peek)
+    raw = fetch_raw(conn, args.uid)
+    msg = email.message_from_bytes(raw, policy=email.policy.default)
+    trusted, why = trust(raw, msg)
+    print(f"X-Trusted-Sender: {'yes' if trusted else 'no'}")
+    print(f"X-Trust-Reason: {why}")
+    for h in ("From", "Reply-To", "To", "Cc", "Date", "Subject", "Message-ID", "In-Reply-To"):
+        for v in msg.get_all(h) or []:
+            print(f"{h}: {clean(v, oneline=True)}")
+    print(f"X-Mailbox: folder {args.folder!r}, UID {args.uid}")
+    atts = attachments(msg)
+    if atts:
+        print("X-Attachments:")
+        for i, part in enumerate(atts, 1):
+            size = len(part.get_payload(decode=True) or b"")
+            name = clean(part.get_filename() or "(unnamed)", oneline=True)
+            print(f"  {i}. {name} ({part.get_content_type()}, {size} bytes)")
+    print()
+    if msg.get_content_type() == "multipart/encrypted":
+        print("(OpenPGP-encrypted message — pipe `mailbox raw` into decrypt-mail to read it)")
+    else:
+        body = msg.get_body(preferencelist=("plain", "html"))
+        if body is None:
+            print("(no text body)")
+        else:
+            try:
+                text = body.get_content()
+            except (LookupError, ValueError):
+                text = (body.get_payload(decode=True) or b"").decode("utf-8", "replace")
+            if body.get_content_type() == "text/html":
+                text = html_to_text(text)
+            print(clean(text).rstrip())
+    if not args.peek:
+        ok(conn.uid("STORE", args.uid, "+FLAGS.SILENT", r"(\Seen)"), "marking read")
+
+
+def cmd_attachment(conn, args):
+    if sys.stdout.isatty():
+        die("attachment bytes go to stdout — redirect them to a file", 2)
+    select(conn, args.folder)
+    msg = email.message_from_bytes(fetch_raw(conn, args.uid), policy=email.policy.default)
+    atts = attachments(msg)
+    if not 1 <= args.index <= len(atts):
+        die(f"message {args.uid} has {len(atts)} attachment(s)")
+    sys.stdout.buffer.write(atts[args.index - 1].get_payload(decode=True) or b"")
+
+
+def strip_trust_headers(raw):
+    # Split so that every header line keeps its own line ending and `rest`
+    # starts with the blank line that ends the header block.
+    end = raw.find(b"\r\n\r\n")
+    end = end + 2 if end >= 0 else raw.find(b"\n\n") + 1
+    if end <= 0:
+        end = len(raw)
+    head, body = raw[:end], raw[end:]
+    sep = b""
+    keep, dropping = [], False
+    for line in head.splitlines(keepends=True):
+        if line[:1] in (b" ", b"\t"):
+            if not dropping:
+                keep.append(line)
+            continue
+        dropping = line.lower().startswith(b"x-trusted-sender:")
+        if not dropping:
+            keep.append(line)
+    return b"".join(keep) + sep + body
+
+
+def cmd_raw(conn, args):
+    select(conn, args.folder)
+    sys.stdout.buffer.write(strip_trust_headers(fetch_raw(conn, args.uid)))
+
+
+def cmd_folders(conn, _args):
+    for line in ok(conn.list(), "listing folders"):
+        if not isinstance(line, bytes):
+            continue
+        m = re.match(rb'\((?P<flags>[^)]*)\) (?P<delim>"[^"]*"|NIL) (?P<name>.+)$', line)
+        if not m or b"\\Noselect" in m.group("flags"):
+            continue
+        name = m.group("name").decode(errors="replace").strip()
+        if name.startswith('"') and name.endswith('"'):
+            name = name[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        print(mutf7_decode(name))
+
+
+# --- manage -----------------------------------------------------------------
+
+FLAGS = {"seen": r"\Seen", "flagged": r"\Flagged", "answered": r"\Answered"}
+
+
+def cmd_move(conn, args):
+    select(conn, args.folder, readonly=False)
+    if b"MOVE" not in b" ".join(c.encode() if isinstance(c, str) else c for c in conn.capabilities):
+        die("the server does not support MOVE")
+    ok(conn.uid("MOVE", args.uid, quote(args.dest)), f"moving to {args.dest!r}")
+    print(f"moved {args.uid} to {args.dest}")
+
+
+def cmd_flag(conn, args):
+    select(conn, args.folder, readonly=False)
+    for spec in args.changes:
+        m = re.fullmatch(r"([+-])(seen|flagged|answered)", spec.lower())
+        if not m:
+            die(f"flag changes look like +seen, -flagged, +answered (got {spec!r})", 2)
+        op = "+FLAGS.SILENT" if m.group(1) == "+" else "-FLAGS.SILENT"
+        ok(conn.uid("STORE", args.uid, op, f"({FLAGS[m.group(2)]})"), f"setting {spec}")
+    print(f"{args.uid}: {' '.join(args.changes)}")
+
+
+def cmd_mkdir(conn, args):
+    ok(conn.create(quote(args.name)), f"creating {args.name!r}")
+    print(f"created {args.name}")
+
+
+def main():
+    sys.stdout.reconfigure(errors="replace")
+    manage = ENV.get("MAILBOX_MANAGE") == "1"
+    p = argparse.ArgumentParser(prog="mailbox", description="The agent's own IMAP mailbox.")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def folder_opt(sp):
+        sp.add_argument("-f", "--folder", default="INBOX")
+
+    for name in ("list", "search"):
+        sp = sub.add_parser(name)
+        folder_opt(sp)
+        sp.add_argument("-n", "--limit", type=int, default=20)
+        sp.add_argument("--unseen", action="store_true")
+        if name == "search":
+            sp.add_argument("--from", dest="sender")
+            sp.add_argument("--subject")
+            sp.add_argument("--text")
+            sp.add_argument("--since")
+        sp.set_defaults(func=cmd_list, sender=None, subject=None, text=None, since=None)
+
+    sp = sub.add_parser("read")
+    sp.add_argument("uid", type=uid_arg)
+    sp.add_argument("--peek", action="store_true", help="do not mark it read")
+    folder_opt(sp)
+    sp.set_defaults(func=cmd_read)
+
+    sp = sub.add_parser("attachment")
+    sp.add_argument("uid", type=uid_arg)
+    sp.add_argument("index", type=int)
+    folder_opt(sp)
+    sp.set_defaults(func=cmd_attachment)
+
+    sp = sub.add_parser("raw")
+    sp.add_argument("uid", type=uid_arg)
+    folder_opt(sp)
+    sp.set_defaults(func=cmd_raw)
+
+    sub.add_parser("folders").set_defaults(func=cmd_folders)
+
+    if manage:
+        sp = sub.add_parser("move")
+        sp.add_argument("uid", type=uid_arg)
+        sp.add_argument("dest")
+        folder_opt(sp)
+        sp.set_defaults(func=cmd_move)
+
+        sp = sub.add_parser("flag")
+        sp.add_argument("uid", type=uid_arg)
+        sp.add_argument("changes", nargs="+")
+        folder_opt(sp)
+        sp.set_defaults(func=cmd_flag)
+
+        sp = sub.add_parser("mkdir")
+        sp.add_argument("name")
+        sp.set_defaults(func=cmd_mkdir)
+
+    args = p.parse_args()
+    conn = connect()
+    try:
+        args.func(conn, args)
+    finally:
+        try:
+            conn.logout()
+        except (OSError, imaplib.IMAP4.error):
+            pass
+
+
+if __name__ == "__main__":
+    main()

@@ -204,12 +204,12 @@ for off-site storage. Recreating it is post-migration work, not a blocker.
 
 Things no amount of Nix will do for you:
 
-- **Router:** forward TCP 22 (if exposed), 25, 80, 443, 9001 + 9002 (Tor
+- **Router:** forward TCP 22 (if exposed), 80, 443, 9001 + 9002 (Tor
   ORPort/obfs4), and UDP 51820 to `192.168.2.2`. Update the DHCP reservation
   to the new NIC's MAC. (51413 no longer needs forwarding: Transmission's peer
   port rides the ProtonVPN P2P tunnel via NAT-PMP, not the ISP line.)
-- **Mail:** inbound port 25 must be unblocked by the ISP, and the rDNS/PTR for
-  the public IP has to match. Outbound DKIM is Mailjet's, so nothing to move.
+- **Mail:** nothing — mailboxes and DKIM are Migadu's, and the host only
+  relays outbound over authenticated submission (587), which no ISP blocks.
 - **DNS:** ddclient refreshes the Cloudflare A records once it is up; confirm
   `/var/cache/ddclient` is being written and the records actually moved.
 - **Vaultwarden / NextCloud / Immich:** log in and confirm before you wipe the

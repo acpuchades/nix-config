@@ -12,7 +12,7 @@
 # deliberately NOT given it (agents/eva allowedHostnames).
 #
 # Mail (sign-up confirmation, password reset) goes through the local Postfix on
-# 127.0.0.1:25, which relays via Mailjet — the same path cloud-suite uses, so no
+# 127.0.0.1:25, which relays via Migadu — the same path cloud-suite uses, so no
 # SMTP credential exists for it.
 #
 # Curried over the flake input for the same reason ./fugazi.nix is: `imports`
@@ -55,7 +55,7 @@ in
       # Loopback to our own Postfix, which then relays over TLS; its STARTTLS
       # certificate is for m.acpuchades.com, which 127.0.0.1 would not match.
       security = "none";
-      from = "titan <noreply@acpuchades.com>";
+      from = "titan <noreply@m.acpuchades.com>";
     };
   };
 

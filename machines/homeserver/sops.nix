@@ -31,12 +31,10 @@ in
 
     secrets = {
 
-      "mailjet/token" = {
-        key = "mailjet/token";
-      };
-      "mailjet/secret" = {
-        key = "mailjet/secret";
-      };
+      # Password of the noreply@m.acpuchades.com Migadu mailbox: the services'
+      # relay login (postfix/sasl_passwd below). eva's own mailbox password is
+      # an agent-identity secret, declared in agents/eva.
+      "migadu/noreply-password" = { };
 
       "nextcloud/admin" = {
         owner = config.users.users.nextcloud.name;
@@ -283,17 +281,6 @@ in
       # Agent IDENTITY secrets are declared by each agent's own module
       # (agents/<name>); only their values live in this vault.
 
-      # rspamd's copy of eva's owner addresses (the trusted-sender map; see
-      # my.mail-server.trustedSendersFile). Same value as
-      # openclaw/eva/owner-addresses, which agents/eva declares for eva's own
-      # wrappers — a second entry only because the reader is a different user.
-      "rspamd/trusted-senders" = {
-        key = "openclaw/eva/owner-addresses";
-        owner = config.services.rspamd.user;
-        mode = "0400";
-        restartUnits = [ "rspamd.service" ];
-      };
-
       # ElevenLabs API key for reply TTS, rendered into openclaw/elevenlabs-env
       # below and read by the openclaw service as ELEVENLABS_API_KEY.
       "elevenlabs/token" = {
@@ -453,10 +440,15 @@ in
         owner = "postfix";
         group = "postfix";
         mode = "0400";
+        # Keyed by envelope sender (my.mail-server.senderDependentAuth); the
+        # relay line is the fallback for any other sender, which Migadu then
+        # refuses unless noreply@ owns it.
         content = ''
-          [in-v3.mailjet.com]:587 ${config.sops.placeholder."mailjet/token"}:${
-            config.sops.placeholder."mailjet/secret"
+          noreply@m.acpuchades.com noreply@m.acpuchades.com:${
+            config.sops.placeholder."migadu/noreply-password"
           }
+          eva@m.acpuchades.com eva@m.acpuchades.com:${config.sops.placeholder."openclaw/eva/mail-password"}
+          [smtp.migadu.com]:587 noreply@m.acpuchades.com:${config.sops.placeholder."migadu/noreply-password"}
         '';
       };
 

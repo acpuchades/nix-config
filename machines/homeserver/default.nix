@@ -97,6 +97,7 @@ let
         ./web.nix
         ./apps.nix
         ./eva.nix
+        ./mail.nix
         ./monitoring.nix
         ./backup.nix
 

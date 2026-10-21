@@ -37,7 +37,7 @@ actually works).
 
 | Path | Why |
 |---|---|
-| `/home` | all user homes, including eva's Maildir (caches excluded) |
+| `/home` | all user homes, including eva's (her mailbox itself is at Migadu; caches excluded) |
 | `/var/lib/openclaw/eva` | the agent's state and memory |
 | `/var/lib/hass` | Home Assistant configuration |
 | `/srv/prefect` | Prefect data directory |

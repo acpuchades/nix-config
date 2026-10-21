@@ -519,31 +519,77 @@
     };
 
     mail = {
-      enable = lib.mkEnableOption "email for the agent: read its own Maildir, plus a constrained, recipient-gated `send-email` helper";
+      enable = lib.mkEnableOption ''
+        email for the agent: its own IMAP mailbox through `mailbox`, plus the
+        recipient-gated `send-email` helper. Both run as the shared credential
+        broker (openclaw-secrets) through sudo, so the agent never holds the
+        mailbox password; the host must refuse the agent's own account mail
+        submission (my.mail-server.deniedSubmitUsers) for the send gate to hold'';
 
-      manageMaildir = lib.mkEnableOption ''
-        LOCAL Maildir mutation in the unprompted allowlist so the agent can
-        organise its OWN mailbox — mark read/flagged, move messages between
-        folders, create folders, incorporate/deliver mail (mflag/mrefile/mmkdir/
-        minc/mdeliver). These only touch the local Maildir; they never send or
-        fetch over the network, so the compose/send tools (mcom/mrep/mfwd/…) and
-        msed stay gated, and the only blessed outbound path remains the
-        recipient-gated send-email helper. Requires mail.enable'';
+      manageMailbox = lib.mkEnableOption ''
+        mailbox organisation through `mailbox move|flag|mkdir` — read/unread,
+        flagged, filing into folders, creating folders. Nothing deletes or
+        expunges; the read verbs are always available'';
 
       fromAddress = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
         default = null;
         example = "e.lebbot@example.com";
         description = ''
-          Optional sender identity. When set, the generated `send-email` helper
-          forces it as the envelope sender (via a nix-pinned wrapper), so the
-          agent can only ever send as this address; when null, the system default
-          (Postfix myorigin) is used. The address is a nix parameter — it is NOT
-          baked into the action script; actions/send-email stays generic.
+          The agent's address: the envelope sender every send wrapper forces
+          (nix-pinned, so the agent can only ever send as it), and the default
+          IMAP login. The address is a nix parameter — it is NOT baked into the
+          action scripts.
+        '';
+      };
 
-          Inbound delivery to the agent's ~/Maildir is arranged separately (an
-          MX/alias pointing here); this option only concerns outbound identity,
-          tooling and the skill.
+      imap = {
+        host = lib.mkOption {
+          type = lib.types.str;
+          example = "imap.migadu.com";
+          description = "IMAP server of the agent's mailbox (implicit TLS).";
+        };
+        port = lib.mkOption {
+          type = lib.types.port;
+          default = 993;
+          description = "IMAPS port.";
+        };
+        user = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "IMAP login; null uses `fromAddress`.";
+        };
+        passwordFile = lib.mkOption {
+          type = lib.types.str;
+          example = "/run/secrets/openclaw/eva/mail-password";
+          description = ''
+            Runtime file holding the mailbox password. Must be readable by
+            `openclaw-secrets` and NOT by the agent: the same password usually
+            works for SMTP, which would send around every recipient gate. A
+            `str`, not a `path`, so it never enters the store.
+          '';
+        };
+      };
+
+      trustedSenders = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "me@example.com" ];
+        description = ''
+          Inbound senders `mailbox read` marks `X-Trusted-Sender: yes`: a message
+          whose single From address is listed here AND that carries a verified
+          DKIM signature aligned with that address's domain. Only marks — what
+          the agent may do with a trusted message is the skill's business.
+        '';
+      };
+
+      trustedSendersFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = ''
+          Runtime file adding to `trustedSenders`, one address per line (`#`
+          comments allowed), readable by `openclaw-secrets`. An unreadable file
+          adds nobody.
         '';
       };
 
@@ -552,13 +598,10 @@
         default = [ ];
         example = [ "me@example.com" ];
         description = ''
-          Recipient addresses the agent may email WITHOUT an approval prompt, one
-          recipient per send. Each becomes an exact exec-allowlist rule
-          (`send-email <addr>`). Any other recipient — or more than one recipient
-          in a single send — does not match and falls through to the exec `ask`
-          gate, so the owner approves it in the origin channel. This is the data-
-          exfiltration guard: a prompt-injected agent cannot silently mail data to
-          an arbitrary address. Empty (default) gates every send.
+          Recipients `send-email` delivers to immediately, one recipient per send.
+          Mail to anyone else is HELD in an outbox that root lists and releases
+          with `openclaw-outbox-<name>` — the data-exfiltration guard: a prompt-
+          injected agent cannot silently mail data to an arbitrary address.
         '';
       };
 
@@ -566,25 +609,9 @@
         type = lib.types.nullOr lib.types.str;
         default = null;
         description = ''
-          Runtime file adding to `unpromptedRecipients`, one address per line (same
-          constraints as actions.trustedMail.trustedAddressesFile). Read by the
-          send-email wrapper only when `submitUser` is set — the exec allowlist
-          rules cannot come from a runtime file.
-        '';
-      };
-
-      submitUser = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        example = "eva-mail";
-        description = ''
-          System account (created here) that the send wrappers run as, through
-          sudo. Meant for a host that refuses the agent's own account mail
-          submission (authorized_submit_users), which turns the wrappers into
-          the only way mail leaves — the recipient checks then hold even when
-          nothing gates the agent's commands. send-email no longer delivers to
-          a recipient outside the unprompted list: it HOLDS the message in an
-          outbox that root lists and releases with `openclaw-outbox-<name>`.
+          Runtime file adding to `unpromptedRecipients`, one address per line,
+          readable by `openclaw-secrets` and not writable by the agent (it would
+          widen its own list). An unreadable file holds every send.
         '';
       };
 
@@ -779,7 +806,7 @@
             Runtime file adding to `trustedAddresses`, one address per line, so
             they stay out of the store and the repo. It must not be writable by
             the agent (it would widen its own list) and must be readable by
-            whoever runs the wrapper: the agent, or `mail.submitUser` when set.
+            `openclaw-secrets`, which runs the wrapper.
             An unreadable file refuses every send.
           '';
         };

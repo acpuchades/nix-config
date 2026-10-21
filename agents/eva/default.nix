@@ -23,7 +23,7 @@ let
     # The owner's own addresses — the ones eva may email without approval and
     # whose DKIM-signed mail she may act on — are a sops value, not a Nix one
     # (this repo is public): openclaw/eva/owner-addresses, one per line, read at
-    # runtime by both send wrappers and by rspamd (see machines/homeserver).
+    # runtime by the broker's mail wrappers (send and read).
     mailAddressesFile = config.sops.secrets."openclaw/eva/owner-addresses".path;
     # The owner's domain: eva's own mailbox and the self-hosted services
     # she may browse and fetch from live under it.
@@ -297,9 +297,19 @@ in
       group = "eva";
       mode = "0440";
     };
+    # Read by the broker's mail wrappers (and readable by eva, who is told
+    # who her owner is), writable by neither.
     "openclaw/eva/owner-addresses" = {
-      group = "eva-mail";
+      owner = "openclaw-secrets";
+      group = "eva";
       mode = "0440";
+    };
+    # Her Migadu mailbox password. The broker only: it also works for SMTP,
+    # so in her hands it would send around every recipient gate. Postfix
+    # reads it too, through the sasl_passwd template (machines/homeserver).
+    "openclaw/eva/mail-password" = {
+      owner = "openclaw-secrets";
+      mode = "0400";
     };
     # eva-nebot's GitHub token (classic, `repo` scope). That account holds read
     # access to the owner's site repo and its own fork, so the token reaches
@@ -575,12 +585,12 @@ in
     # - `gtd`: how she processes anything that arrives — capture/clarify/organize/
     #   reflect/engage, the markdown lists under ~/workspace/gtd, and the disposition
     #   of EVERY mail she touches (trash / reference / incubate / do-now / next action
-    #   / project / delegate / waiting-for / calendar) with the mblaze command for
+    #   / project / delegate / waiting-for / calendar) with the `mailbox` command for
     #   each, so a sweep ends with an empty inbox instead of a read one. It restates
     #   rather than relaxes the inbound-trust rule: an untrusted sender's mail can
     #   become reference or a question for the owner, never an action she performs.
-    #   The Archive/Waiting/Someday maildirs it files into are hers to create (mmkdir
-    #   is blessed via mail.manageMaildir), and the daily/weekly reviews land on the
+    #   The Archive/Waiting/Someday folders it files into are hers to create
+    #   (`mailbox mkdir`, via mail.manageMailbox), and the daily/weekly reviews land on the
     #   heartbeat turns configured above.
     # - `projects`: repos she clones get worked on through THEIR declared environment,
     #   not her baked interpreters. The tooling this assumes is in extraPackages
@@ -674,21 +684,24 @@ in
     #   `calendar` for scheduling around a date.
     extraSkillDirs = [ ../../skills ];
 
-    # Eva's email: read her Maildir + a recipient-gated send-email helper.
-    # The owner's addresses send with no approval; mail to anyone else is HELD
-    # for him to release. That hold is real only because the send wrappers run
-    # as eva-mail (submitUser) and the host refuses eva's own account mail
-    # submission (my.mail-server.deniedSubmitUsers) — so the wrappers are the
-    # only way mail leaves her. manageMaildir lets her organise her OWN mailbox
-    # (flag/refile/mkdir/incorporate/deliver) — local Maildir mutation only.
+    # Eva's email: her Migadu mailbox over IMAP (`mailbox`) + a recipient-
+    # gated send-email helper, all run by the credential broker so she never
+    # holds the password. The owner's addresses send with no approval; mail
+    # to anyone else is HELD for him to release — real only because the host
+    # refuses eva's own account mail submission (my.mail-server
+    # .deniedSubmitUsers), so the wrappers are the only way mail leaves her.
+    # manageMailbox lets her file and flag her OWN mail (nothing deletes).
     mail = {
       enable = true;
-      manageMaildir = true;
-      # Her mailbox itself, on the host's self-hosted mail subdomain: the apex
-      # alias that used to front it is gone along with Cloudflare Email Routing.
+      manageMailbox = true;
       fromAddress = "eva@m.${owner.domain}";
-      submitUser = "eva-mail";
-      # Shared with send-trusted-mail so the two outbound wrappers never drift.
+      imap = {
+        host = "imap.migadu.com";
+        passwordFile = config.sops.secrets."openclaw/eva/mail-password".path;
+      };
+      # One list for both directions: whose DKIM-signed mail she may act on,
+      # and whom she may mail without approval (send-trusted-mail too).
+      trustedSendersFile = owner.mailAddressesFile;
       unpromptedRecipientsFile = owner.mailAddressesFile;
     };
 
@@ -879,7 +892,7 @@ in
       # blanket (allow iff full+off, else deny) — so this is the only posture
       # that functions. Containment is enforced by the OTHER layers instead:
       # the service sandbox (writes confined to her own tree), the egress proxy,
-      # mail through eva-mail (anything not to the owner is held), and
+      # mail through the credential broker (anything not to the owner is held), and
       # argument-constrained sudo. The safeBins/allowlist below are kept for a
       # runtime that honours them.
       security = "full";

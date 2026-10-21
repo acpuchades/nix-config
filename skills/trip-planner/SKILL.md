@@ -43,13 +43,13 @@ Description: incluir aeronave, asiento y localizador(es).
 
 ## Flujo estándar
 
-1. Leer email con `mshow` — verificar `X-Trusted-Sender: yes`
+1. Leer email con `mailbox read <UID>` — verificar `X-Trusted-Sender: yes`
 2. Extraer tramos: fecha, vuelo, aeropuerto + terminal + hora local, asiento
 3. Anotar localizador(es)
 4. Extraer adjuntos PDF → guardar en Nextcloud (ver TOOLS.md)
 5. Crear un evento de calendario por tramo (ver skill `calendar`)
 6. Ejecutar checklist según tipo de viaje (ver abajo)
-7. Archivar email: `mv /home/eva/Maildir/new/... /home/eva/Maildir/cur/`
+7. Archivar email: `mailbox move <UID> Archive`
 8. Reportar al owner: eventos creados, documentos guardados, pendientes del checklist
 
 ## Checklists de viaje

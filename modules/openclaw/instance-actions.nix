@@ -14,51 +14,48 @@
 }:
 
 let
-  # --- optional email capability (see options.my.openclaw.mail) --------------
-  # Read-only mblaze Maildir tools — display, inspect, search, sort/thread and
-  # navigate the message sequence; none write to the Maildir, send, or hit the
-  # network, so they are safe to run unprompted. NB: the exec gate splits a
-  # command into pipeline/chain segments and clears each one independently (it
-  # must satisfy `segments.every(...)`), so a pipeline of these read bins — e.g.
-  # `mlist | mscan` — runs unprompted because every segment is a safeBin. A
-  # prompt is raised only when SOME segment is not itself a safeBin/allowlisted,
-  # or the command uses a form that fails analysis (inline-eval like `sh -c`/
-  # `python -c` under exec.strictInlineEval, line continuations, etc.).
-  mailReadBins = [
-    "mscan"
-    "mshow"
-    "mlist"
-    "mhdr"
-    "mdirs"
-    "mseq"
-    "mthread"
-    "msort"
-    "maddr"
-    "magrep"
-    "mmime"
-    "mpick"
-    "mflow"
-    "mdate"
-  ];
+  # --- credential broker ---------------------------------------------------
+  # Credential-using wrappers run as this ONE shared account, through sudo:
+  # it owns the secrets (mailbox passwords, …), the agent does not. Each
+  # agent may sudo only to its OWN wrapper store paths, which carry that
+  # agent's identity pinned by makeWrapper and take no file paths, so one
+  # agent cannot point the broker at another agent's credentials. Nothing
+  # gates commands under the claude-cli runtime, so a wrapper running AS the
+  # agent would be no boundary — the agent could read the secret and use it
+  # directly (a mailbox password also sends mail, around every recipient
+  # gate).
+  secretsUser = "openclaw-secrets";
 
-  # Local Maildir MUTATION tools, blessed only when icfg.mail.manageMaildir is on
-  # (the owner opts the agent into managing its OWN mailbox). Each edits the
-  # local Maildir but neither sends nor fetches over the network, so admitting
-  # them stays within the "local mutation, no network" tier: mflag (set/unset
-  # flags — read/unread/flagged/trashed), mrefile (move messages between
-  # mailboxes), mmkdir (create a mailbox), minc (incorporate new mail), mdeliver
-  # (deliver/export a message into a maildir). STILL DELIBERATELY EXCLUDED even
-  # when this is on: mcom/mrep/mfwd/mbnc/msuck/mblow (send or fetch over the
-  # network — the only blessed outbound path is the recipient-gated send-email),
-  # msed (rewrites message content in place, sed -i-style), and mless/mquote
-  # (interactive pager / reply-compose helper) — those keep prompting.
-  mailManageBins = [
-    "mflag"
-    "mrefile"
-    "mmkdir"
-    "minc"
-    "mdeliver"
-  ];
+  # What the agent finds on its PATH under the real wrapper's name.
+  viaBroker =
+    bin: binName:
+    pkgs.writeShellScriptBin binName ''
+      exec /run/wrappers/bin/sudo -n -u ${secretsUser} ${bin}/bin/${binName} "$@"
+    '';
+
+  # --- optional email capability (see options.my.openclaw.mail) --------------
+  # `mailbox`: the agent's IMAP mailbox (list/search/read/attachments/raw, plus
+  # move/flag/mkdir with mail.manageMailbox), run as the broker so the
+  # password never reaches the agent. It also computes the trust verdict
+  # (X-Trusted-Sender) itself, by verifying DKIM — see actions/mailbox.
+  mailboxPython = pkgs.python3.withPackages (ps: [ ps.dkimpy ]);
+  mailboxBin =
+    pkgs.runCommandLocal "openclaw-mailbox" { nativeBuildInputs = [ pkgs.makeWrapper ]; }
+      ''
+        install -Dm0644 ${./actions/mailbox} $out/libexec/mailbox.py
+        makeWrapper ${mailboxPython}/bin/python3 $out/bin/mailbox \
+          --add-flags "-I $out/libexec/mailbox.py" \
+          --set MAILBOX_HOST ${lib.escapeShellArg icfg.mail.imap.host} \
+          --set MAILBOX_PORT ${toString icfg.mail.imap.port} \
+          --set MAILBOX_USER ${lib.escapeShellArg imapUser} \
+          --set MAILBOX_PASSWORD_FILE ${lib.escapeShellArg icfg.mail.imap.passwordFile} \
+          --set MAILBOX_MANAGE ${if icfg.mail.manageMailbox then "1" else "0"} \
+          --set TRUSTED_SENDERS ${lib.escapeShellArg (lib.concatStringsSep " " icfg.mail.trustedSenders)} \
+          ${lib.optionalString (
+            icfg.mail.trustedSendersFile != null
+          ) "--set TRUSTED_SENDERS_FILE ${lib.escapeShellArg icfg.mail.trustedSendersFile}"}
+      '';
+  imapUser = if icfg.mail.imap.user != null then icfg.mail.imap.user else icfg.mail.fromAddress;
 
   # `send-email`: the generic actions/send-email script wrapped so the sender
   # identity ($MAIL_FROM, from icfg.mail.fromAddress) and the sendmail path are
@@ -78,17 +75,15 @@ let
         icfg.mail.fromAddress != null
       ) "--set MAIL_FROM ${lib.escapeShellArg icfg.mail.fromAddress}"
       ++ lib.optional (icfg.fullName != "") "--set MAIL_FROM_NAME ${lib.escapeShellArg icfg.fullName}"
-      # With a submit user, a recipient outside the unprompted set is HELD in
-      # the outbox for the owner instead of sent (see submitUser below).
-      ++ lib.optionals (submitUser != null) (
-        [
-          "--set OUTBOX ${outboxDir}"
-          "--set UNPROMPTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.mail.unpromptedRecipients)}"
-        ]
-        ++ lib.optional (
-          icfg.mail.unpromptedRecipientsFile != null
-        ) "--set UNPROMPTED_FILE ${icfg.mail.unpromptedRecipientsFile}"
-      );
+      # A recipient outside the unprompted set is HELD in the outbox for the
+      # owner instead of sent (see the outbox below).
+      ++ [
+        "--set OUTBOX ${outboxDir}"
+        "--set UNPROMPTED_ADDRESSES ${lib.escapeShellArg (lib.concatStringsSep " " icfg.mail.unpromptedRecipients)}"
+      ]
+      ++ lib.optional (
+        icfg.mail.unpromptedRecipientsFile != null
+      ) "--set UNPROMPTED_FILE ${icfg.mail.unpromptedRecipientsFile}";
     in
     pkgs.runCommandLocal "openclaw-send-email" { nativeBuildInputs = [ pkgs.makeWrapper ]; } ''
       install -Dm0755 ${./actions/send-email} $out/libexec/send-email
@@ -542,7 +537,7 @@ let
   # network-isolated form runs unprompted while the bare binary keeps prompting.
   netIsolateAllowlist = map (b: "offline ${b}*") icfg.exec.netIsolatedBins;
 
-  # The self-gating action wrappers (plus mblaze's mlist/mscan/… Maildir tools)
+  # The self-gating action wrappers (plus the broker's `mailbox`)
   # that the agent invokes BY NAME. They must live in TWO places:
   #   (1) environment.systemPackages below — so OpenClaw's safe-bin trust check,
   #       which only honors binaries it resolves from the system profile
@@ -555,21 +550,11 @@ let
   #       reasoning already applied to icfg.extraPackages.
   # NB: ffmpeg-headless (STT) is deliberately NOT here — it is resolved via
   # requireSystemBin and belongs in systemPackages ONLY (see below).
-  # --- mail through a separate account (mail.submitUser) ------------------
-  # Nothing gates a command under the claude-cli runtime, so a send wrapper
-  # that runs AS the agent is no boundary: the agent could call sendmail
-  # itself. With a submit user the real wrappers run as THAT account through
-  # sudo, the host refuses the agent's own account mail submission
-  # (my.mail-server.deniedSubmitUsers), and the wrappers are the only way out.
-  submitUser = icfg.mail.submitUser;
+  # --- mail submission through the broker ---------------------------------
+  # The send wrappers run as the broker too, and the host refuses the agent's
+  # own account mail submission (my.mail-server.deniedSubmitUsers), so the
+  # wrappers — and their recipient checks — are the only way mail leaves.
   outboxDir = "/var/spool/openclaw-outbox/${name}";
-
-  # What the agent finds on its PATH under the real wrapper's name.
-  viaSubmitUser =
-    bin: binName:
-    pkgs.writeShellScriptBin binName ''
-      exec /run/wrappers/bin/sudo -n -u ${submitUser} ${bin}/bin/${binName} "$@"
-    '';
 
   # Root's side of the outbox: list, read, release or drop held mail.
   outboxBin =
@@ -578,7 +563,7 @@ let
         install -Dm0755 ${./actions/outbox} $out/libexec/openclaw-outbox
         makeWrapper $out/libexec/openclaw-outbox $out/bin/openclaw-outbox-${name} \
           --set OUTBOX ${outboxDir} \
-          --set SUBMIT_USER ${submitUser} \
+          --set SUBMIT_USER ${secretsUser} \
           --set SENDMAIL /run/wrappers/bin/sendmail \
           ${
             lib.optionalString (
@@ -599,8 +584,8 @@ let
 
   actionWrapperBins =
     lib.optionals icfg.mail.enable [
-      (if submitUser != null then viaSubmitUser mailSendBin "send-email" else mailSendBin)
-      pkgs.mblaze
+      (viaBroker mailSendBin "send-email")
+      (viaBroker mailboxBin "mailbox")
     ]
     ++ lib.optionals gpgEnabled [
       encryptedMailBin
@@ -608,7 +593,7 @@ let
     ]
     ++ lib.optionals icfg.actions.requestUrl.enable [ requestUrlBin ]
     ++ lib.optionals icfg.actions.trustedMail.enable [
-      (if submitUser != null then viaSubmitUser trustedMailBin "send-trusted-mail" else trustedMailBin)
+      (viaBroker trustedMailBin "send-trusted-mail")
     ]
     ++ lib.optionals icfg.actions.generateImage.enable [ generateImageBin ]
     ++ lib.optionals icfg.actions.checkWeather.enable [ checkWeatherBin ]
@@ -628,13 +613,12 @@ in
     gpgSeed
     mailAllowlist
     mailFromDisplay
-    mailManageBins
-    mailReadBins
     mailSendBin
+    mailboxBin
     netIsolateAllowlist
     outboxBin
     outboxDir
-    submitUser
+    secretsUser
     trustedMailBin
     ;
 }

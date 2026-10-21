@@ -26,9 +26,9 @@
 #     prompt-injectable), acknowledged in ./instance.nix via permittedInsecurePackages, so
 #     the module confines what an injected agent can reach: a systemd sandbox
 #     (writes only to its own trees), optional egress filtering through an
-#     allowlisting proxy (`egress`), mail through a separate submit account
-#     whose wrappers hold non-owner mail (`mail.submitUser`), and sudo limited
-#     to `sudoCommands`.
+#     allowlisting proxy (`egress`), credential-using wrappers (mail) run
+#     through a shared broker account (`openclaw-secrets`) that holds the
+#     secrets the agent never sees, and sudo limited to `sudoCommands`.
 #
 # Auth uses a Claude subscription rather than an Anthropic API key: OpenClaw
 # reuses a Claude Code CLI login on this host (`claude -p`), selected by the

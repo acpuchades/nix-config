@@ -146,7 +146,7 @@ let
 
       mailFrom = lib.mkOption {
         type = lib.types.str;
-        default = "noreply@acpuchades.com";
+        default = "noreply@m.acpuchades.com";
         description = ''
           Envelope/From address for verification and password-reset mail. Worth
           differing per instance: it is the only thing distinguishing a staging
@@ -161,7 +161,7 @@ let
         description = ''
           SMTP smarthost. The backend always STARTTLSes with certificate
           verification, so this must match the relay's certificate. Defaults to the
-          host's own Postfix (which relays onward via Mailjet); the loopback
+          host's own Postfix (which relays onward via Migadu); the loopback
           hosts-entry below points this name at 127.0.0.1 so the connection stays
           local while the wildcard cert still validates.
         '';

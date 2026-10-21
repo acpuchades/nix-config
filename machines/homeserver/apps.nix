@@ -47,7 +47,7 @@ in
       allowedNetworks = privateNetworks;
     };
     email = {
-      from = "noreply@acpuchades.com";
+      from = "noreply@m.acpuchades.com";
     };
     immich = {
       hostName = "photos.acpuchades.com";
@@ -225,7 +225,7 @@ in
       "spotify"
       "stream"
     ];
-    email.from = "noreply@acpuchades.com";
+    email.from = "noreply@m.acpuchades.com";
     email.recipient = adminEmailAddress;
   };
 
