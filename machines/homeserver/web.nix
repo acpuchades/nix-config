@@ -47,9 +47,10 @@ in
     };
   };
 
-  # Public logins with no lockout of their own (ntfy has one; Prefect is
-  # LAN/VPN-only). Immich's mobile app logs in once per device, Umami's
-  # admin rarely — 10/min per client never touches a real user.
+  # Logins with no lockout of their own (ntfy has one). Umami's is public;
+  # Immich is LAN/VPN-only but keeps its budget against a compromised peer.
+  # Immich's mobile app logs in once per device, Umami's admin rarely —
+  # 10/min per client never touches a real user.
   my.web-server.loginRateLimits = {
     ${config.my.cloud-suite.immich.hostName}.paths = [
       "/api/auth/login"

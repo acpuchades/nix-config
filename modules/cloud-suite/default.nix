@@ -126,6 +126,12 @@
         description = "Immich listen port";
       };
 
+      allowedNetworks = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Restrict access to these CIDR ranges (empty = unrestricted)";
+      };
+
       maxUploadSize = lib.mkOption {
         type = lib.types.str;
         default = "50G";
@@ -499,6 +505,7 @@
       # Uploads are streamed straight through (no request buffering to disk,
       # no response buffering), with a timeout long enough for a large video.
       services.nginx.virtualHosts.${config.my.cloud-suite.immich.hostName} = {
+        inherit (config.my.cloud-suite.immich) allowedNetworks;
         extraConfig = "client_max_body_size ${config.my.cloud-suite.immich.maxUploadSize};";
         locations."/" = {
           proxyPass = "http://127.0.0.1:${toString config.my.cloud-suite.immich.port}";

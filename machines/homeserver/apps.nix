@@ -52,14 +52,18 @@ in
     immich = {
       hostName = "photos.acpuchades.com";
       mediaLocation = "/srv/encrypted/immich";
+      # LAN/WireGuard only, like the rest of the personal data here: the
+      # mobile app backs up at home or over the VPN. No public DNS record
+      # either (and none in ddclient).
+      allowedNetworks = privateNetworks;
       accelerationDevices = [ "/dev/dri/renderD128" ];
 
       # Immich 3.x from nixpkgs-unstable, because 26.05 has no runnable
       # Immich left: it ships 2.7.5, upstream ended 2.x support, and nixpkgs
       # marked the package insecure (CVE-2026-59258, CVE-2026-82272) — which
       # fails evaluation of this host's toplevel, not just Immich. Permitting
-      # it would keep an unpatched, end-of-line release answering on a
-      # public hostname; 3.x is the version that still gets fixes.
+      # it would keep an unpatched, end-of-line release serving the photo
+      # library; 3.x is the version that still gets fixes.
       #
       # Safe to cross channels here because the module is the same module:
       # 26.05's services.immich and unstable's differ only in a docstring and
