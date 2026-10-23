@@ -54,8 +54,9 @@
 #   #    `nominatim import` writes to the default tablespace on the slow disk.
 #   sudo -u nominatim nominatim-admin import --osm-file spain-latest.osm.pbf
 #
-#   # 3. Initialise replication state, so the timer below has a starting point:
-#   sudo -u nominatim nominatim-admin replication --init
+#   # 3. Nothing: with updates enabled, the next nominatim-update run
+#   #    initialises replication from the imported data's timestamp and
+#   #    catches up. To do it now: sudo systemctl start nominatim-update
 #
 # Until step 2 completes, the API answers but returns no results.
 #
@@ -345,12 +346,18 @@ in
       };
     };
 
-    # The replication timer upstream leaves as a TODO. `--once` applies every
-    # diff published since the last run and exits, so the timer controls the
-    # cadence rather than a long-lived daemon loop. Requires
-    # `nominatim replication --init`
-    # to have been run once (see the header comment) — until then the unit
-    # fails, which is the intended loud signal rather than silent staleness.
+    # The replication timer upstream leaves as a TODO. `--catch-up` applies
+    # every diff published since the last run, indexes, and exits, so the timer
+    # controls the cadence rather than a long-lived daemon loop. (`--once`
+    # applies a single batch of at most NOMINATIM_REPLICATION_MAX_DIFF, so a
+    # backlog never drains.)
+    #
+    # Replication is initialised here when it is not yet, instead of being a
+    # manual step: forgetting `replication --init` after the July 2026 import
+    # left this unit failing nightly for six weeks with "Replication not set
+    # up", while the database quietly aged. `--init` derives its start
+    # sequence from the database's own timestamp (osm2pgsql_properties), so it
+    # is safe on any imported database; on an empty one it fails loudly.
     systemd.services.nominatim-update = lib.mkIf cfg.updates.enable {
       description = "Apply OSM replication updates to the Nominatim database";
       after = [
@@ -364,7 +371,28 @@ in
         User = config.services.nominatim.database.superUser;
         # Imports touch large temporary indexes; give them a real /tmp.
         PrivateTmp = true;
-        ExecStart = "${lib.getExe nominatimPkg} replication --once";
+        # The project directory defaults to the cwd, and the diff is staged
+        # there as osmosischange.osc — under systemd's default cwd of / that
+        # is unwritable. /var/lib/nominatim is the nominatim user's home.
+        WorkingDirectory = "/var/lib/nominatim";
+        # Background work: don't compete with the API or the shared cluster.
+        Nice = 10;
+        IOSchedulingClass = "idle";
+        ExecStart = pkgs.writeShellScript "nominatim-update" ''
+          set -eu
+          nominatim=${lib.getExe nominatimPkg}
+
+          # 254 = replication not set up, 2 = already up to date.
+          rc=0
+          "$nominatim" replication --check-for-updates || rc=$?
+          case "$rc" in
+            0 | 2) ;;
+            254) "$nominatim" replication --init ;;
+            *) exit "$rc" ;;
+          esac
+
+          exec "$nominatim" replication --catch-up
+        '';
       };
       environment = {
         NOMINATIM_DATABASE_DSN =
